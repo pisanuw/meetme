@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}MeetSync{% endblock %} – MeetSync</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"/>
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="{{ url_for('dashboard') }}" class="nav-brand">
+      <span class="brand-icon">⟳</span> MeetSync
+    </a>
+    {% if current_user.is_authenticated %}
+    <div class="nav-links">
+      <a href="{{ url_for('create_meeting') }}" class="btn btn-sm btn-outline-white">+ New Meeting</a>
+      <span class="nav-user">{{ current_user.name }}</span>
+      <a href="{{ url_for('logout') }}" class="nav-link">Log out</a>
+    </div>
+    {% endif %}
+  </div>
+</nav>
+
+<div class="flash-container">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash flash-{{ category }}">
+        {{ message }}
+        <button class="flash-close" onclick="this.parentElement.remove()">✕</button>
+      </div>
+    {% endfor %}
+  {% endwith %}
+</div>
+
+<main class="main-content">
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="footer">
+  <p>MeetSync – Find the perfect time together</p>
+</footer>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

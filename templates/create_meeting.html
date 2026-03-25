@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}New Meeting{% endblock %}
+
+{% block content %}
+<div class="form-page">
+  <div class="form-card">
+    <h1>New Meeting</h1>
+    <p class="text-muted">Set up a meeting and invite others to share their availability.</p>
+
+    <form method="POST" action="{{ url_for('create_meeting') }}" id="create-form">
+
+      <!-- Title -->
+      <div class="form-group">
+        <label for="title">Meeting title <span class="required">*</span></label>
+        <input type="text" id="title" name="title" class="form-control"
+               placeholder="e.g. Q3 Planning, Team Lunch…" required autofocus/>
+      </div>
+
+      <!-- Description -->
+      <div class="form-group">
+        <label for="description">Description (optional)</label>
+        <textarea id="description" name="description" class="form-control" rows="2"
+                  placeholder="Any context for invitees…"></textarea>
+      </div>
+
+      <!-- Type toggle -->
+      <div class="form-group">
+        <label>Meeting type <span class="required">*</span></label>
+        <div class="type-toggle">
+          <label class="type-option active" id="tab-dates">
+            <input type="radio" name="meeting_type" value="specific_dates" checked
+                   onchange="switchType('specific_dates')"/>
+            📅 Specific dates
+          </label>
+          <label class="type-option" id="tab-days">
+            <input type="radio" name="meeting_type" value="days_of_week"
+                   onchange="switchType('days_of_week')"/>
+            🗓 Days of week
+          </label>
+        </div>
+      </div>
+
+      <!-- Specific dates -->
+      <div id="panel-specific-dates" class="form-group">
+        <label>Select dates</label>
+        <div class="date-picker-wrapper">
+          <input type="text" id="date-input" class="form-control"
+                 placeholder="Click to add dates…" readonly/>
+          <div class="mini-calendar" id="mini-calendar"></div>
+        </div>
+        <div id="selected-dates-chips" class="chips-row"></div>
+        <!-- hidden inputs added by JS -->
+      </div>
+
+      <!-- Days of week -->
+      <div id="panel-days-of-week" class="form-group" style="display:none;">
+        <label>Select days</label>
+        <div class="day-checkboxes">
+          {% for day in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}
+          <label class="day-chip">
+            <input type="checkbox" name="days_of_week" value="{{ day }}"/>
+            {{ day[:3] }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Time range -->
+      <div class="form-row">
+        <div class="form-group">
+          <label for="start_time">Earliest time</label>
+          <select id="start_time" name="start_time" class="form-control">
+            {% for h in range(6, 24) %}
+              {% for m in [0, 30] %}
+                {% set t = '%02d:%02d'|format(h, m) %}
+                <option value="{{ t }}" {% if t == '08:00' %}selected{% endif %}>
+                  {{ '%02d:%02d'|format(h, m) }}
+                </option>
+              {% endfor %}
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="end_time">Latest time</label>
+          <select id="end_time" name="end_time" class="form-control">
+            {% for h in range(6, 25) %}
+              {% for m in [0, 30] %}
+                {% if h < 24 or m == 0 %}
+                {% set t = '%02d:%02d'|format(h, m) %}
+                <option value="{{ t }}" {% if t == '20:00' %}selected{% endif %}>
+                  {{ '%02d:%02d'|format(h, m) }}
+                </option>
+                {% endif %}
+              {% endfor %}
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <!-- Invitees -->
+      <div class="form-group">
+        <label for="invite_emails">Invite people</label>
+        <textarea id="invite_emails" name="invite_emails" class="form-control" rows="3"
+                  placeholder="One email per line&#10;alice@example.com&#10;bob@example.com"></textarea>
+        <small class="form-hint">Each person will be asked to mark their availability.</small>
+      </div>
+
+      <div class="form-actions">
+        <a href="{{ url_for('dashboard') }}" class="btn btn-ghost">Cancel</a>
+        <button type="submit" class="btn btn-primary">Create Meeting →</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Type switch ──────────────────────────────
+function switchType(type) {
+  document.getElementById('panel-specific-dates').style.display =
+    type === 'specific_dates' ? '' : 'none';
+  document.getElementById('panel-days-of-week').style.display =
+    type === 'days_of_week' ? '' : 'none';
+  document.getElementById('tab-dates').classList.toggle('active', type === 'specific_dates');
+  document.getElementById('tab-days').classList.toggle('active', type === 'days_of_week');
+}
+
+// ── Mini Calendar ────────────────────────────
+const selectedDates = new Set();
+let calYear, calMonth;
+
+function initCalendar() {
+  const now = new Date();
+  calYear  = now.getFullYear();
+  calMonth = now.getMonth();
+  renderCalendar();
+}
+
+function renderCalendar() {
+  const cal    = document.getElementById('mini-calendar');
+  const first  = new Date(calYear, calMonth, 1);
+  const last   = new Date(calYear, calMonth + 1, 0);
+  const today  = new Date();
+  today.setHours(0,0,0,0);
+  const months = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+
+  let html = `
+    <div class="cal-nav">
+      <button type="button" onclick="shiftMonth(-1)">‹</button>
+      <span>${months[calMonth]} ${calYear}</span>
+      <button type="button" onclick="shiftMonth(1)">›</button>
+    </div>
+    <div class="cal-grid">
+      <div class="cal-dow">Mo</div><div class="cal-dow">Tu</div><div class="cal-dow">We</div>
+      <div class="cal-dow">Th</div><div class="cal-dow">Fr</div><div class="cal-dow">Sa</div>
+      <div class="cal-dow">Su</div>`;
+
+  // leading blanks
+  let startDow = (first.getDay() + 6) % 7; // Mon=0
+  for (let i = 0; i < startDow; i++) html += '<div></div>';
+
+  for (let d = 1; d <= last.getDate(); d++) {
+    const dt     = new Date(calYear, calMonth, d);
+    const key    = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isPast = dt < today;
+    const isSel  = selectedDates.has(key);
+    html += `<div class="cal-day ${isPast ? 'past' : ''} ${isSel ? 'selected' : ''}"
+                  onclick="${isPast ? '' : `toggleDate('${key}')`}">${d}</div>`;
+  }
+  html += '</div>';
+  cal.innerHTML = html;
+}
+
+function shiftMonth(delta) {
+  calMonth += delta;
+  if (calMonth < 0)  { calMonth = 11; calYear--; }
+  if (calMonth > 11) { calMonth = 0;  calYear++; }
+  renderCalendar();
+}
+
+function toggleDate(key) {
+  if (selectedDates.has(key)) selectedDates.delete(key);
+  else selectedDates.add(key);
+  renderCalendar();
+  updateChips();
+}
+
+function updateChips() {
+  const container = document.getElementById('selected-dates-chips');
+  const form      = document.getElementById('create-form');
+
+  // Remove old hidden inputs
+  form.querySelectorAll('input[name="specific_dates"]').forEach(el => el.remove());
+
+  const sorted = Array.from(selectedDates).sort();
+  container.innerHTML = sorted.map(d => {
+    const [y,m,day] = d.split('-').map(Number);
+    const label = new Date(y, m-1, day)
+      .toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+    return `<span class="date-chip removable" onclick="toggleDate('${d}')">${label} ✕</span>`;
+  }).join('');
+
+  sorted.forEach(d => {
+    const inp = document.createElement('input');
+    inp.type  = 'hidden';
+    inp.name  = 'specific_dates';
+    inp.value = d;
+    form.appendChild(inp);
+  });
+
+  document.getElementById('date-input').value =
+    sorted.length ? `${sorted.length} date${sorted.length>1?'s':''} selected` : '';
+}
+
+// toggle calendar visibility
+document.getElementById('date-input').addEventListener('click', () => {
+  document.getElementById('mini-calendar').classList.toggle('visible');
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('.date-picker-wrapper'))
+    document.getElementById('mini-calendar').classList.remove('visible');
+});
+
+initCalendar();
+</script>
+{% endblock %}

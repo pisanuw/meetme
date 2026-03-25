@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}{{ meeting.title }}{% endblock %}
+
+{% block head %}
+<style>
+:root {
+  --cols: {{ meeting.dates_list | length }};
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="meeting-page">
+
+  <!-- ── HEADER ─────────────────────────────── -->
+  <div class="meeting-header">
+    <div>
+      <div class="breadcrumb"><a href="{{ url_for('dashboard') }}">Dashboard</a> › Meeting</div>
+      <h1>{{ meeting.title }}</h1>
+      {% if meeting.description %}<p class="text-muted">{{ meeting.description }}</p>{% endif %}
+      <div class="meeting-meta-row">
+        <span class="badge badge-blue">
+          {{ meeting.meeting_type | replace('_',' ') | title }}
+        </span>
+        <span class="text-muted">
+          {{ meeting.start_time }} – {{ meeting.end_time }}
+        </span>
+        <span class="text-muted">
+          {{ meeting.respond_count }}/{{ meeting.invite_count }} responded
+        </span>
+        {% if meeting.is_finalized %}
+          <span class="badge badge-green">✓ Finalized</span>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if meeting.is_finalized %}
+    <div class="finalized-banner">
+      <div class="finalized-time">
+        📅 {{ meeting.finalized_date }} at {{ meeting.finalized_slot }}
+        ({{ meeting.duration_minutes }} min)
+      </div>
+      {% if meeting.note %}<div class="finalized-note">{{ meeting.note }}</div>{% endif %}
+      <a href="{{ url_for('download_calendar', meeting_id=meeting.id) }}"
+         class="btn btn-primary">⬇ Download .ics</a>
+      {% if is_creator %}
+      <button class="btn btn-ghost" id="btn-unfinalize">Edit finalization</button>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── TOOLBAR ────────────────────────────── -->
+  <div class="grid-toolbar">
+    <!-- View mode tabs -->
+    <div class="view-tabs">
+      <button class="view-tab active" data-view="heatmap" onclick="setView('heatmap',this)">
+        🌡 Group availability
+      </button>
+      {% if not meeting.is_finalized %}
+      <button class="view-tab" data-view="mine" onclick="setView('mine',this)">
+        ✏ My availability
+      </button>
+      {% endif %}
+      {% if is_creator and participants %}
+      <button class="view-tab" data-view="person" onclick="setView('person',this)">
+        👤 By person
+      </button>
+      {% endif %}
+    </div>
+
+    <!-- Person selector (creator only) -->
+    {% if is_creator and participants %}
+    <div id="person-selector" style="display:none;">
+      <select class="form-control" id="person-select" onchange="filterPerson(this.value)">
+        {% for p in participants %}
+        <option value="{{ loop.index0 }}">
+          {{ p.name }} ({{ p.slot_count }} slot{{ 's' if p.slot_count != 1 }})
+          {% if not p.responded %} – no response{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
+    <!-- Legend -->
+    <div class="legend">
+      <span class="legend-label">Fewer</span>
+      <span class="legend-swatch" style="background:#edfaed"></span>
+      <span class="legend-swatch" style="background:#a5d6a7"></span>
+      <span class="legend-swatch" style="background:#4caf50"></span>
+      <span class="legend-swatch" style="background:#1b5e20"></span>
+      <span class="legend-label">More</span>
+    </div>
+  </div>
+
+  <!-- ── INSTRUCTIONS ──────────────────────── -->
+  <div id="edit-instructions" class="instructions" style="display:none;">
+    Click or click-and-drag to select your available times. Changes save automatically.
+  </div>
+  <div id="heatmap-instructions" class="instructions">
+    Showing combined availability for all {{ meeting.invite_count }} participant{{ 's' if meeting.invite_count != 1 }}.
+  </div>
+
+  <!-- ── AVAILABILITY GRID ─────────────────── -->
+  <div class="grid-scroll-wrapper">
+    <div class="av-grid" id="av-grid" data-editing="false">
+      <!-- Rendered by JS -->
+    </div>
+  </div>
+
+  <!-- ── FINALIZE PANEL (creator only) ─────── -->
+  {% if is_creator and not meeting.is_finalized %}
+  <div class="finalize-panel" id="finalize-panel" style="display:none;">
+    <h3>📌 Finalize meeting time</h3>
+    <p class="text-muted">You've selected: <strong id="finalize-slot-label">–</strong></p>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Duration</label>
+        <select class="form-control" id="finalize-duration">
+          <option value="30">30 minutes</option>
+          <option value="60" selected>1 hour</option>
+          <option value="90">1.5 hours</option>
+          <option value="120">2 hours</option>
+          <option value="180">3 hours</option>
+          <option value="240">4 hours</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Note to participants</label>
+      <textarea class="form-control" id="finalize-note" rows="3"
+                placeholder="Location, dial-in link, agenda…"></textarea>
+    </div>
+    <div style="display:flex; gap:12px; margin-top:16px;">
+      <button class="btn btn-primary" onclick="confirmFinalize()">✓ Confirm & Finalize</button>
+      <button class="btn btn-ghost" onclick="cancelFinalize()">Cancel</button>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── PARTICIPANTS SIDEBAR (creator only) ── -->
+  {% if is_creator %}
+  <div class="participants-panel">
+    <h3>Participants <span class="text-muted">({{ meeting.invite_count }})</span></h3>
+    <div class="participants-list">
+      {% for p in participants %}
+      <div class="participant-row" onclick="jumpToParticipant({{ loop.index0 }})">
+        <div class="participant-avatar">{{ p.name[0].upper() }}</div>
+        <div class="participant-info">
+          <div class="participant-name">{{ p.name }}</div>
+          <div class="participant-email text-muted">{{ p.email }}</div>
+        </div>
+        <div class="participant-slots">
+          {% if p.responded %}
+            <span class="badge badge-green">{{ p.slot_count }} slots</span>
+          {% else %}
+            <span class="badge badge-gray">No response</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+</div><!-- /meeting-page -->
+
+<!-- ── DATA ISLAND ──────────────────────────── -->
+<script id="meeting-data" type="application/json">
+{
+  "id": {{ meeting.id }},
+  "dates": {{ meeting.dates_list | tojson }},
+  "timeSlots": {{ meeting.time_slots | tojson }},
+  "mySlots": {{ my_slots | tojson }},
+  "slotCounts": {{ slot_counts | tojson }},
+  "totalInvited": {{ total_invited }},
+  "isCreator": {{ is_creator | tojson }},
+  "isFinalized": {{ meeting.is_finalized | tojson }},
+  "finalizedDate": {{ meeting.finalized_date | tojson }},
+  "finalizedSlot": {{ meeting.finalized_slot | tojson }},
+  "meetingType": {{ meeting.meeting_type | tojson }},
+  "participants": {{ participants | tojson }}
+}
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}
