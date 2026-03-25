@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Your Profile – MeetMe</title>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="/dashboard.html" class="nav-brand">
+      <span class="brand-icon">&#x27F3;</span> MeetMe
+    </a>
+    <div class="nav-links" id="nav-auth" style="display:none;">
+      <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
+      <span class="nav-user" id="nav-username"></span>
+      <a href="/profile.html" class="nav-link" id="profile-link">Edit Profile</a>
+      <a href="#" class="nav-link" id="logout-link">Log out</a>
+    </div>
+  </div>
+</nav>
+
+<div id="flash-container" class="flash-container"></div>
+
+<main class="main-content">
+  <div class="auth-wrapper" style="align-items:flex-start;padding-top:32px;">
+    <div class="auth-card" style="max-width:520px;">
+      <div class="auth-header">
+        <div class="auth-logo">&#x1F464;</div>
+        <h1 id="page-title">Your Profile</h1>
+        <p id="page-subtitle">Keep your name and settings up to date.</p>
+      </div>
+
+      <!-- ── Name & Timezone form ───────────────────────────────────────── -->
+      <form id="profile-form" class="auth-form" autocomplete="off">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="first-name">First name <span style="color:var(--red)">*</span></label>
+            <input type="text" id="first-name" name="first_name" class="form-control"
+                   placeholder="e.g. Alex" required autofocus/>
+          </div>
+          <div class="form-group">
+            <label for="last-name">Last name</label>
+            <input type="text" id="last-name" name="last_name" class="form-control"
+                   placeholder="e.g. Smith"/>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="timezone">Your time zone</label>
+          <select id="timezone" name="timezone" class="form-control">
+            <option value="">— Detect automatically —</option>
+            <optgroup label="Americas">
+              <option value="America/New_York">Eastern Time (New York)</option>
+              <option value="America/Chicago">Central Time (Chicago)</option>
+              <option value="America/Denver">Mountain Time (Denver)</option>
+              <option value="America/Los_Angeles">Pacific Time (Los Angeles)</option>
+              <option value="America/Anchorage">Alaska (Anchorage)</option>
+              <option value="Pacific/Honolulu">Hawaii (Honolulu)</option>
+              <option value="America/Toronto">Eastern Time (Toronto)</option>
+              <option value="America/Vancouver">Pacific Time (Vancouver)</option>
+              <option value="America/Mexico_City">Central Time (Mexico City)</option>
+              <option value="America/Sao_Paulo">Brasília (São Paulo)</option>
+              <option value="America/Argentina/Buenos_Aires">Argentina (Buenos Aires)</option>
+              <option value="America/Bogota">Colombia (Bogotá)</option>
+              <option value="America/Lima">Peru (Lima)</option>
+            </optgroup>
+            <optgroup label="Europe">
+              <option value="Europe/London">London (GMT/BST)</option>
+              <option value="Europe/Dublin">Dublin</option>
+              <option value="Europe/Lisbon">Lisbon</option>
+              <option value="Europe/Paris">Paris / Madrid / Berlin (CET)</option>
+              <option value="Europe/Amsterdam">Amsterdam / Brussels</option>
+              <option value="Europe/Rome">Rome</option>
+              <option value="Europe/Helsinki">Helsinki / Tallinn (EET)</option>
+              <option value="Europe/Athens">Athens</option>
+              <option value="Europe/Kiev">Kyiv</option>
+              <option value="Europe/Moscow">Moscow</option>
+              <option value="Europe/Istanbul">Istanbul</option>
+            </optgroup>
+            <optgroup label="Africa">
+              <option value="Africa/Cairo">Cairo (EET)</option>
+              <option value="Africa/Johannesburg">Johannesburg (SAST)</option>
+              <option value="Africa/Lagos">Lagos (WAT)</option>
+              <option value="Africa/Nairobi">Nairobi (EAT)</option>
+            </optgroup>
+            <optgroup label="Asia">
+              <option value="Asia/Dubai">Dubai (GST)</option>
+              <option value="Asia/Karachi">Karachi (PKT)</option>
+              <option value="Asia/Kolkata">India (IST)</option>
+              <option value="Asia/Dhaka">Bangladesh (BST)</option>
+              <option value="Asia/Bangkok">Bangkok / Jakarta (ICT)</option>
+              <option value="Asia/Singapore">Singapore / Kuala Lumpur</option>
+              <option value="Asia/Shanghai">China (CST)</option>
+              <option value="Asia/Hong_Kong">Hong Kong</option>
+              <option value="Asia/Taipei">Taipei</option>
+              <option value="Asia/Tokyo">Japan (JST)</option>
+              <option value="Asia/Seoul">South Korea (KST)</option>
+              <option value="Asia/Jerusalem">Israel</option>
+              <option value="Asia/Riyadh">Riyadh (AST)</option>
+              <option value="Asia/Colombo">Sri Lanka</option>
+            </optgroup>
+            <optgroup label="Pacific / Oceania">
+              <option value="Australia/Sydney">Sydney (AEST/AEDT)</option>
+              <option value="Australia/Melbourne">Melbourne</option>
+              <option value="Australia/Brisbane">Brisbane</option>
+              <option value="Australia/Perth">Perth (AWST)</option>
+              <option value="Pacific/Auckland">New Zealand (NZST)</option>
+              <option value="Pacific/Fiji">Fiji</option>
+            </optgroup>
+            <optgroup label="Other">
+              <option value="UTC">UTC</option>
+            </optgroup>
+          </select>
+          <p class="form-hint">Used to show meeting times in your local time zone.</p>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:4px;">
+          <button type="submit" class="btn btn-primary" id="save-btn" style="flex:1;">Save profile</button>
+          <a id="skip-btn" href="/dashboard.html" class="btn btn-ghost" style="flex:1;display:none;text-align:center;">Skip for now</a>
+        </div>
+      </form>
+
+      <!-- ── Google Calendar section ─────────────────────────────────────── -->
+      <div style="margin-top:28px;padding-top:24px;border-top:1px solid var(--border);">
+        <h2 style="font-size:1rem;font-weight:700;margin-bottom:6px;">Google Calendar</h2>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:14px;">
+          Connect your Google Calendar so MeetMe can automatically highlight slots when you’re busy.
+          You can always override the suggestions manually.
+        </p>
+        <div id="calendar-status"><!-- filled by JS --></div>
+      </div>
+
+      <p class="auth-footer" id="back-link" style="display:none;margin-top:20px;">
+        <a href="/dashboard.html">&#x2190; Back to Dashboard</a>
+      </p>
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <p>MeetMe &ndash; Find the perfect time together</p>
+</footer>
+
+<script src="/static/common.js"></script>
+<script>
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+
+  const params = new URLSearchParams(window.location.search);
+  const isSetup = params.get('setup') === '1';
+
+  // Handle redirect messages
+  if (params.get('calendar') === 'connected') showFlash('Google Calendar connected successfully!', 'success');
+  const errMap = {
+    'calendar-denied':         'Google Calendar connection was cancelled.',
+    'calendar-auth-failed':    'Google Calendar connection failed. Please try again.',
+    'calendar-state-mismatch': 'Connection failed (state mismatch). Please try again.',
+    'calendar-state-expired':  'Connection session expired. Please try again.',
+    'calendar-rate-limited':   'Too many calendar connection attempts. Please wait a few minutes.',
+    'google-not-configured':   'Google OAuth is not configured on this server.',
+  };
+  const errCode = params.get('error');
+  if (errCode && errMap[errCode]) showFlash(errMap[errCode], 'danger');
+
+  if (isSetup) {
+    document.getElementById('page-title').textContent = 'Welcome to MeetMe!';
+    document.getElementById('page-subtitle').textContent = 'Enter your name and time zone so others can schedule with you.';
+    document.getElementById('skip-btn').style.display = '';
+  } else {
+    document.getElementById('back-link').style.display = '';
+  }
+
+  // Load profile
+  const { ok, data } = await apiFetch('/api/auth/profile');
+  if (ok) {
+    document.getElementById('first-name').value = data.first_name || '';
+    document.getElementById('last-name').value  = data.last_name  || '';
+    if (!data.first_name && data.name) {
+      const parts = data.name.trim().split(/\s+/);
+      document.getElementById('first-name').value = parts[0] || '';
+      document.getElementById('last-name').value  = parts.slice(1).join(' ') || '';
+    }
+
+    // Timezone: stored or browser-detected
+    const tzSel = document.getElementById('timezone');
+    const storedTz  = data.timezone || '';
+    const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    const tzToSet   = storedTz || browserTz;
+    if (tzToSet) {
+      const already = [...tzSel.options].some(o => o.value === tzToSet);
+      if (!already) {
+        const dynOpt = new Option(tzToSet, tzToSet);
+        tzSel.prepend(dynOpt);
+      }
+      tzSel.value = tzToSet;
+    }
+
+    renderCalendarStatus(data.calendar_connected);
+  }
+
+  document.getElementById('profile-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const saveBtn = document.getElementById('save-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+
+    const tzSel   = document.getElementById('timezone');
+    const timezone = tzSel.value || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+    const { ok, data } = await apiFetch('/api/auth/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        first_name: document.getElementById('first-name').value.trim(),
+        last_name:  document.getElementById('last-name').value.trim(),
+        timezone,
+      }),
+    });
+
+    if (ok) {
+      showFlash('Profile saved!', 'success');
+      setTimeout(() => { window.location.href = '/dashboard.html'; }, 800);
+    } else {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save profile';
+      showFlash(data.error || 'Could not save profile. Please try again.', 'danger');
+    }
+  });
+})();
+
+function renderCalendarStatus(connected) {
+  const el = document.getElementById('calendar-status');
+  if (connected) {
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--green0);border:1px solid var(--green1);border-radius:8px;">
+        <span style="font-size:1.2rem;">&#x2705;</span>
+        <div style="flex:1;">
+          <strong style="font-size:0.875rem;color:var(--green4);">Google Calendar connected</strong>
+          <p style="font-size:0.8rem;color:var(--text-muted);margin-top:2px;">MeetMe can load your busy times on meeting pages.</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <a href="/api/auth/google/calendar-start" class="btn btn-sm btn-ghost">Reconnect</a>
+          <button type="button" class="btn btn-sm btn-danger" onclick="disconnectCalendar()">Disconnect</button>
+        </div>
+      </div>`;
+  } else {
+    el.innerHTML = `
+      <a href="/api/auth/google/calendar-start" class="btn btn-ghost btn-full" style="justify-content:center;gap:8px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+        </svg>
+        Connect Google Calendar
+      </a>
+      <p style="font-size:0.78rem;color:var(--text-muted);text-align:center;margin-top:8px;">Read-only. MeetMe never modifies your calendar.</p>`;
+  }
+}
+
+window.disconnectCalendar = async function() {
+  if (!confirm('Disconnect Google Calendar from MeetMe?')) return;
+  const { ok, data } = await apiFetch('/api/auth/google/calendar-disconnect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (ok) {
+    renderCalendarStatus(false);
+    showFlash('Google Calendar disconnected.', 'success');
+  } else {
+    showFlash(data.error || 'Could not disconnect calendar. Please try again.', 'danger');
+  }
+};
+</script>
+</body>
+</html>

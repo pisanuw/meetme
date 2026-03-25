@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Get Sign-in Link – MeetSync</title>
+  <title>Get Sign-in Link – MeetMe</title>
   <link rel="stylesheet" href="/static/style.css"/>
 </head>
 <body>
@@ -11,7 +11,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="/dashboard.html" class="nav-brand">
-      <span class="brand-icon">&#x27F3;</span> MeetSync
+      <span class="brand-icon">&#x27F3;</span> MeetMe
     </a>
   </div>
 </nav>
@@ -54,7 +54,7 @@
 </main>
 
 <footer class="footer">
-  <p>MeetSync &ndash; Find the perfect time together</p>
+  <p>MeetMe &ndash; Find the perfect time together</p>
 </footer>
 
 <script src="/static/common.js"></script>
@@ -68,20 +68,15 @@
     const name = document.getElementById('name').value.trim();
     const email = document.getElementById('email').value.trim();
 
-    try {
-      const res = await fetch('/api/auth/magic-link/request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showFlash(data.message || 'Check your email for a sign-in link.', 'success');
-      } else {
-        showFlash(data.error || 'Could not send sign-in link.', 'danger');
-      }
-    } catch (err) {
-      showFlash('Could not send sign-in link. Please try again.', 'danger');
+    const { ok, data } = await apiFetch('/api/auth/magic-link/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email }),
+    });
+    if (ok) {
+      showFlash(data.message || 'Check your email for a sign-in link.', 'success');
+    } else {
+      showFlash(data.error || 'Could not send sign-in link. Please try again.', 'danger');
     }
   });
 </script>

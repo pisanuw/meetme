@@ -3,3 +3,4 @@ node_modules/
 instance/
 __pycache__/
 *.pyc
+.env

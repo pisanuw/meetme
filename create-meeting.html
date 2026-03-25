@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>New Meeting – MeetSync</title>
+  <title>New Meeting – MeetMe</title>
   <link rel="stylesheet" href="/static/style.css"/>
 </head>
 <body>
@@ -11,7 +11,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="/dashboard.html" class="nav-brand">
-      <span class="brand-icon">&#x27F3;</span> MeetSync
+      <span class="brand-icon">&#x27F3;</span> MeetMe
     </a>
     <div class="nav-links" id="nav-auth" style="display:none;">
       <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
@@ -85,6 +85,75 @@
       </div>
 
       <div class="form-group">
+        <label for="timezone">Meeting time zone</label>
+        <select id="timezone" name="timezone" class="form-control">
+          <option value="">&#x2014; Detect automatically &#x2014;</option>
+          <optgroup label="Americas">
+            <option value="America/New_York">Eastern Time (New York)</option>
+            <option value="America/Chicago">Central Time (Chicago)</option>
+            <option value="America/Denver">Mountain Time (Denver)</option>
+            <option value="America/Los_Angeles">Pacific Time (Los Angeles)</option>
+            <option value="America/Anchorage">Alaska (Anchorage)</option>
+            <option value="Pacific/Honolulu">Hawaii (Honolulu)</option>
+            <option value="America/Toronto">Eastern Time (Toronto)</option>
+            <option value="America/Vancouver">Pacific Time (Vancouver)</option>
+            <option value="America/Mexico_City">Central Time (Mexico City)</option>
+            <option value="America/Sao_Paulo">Bras&#237;lia (S&#227;o Paulo)</option>
+            <option value="America/Argentina/Buenos_Aires">Argentina (Buenos Aires)</option>
+            <option value="America/Bogota">Colombia (Bogot&#225;)</option>
+            <option value="America/Lima">Peru (Lima)</option>
+          </optgroup>
+          <optgroup label="Europe">
+            <option value="Europe/London">London (GMT/BST)</option>
+            <option value="Europe/Dublin">Dublin</option>
+            <option value="Europe/Lisbon">Lisbon</option>
+            <option value="Europe/Paris">Paris / Madrid / Berlin (CET)</option>
+            <option value="Europe/Amsterdam">Amsterdam / Brussels</option>
+            <option value="Europe/Rome">Rome</option>
+            <option value="Europe/Helsinki">Helsinki / Tallinn (EET)</option>
+            <option value="Europe/Athens">Athens</option>
+            <option value="Europe/Kiev">Kyiv</option>
+            <option value="Europe/Moscow">Moscow</option>
+            <option value="Europe/Istanbul">Istanbul</option>
+          </optgroup>
+          <optgroup label="Africa">
+            <option value="Africa/Cairo">Cairo (EET)</option>
+            <option value="Africa/Johannesburg">Johannesburg (SAST)</option>
+            <option value="Africa/Lagos">Lagos (WAT)</option>
+            <option value="Africa/Nairobi">Nairobi (EAT)</option>
+          </optgroup>
+          <optgroup label="Asia">
+            <option value="Asia/Dubai">Dubai (GST)</option>
+            <option value="Asia/Karachi">Karachi (PKT)</option>
+            <option value="Asia/Kolkata">India (IST)</option>
+            <option value="Asia/Dhaka">Bangladesh (BST)</option>
+            <option value="Asia/Bangkok">Bangkok / Jakarta (ICT)</option>
+            <option value="Asia/Singapore">Singapore / Kuala Lumpur</option>
+            <option value="Asia/Shanghai">China (CST)</option>
+            <option value="Asia/Hong_Kong">Hong Kong</option>
+            <option value="Asia/Taipei">Taipei</option>
+            <option value="Asia/Tokyo">Japan (JST)</option>
+            <option value="Asia/Seoul">South Korea (KST)</option>
+            <option value="Asia/Jerusalem">Israel</option>
+            <option value="Asia/Riyadh">Riyadh (AST)</option>
+            <option value="Asia/Colombo">Sri Lanka</option>
+          </optgroup>
+          <optgroup label="Pacific / Oceania">
+            <option value="Australia/Sydney">Sydney (AEST/AEDT)</option>
+            <option value="Australia/Melbourne">Melbourne</option>
+            <option value="Australia/Brisbane">Brisbane</option>
+            <option value="Australia/Perth">Perth (AWST)</option>
+            <option value="Pacific/Auckland">New Zealand (NZST)</option>
+            <option value="Pacific/Fiji">Fiji</option>
+          </optgroup>
+          <optgroup label="Other">
+            <option value="UTC">UTC</option>
+          </optgroup>
+        </select>
+        <small class="form-hint">All time slots use this zone. Invitees see times in their own zone.</small>
+      </div>
+
+      <div class="form-group">
         <label for="invite_emails">Invite people</label>
         <textarea id="invite_emails" name="invite_emails" class="form-control" rows="3"
                   placeholder="One email per line&#10;alice@example.com&#10;bob@example.com"></textarea>
@@ -101,7 +170,7 @@
 </main>
 
 <footer class="footer">
-  <p>MeetSync &ndash; Find the perfect time together</p>
+  <p>MeetMe &ndash; Find the perfect time together</p>
 </footer>
 
 <script src="/static/common.js"></script>
@@ -109,6 +178,18 @@
 (async () => {
   const user = await requireAuth();
   if (!user) return;
+
+  // Pre-select user's profile timezone (fall back to browser TZ)
+  const tzSel = document.getElementById('timezone');
+  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  const { ok, data } = await apiFetch('/api/auth/profile');
+  const profileTz = (ok && data.timezone) ? data.timezone : '';
+  const tzToSet = profileTz || browserTz;
+  if (tzToSet) {
+    const already = [...tzSel.options].some(o => o.value === tzToSet);
+    if (!already) tzSel.prepend(new Option(tzToSet, tzToSet));
+    tzSel.value = tzToSet;
+  }
 })();
 
 // Build time selectors
@@ -240,24 +321,22 @@ document.getElementById('create-form').addEventListener('submit', async (e) => {
     }
   }
 
-  try {
-    const res = await fetch('/api/meetings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title, description, meeting_type: meetingType,
-        dates_or_days: datesOrDays, start_time: startTime, end_time: endTime,
-        invite_emails: inviteEmails,
-      }),
-    });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      window.location.href = `/meeting.html?id=${data.meeting_id}`;
-    } else {
-      showFlash(data.error || 'Failed to create meeting.', 'danger');
-    }
-  } catch (err) {
-    showFlash('Failed to create meeting.', 'danger');
+  const tzSel = document.getElementById('timezone');
+  const timezone = tzSel.value || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+  const { ok, status, data } = await apiFetch('/api/meetings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title, description, meeting_type: meetingType,
+      dates_or_days: datesOrDays, start_time: startTime, end_time: endTime,
+      invite_emails: inviteEmails, timezone,
+    }),
+  });
+  if (ok && data.success) {
+    window.location.href = `/meeting.html?id=${data.meeting_id}`;
+  } else {
+    showFlash(data.error || `Server error (${status}) — check Netlify function logs.`, 'danger');
   }
 });
 </script>

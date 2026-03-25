@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Meeting – MeetSync</title>
+  <title>Meeting – MeetMe</title>
   <link rel="stylesheet" href="/static/style.css"/>
 </head>
 <body>
@@ -11,7 +11,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="/dashboard.html" class="nav-brand">
-      <span class="brand-icon">&#x27F3;</span> MeetSync
+      <span class="brand-icon">&#x27F3;</span> MeetMe
     </a>
     <div class="nav-links" id="nav-auth" style="display:none;">
       <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
@@ -38,6 +38,12 @@
           <span class="text-muted" id="meeting-respond-count"></span>
           <span class="badge badge-green" id="finalized-badge" style="display:none;">&#x2713; Finalized</span>
         </div>
+        <div id="tz-bar" style="display:none;margin-top:6px;font-size:0.8rem;color:var(--text-muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <span>&#x1F5FA; Time zone:</span>
+          <span id="tz-label" style="font-weight:600;"></span>
+          <button id="tz-toggle-btn" class="btn btn-xs btn-ghost" style="padding:2px 8px;font-size:0.75rem;"
+                  onclick="toggleTzView()"></button>
+        </div>
       </div>
 
       <div class="finalized-banner" id="finalized-banner" style="display:none;">
@@ -47,11 +53,27 @@
           <button class="btn btn-ghost" id="btn-unfinalize" style="display:none;">Edit finalization</button>
         </div>
       </div>
+
+      <div id="share-controls" style="display:none; margin-top:10px;">
+        <a id="share-email-link" class="btn btn-sm btn-ghost" href="#">Share privately by email</a>
+        <button id="remind-pending-btn" class="btn btn-sm btn-ghost" onclick="sendPendingReminders()" type="button">Send reminder to non-responders</button>
+      </div>
     </div>
 
     <!-- TOOLBAR -->
     <div class="grid-toolbar">
       <div class="view-tabs" id="view-tabs"></div>
+      <div id="gcal-area" style="display:none;">
+        <button class="btn btn-sm btn-ghost" id="gcal-btn" onclick="loadBusyTimes()" style="gap:6px;display:flex;align-items:center;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="flex-shrink:0">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
+          Load busy times
+        </button>
+      </div>
       <div id="person-selector" style="display:none;">
         <select class="form-control" id="person-select" onchange="filterPerson(this.value)"></select>
       </div>
@@ -113,7 +135,7 @@
 </main>
 
 <footer class="footer">
-  <p>MeetSync &ndash; Find the perfect time together</p>
+  <p>MeetMe &ndash; Find the perfect time together</p>
 </footer>
 
 <script src="/static/common.js"></script>
@@ -126,6 +148,10 @@ let isDragging = false;
 let dragAction = null;
 let saveTimer = null;
 let pendingFinalize = null;
+let meetingTz = 'UTC';
+let viewerTz   = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+let showMeetingTz = false;   // false = viewer TZ, true = meeting TZ
+let busySlots = new Set();   // slot keys from Google Calendar
 
 (async () => {
   const user = await requireAuth();
@@ -135,14 +161,13 @@ let pendingFinalize = null;
   const meetingId = params.get('id');
   if (!meetingId) { window.location.href = '/dashboard.html'; return; }
 
-  const res = await fetch(`/api/meetings/${meetingId}`);
-  if (!res.ok) {
-    showFlash('Meeting not found or access denied.', 'danger');
-    setTimeout(() => window.location.href = '/dashboard.html', 1500);
+  const { ok, status, data } = await apiFetch(`/api/meetings/${meetingId}`);
+  if (!ok) {
+    showFlash(data.error || `Could not load meeting (HTTP ${status}).`, 'danger');
+    setTimeout(() => window.location.href = '/dashboard.html', 2000);
     return;
   }
 
-  const data = await res.json();
   M = {
     id: data.meeting.id,
     dates: data.meeting.dates_or_days,
@@ -159,8 +184,30 @@ let pendingFinalize = null;
     meeting: data.meeting,
   };
 
+  meetingTz = data.meeting.timezone || 'UTC';
+
+  // Load viewer timezone from profile
+  const { ok: pOk, data: pData } = await apiFetch('/api/auth/profile');
+  if (pOk && pData.timezone) viewerTz = pData.timezone;
+
+  // Show timezone bar if they differ and it's a specific-date meeting
+  if (meetingTz && M.meetingType === 'specific_dates') {
+    const bar = document.getElementById('tz-bar');
+    const lbl = document.getElementById('tz-label');
+    const btn = document.getElementById('tz-toggle-btn');
+    bar.style.display = 'flex';
+    lbl.textContent = viewerTz;
+    btn.textContent = meetingTz !== viewerTz ? `Switch to meeting TZ (${meetingTz})` : '';
+    btn.style.display = meetingTz !== viewerTz ? '' : 'none';
+  }
+
+  // Show Google Calendar button if connected and specific dates
+  if (pOk && pData.calendar_connected && M.meetingType === 'specific_dates') {
+    document.getElementById('gcal-area').style.display = '';
+  }
+
   document.getElementById('meeting-page').style.display = '';
-  document.title = `${M.meeting.title} – MeetSync`;
+  document.title = `${M.meeting.title} – MeetMe`;
 
   // Header
   document.getElementById('meeting-title').textContent = M.meeting.title;
@@ -181,7 +228,11 @@ let pendingFinalize = null;
     const banner = document.getElementById('finalized-banner');
     banner.style.display = '';
     document.getElementById('finalized-time').innerHTML =
-      `&#x1F4C5; ${escapeHtml(M.finalizedDate)} at ${escapeHtml(M.finalizedSlot)} (${M.meeting.duration_minutes} min)`;
+      `&#x1F4C5; ${escapeHtml(M.finalizedDate)} at ${fmtTime(M.finalizedSlot, M.finalizedDate)} (${M.meeting.duration_minutes} min)`;
+    if (meetingTz && meetingTz !== 'UTC') {
+      document.getElementById('finalized-time').innerHTML +=
+        ` <span style="font-size:0.75rem;color:var(--text-muted);">(${meetingTz})</span>`;
+    }
     if (M.meeting.note) {
       document.getElementById('finalized-note').textContent = M.meeting.note;
     }
@@ -226,6 +277,18 @@ let pendingFinalize = null;
           </div>
         </div>`;
     });
+
+    // Share control for creator
+    const shareWrap = document.getElementById('share-controls');
+    const shareLink = document.getElementById('share-email-link');
+    const meetingUrl = `${window.location.origin}/meeting.html?id=${encodeURIComponent(M.id)}`;
+    const subject = encodeURIComponent(`MeetMe: ${M.meeting.title}`);
+    const body = encodeURIComponent(
+      `Hi,\n\nPlease share your availability for this meeting:\n${meetingUrl}\n\n` +
+      `This is a private link.\n\nThanks!`
+    );
+    shareLink.href = `mailto:?subject=${subject}&body=${body}`;
+    shareWrap.style.display = '';
   }
 
   // Unfinalize button
@@ -233,9 +296,9 @@ let pendingFinalize = null;
   if (btnUnfinalize) {
     btnUnfinalize.addEventListener('click', async () => {
       if (!confirm('Remove finalization and reopen for editing?')) return;
-      const res = await fetch(`/api/meeting/${M.id}/unfinalize`, { method: 'POST' });
-      const d = await res.json();
-      if (d.success) window.location.reload();
+      const { ok, data: d } = await apiFetch(`/api/meeting/${M.id}/unfinalize`, { method: 'POST' });
+      if (ok && d.success) window.location.reload();
+      else showFlash(d.error || 'Failed to unfinalize. Please try again.', 'danger');
     });
   }
 
@@ -270,12 +333,109 @@ function fmtDate(d) {
   return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function fmtTime(t) {
+function fmtTime(t, date) {
+  // If viewer TZ differs from meeting TZ and we have a date, convert
+  const displayTz = showMeetingTz ? meetingTz : viewerTz;
+  if (date && date.includes('-') && meetingTz && displayTz !== meetingTz) {
+    const converted = convertSlotTime(date, t, meetingTz, displayTz);
+    if (converted) t = converted;
+  }
   const [h, m] = t.split(':').map(Number);
   const ampm = h >= 12 ? 'PM' : 'AM';
   const h12 = h % 12 || 12;
   return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
+
+/** Convert a slot time from meetingTz to targetTz on a given date. */
+function convertSlotTime(date, time, fromTz, toTz) {
+  try {
+    if (!date.includes('-') || fromTz === toTz) return null;
+    const [y, mo, d] = date.split('-').map(Number);
+    const [h, m] = time.split(':').map(Number);
+    // Treat (y, mo, d, h, m) as UTC to get a reference ms value
+    const utcRef = Date.UTC(y, mo - 1, d, h, m);
+    const refDate = new Date(utcRef);
+    // Find local representation in fromTz
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: fromTz, year:'numeric', month:'numeric', day:'numeric',
+      hour:'numeric', minute:'numeric', hour12: false,
+    }).formatToParts(refDate);
+    const get = t2 => parseInt(parts.find(p => p.type === t2)?.value || '0');
+    const offsetMins = (get('hour') * 60 + get('minute')) - (h * 60 + m);
+    // True UTC = utcRef - offset
+    const trueUtc = utcRef - offsetMins * 60000;
+    // Format in target TZ
+    const result = new Intl.DateTimeFormat('en-US', {
+      timeZone: toTz, hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date(trueUtc));
+    return result; // e.g. "14:30"
+  } catch { return null; }
+}
+
+window.toggleTzView = function() {
+  showMeetingTz = !showMeetingTz;
+  const lbl = document.getElementById('tz-label');
+  const btn = document.getElementById('tz-toggle-btn');
+  lbl.textContent = showMeetingTz ? meetingTz : viewerTz;
+  btn.textContent = showMeetingTz
+    ? `Switch to your TZ (${viewerTz})`
+    : `Switch to meeting TZ (${meetingTz})`;
+  buildGrid();
+};
+
+window.loadBusyTimes = async function() {
+  const btn = document.getElementById('gcal-btn');
+  btn.disabled = true;
+  btn.textContent = 'Loading…';
+  const { ok, data } = await apiFetch(`/api/calendar/busy?meeting_id=${M.id}`);
+  if (ok && data.busy_slots) {
+    busySlots = new Set(data.busy_slots);
+    repaintAll();
+    showFlash(`Loaded busy times (${busySlots.size} slot${busySlots.size !== 1 ? 's' : ''} marked busy). You can still override manually.`, 'info');
+    btn.textContent = 'Reload busy times';
+  } else {
+    showFlash(
+      data?.error === 'calendar_not_connected'
+        ? 'Google Calendar is not connected. Go to Profile to connect it.'
+        : (data?.error || 'Could not load calendar data.'),
+      'danger',
+    );
+    btn.textContent = 'Load busy times';
+  }
+  btn.disabled = false;
+};
+
+window.sendPendingReminders = async function() {
+  if (!M?.isCreator) return;
+  const btn = document.getElementById('remind-pending-btn');
+  if (!btn) return;
+
+  if (!confirm('Send reminder emails to participants who have not responded yet?')) return;
+
+  btn.disabled = true;
+  const prev = btn.textContent;
+  btn.textContent = 'Sending…';
+
+  const { ok, data } = await apiFetch(`/api/meeting/${M.id}/remind-pending`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+
+  if (ok && data.success) {
+    const failed = Number(data.failed_count || 0);
+    const sent = Number(data.sent_count || 0);
+    const msg = failed > 0
+      ? `Sent ${sent} reminder${sent === 1 ? '' : 's'} (${failed} failed).`
+      : (data.message || `Sent ${sent} reminder${sent === 1 ? '' : 's'}.`);
+    showFlash(msg, failed > 0 ? 'warning' : 'success');
+  } else {
+    showFlash(data?.error || 'Could not send reminders. Please try again.', 'danger');
+  }
+
+  btn.disabled = false;
+  btn.textContent = prev;
+};
 
 function mkEl(tag, cls) {
   const d = document.createElement(tag);
@@ -303,7 +463,7 @@ function buildGrid() {
     const [h, m] = time.split(':').map(Number);
     const isHour = m === 0;
     const lbl = mkEl('div', `ag-time-label${isHour ? ' hour-boundary' : ''}`);
-    lbl.textContent = isHour ? fmtTime(time) : '';
+    lbl.textContent = isHour ? fmtTime(time, M.dates[0]) : '';
     grid.appendChild(lbl);
 
     M.dates.forEach(date => {
@@ -343,14 +503,19 @@ function paintCell(cell) {
     cell.classList.add('finalized-cell');
   }
 
-  if (currentView === 'heatmap') {
+  if (currentView === 'mine') {
+    const isBusy = busySlots.has(key);
+    cell.style.background = isBusy
+      ? (isMine ? '#90caf9' : '#ffcdd2')   // blue-ish if selected despite busy, red if busy
+      : (isMine ? '#bbdefb' : '#f5f5f5');
+    if (isMine) cell.classList.add('mine-selected');
+    cell.dataset.tip = isBusy
+      ? (isMine ? 'Busy on calendar (marked available anyway)' : 'Busy on your Google Calendar')
+      : (isMine ? 'You are available' : 'Click to mark available');
+  } else if (currentView === 'heatmap') {
     cell.style.background = heatColor(count);
     if (isMine) cell.classList.add('mine-selected');
     cell.dataset.tip = count > 0 ? `${count}/${M.totalInvited} available` : 'No one available';
-  } else if (currentView === 'mine') {
-    cell.style.background = isMine ? '#bbdefb' : '#f5f5f5';
-    if (isMine) cell.classList.add('mine-selected');
-    cell.dataset.tip = isMine ? 'You are available' : 'Click to mark available';
   } else if (currentView === 'person') {
     const p = M.participants[currentPerson];
     const pSlots = new Set(p ? p.slots : []);
@@ -415,18 +580,17 @@ function scheduleSave() {
 
 async function saveAvailability() {
   const slots = Array.from(M.mySlots);
-  try {
-    const res = await fetch(`/api/meeting/${M.id}/availability`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slots }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      M.slotCounts = data.slot_counts;
-      showSavedIndicator();
-    }
-  } catch (e) { console.error('Save failed', e); }
+  const { ok, data } = await apiFetch(`/api/meeting/${M.id}/availability`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slots }),
+  });
+  if (ok && data.success) {
+    M.slotCounts = data.slot_counts;
+    showSavedIndicator();
+  } else if (!ok) {
+    showFlash(data.error || 'Failed to save availability. Please try again.', 'danger');
+  }
 }
 
 function showSavedIndicator() {
@@ -480,7 +644,10 @@ window.showFinalizePanel = function(date, time) {
   if (!panel) return;
   panel.style.display = '';
   const lbl = document.getElementById('finalize-slot-label');
-  if (lbl) lbl.textContent = `${fmtDate(date)} at ${fmtTime(time)}`;
+  if (lbl) lbl.textContent = `${fmtDate(date)} at ${fmtTime(time, date)}`;
+  if (meetingTz && meetingTz !== viewerTz && meetingTz !== 'UTC') {
+    lbl.title = `In meeting timezone: ${meetingTz}`;
+  }
   panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 };
 
@@ -494,20 +661,18 @@ window.confirmFinalize = async function() {
   if (!pendingFinalize) return;
   const duration = document.getElementById('finalize-duration').value;
   const note = document.getElementById('finalize-note').value;
-  try {
-    const res = await fetch(`/api/meeting/${M.id}/finalize`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        date_or_day: pendingFinalize.date,
-        time_slot: pendingFinalize.time,
-        duration_minutes: parseInt(duration),
-        note,
-      }),
-    });
-    const data = await res.json();
-    if (data.success) window.location.reload();
-  } catch (e) { alert('Failed to finalize. Please try again.'); }
+  const { ok, data } = await apiFetch(`/api/meeting/${M.id}/finalize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      date_or_day: pendingFinalize.date,
+      time_slot: pendingFinalize.time,
+      duration_minutes: parseInt(duration),
+      note,
+    }),
+  });
+  if (ok && data.success) window.location.reload();
+  else showFlash(data.error || 'Failed to finalize. Please try again.', 'danger');
 };
 </script>
 </body>

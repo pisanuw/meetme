@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin – MeetMe</title>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="/dashboard.html" class="nav-brand">
+      <span class="brand-icon">&#x27F3;</span> MeetMe
+    </a>
+    <div class="nav-links" id="nav-auth" style="display:none;">
+      <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
+      <span class="nav-user" id="nav-username"></span>
+      <a href="#" class="nav-link" id="logout-link">Log out</a>
+    </div>
+  </div>
+</nav>
+
+<div id="flash-container" class="flash-container"></div>
+
+<main class="main-content">
+  <div class="admin-page" id="admin-page" style="display:none;">
+
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+      <h1 style="margin:0;">Admin Panel</h1>
+      <span class="badge-admin">Admin</span>
+    </div>
+
+    <!-- Tab Bar -->
+    <div class="admin-tabs" id="admin-tabs">
+      <button class="admin-tab active" data-tab="stats"   onclick="showTab('stats',this)">&#x1F4CA; Stats</button>
+      <button class="admin-tab"        data-tab="users"   onclick="showTab('users',this)">&#x1F465; Users</button>
+      <button class="admin-tab"        data-tab="meetings"onclick="showTab('meetings',this)">&#x1F4C5; Meetings</button>
+      <button class="admin-tab"        data-tab="events"  onclick="showTab('events',this)">&#x1F4CB; Event Log</button>
+    </div>
+
+    <!-- ===== STATS ===== -->
+    <div id="tab-stats" class="tab-panel">
+      <div class="stats-grid" id="stats-grid">
+        <div class="stat-card"><div class="stat-value" id="stat-users">—</div><div class="stat-label">Users</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat-meetings">—</div><div class="stat-label">Meetings</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat-events">—</div><div class="stat-label">Log events</div></div>
+      </div>
+    </div>
+
+    <!-- ===== USERS ===== -->
+    <div id="tab-users" class="tab-panel" style="display:none;">
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+        <input type="text" id="user-search" class="form-control" placeholder="Filter by name or email…"
+               style="max-width:320px;" oninput="filterUsers()"/>
+        <button class="btn btn-ghost" onclick="openUserModal(null)">+ Create user</button>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table" id="users-table">
+          <thead>
+            <tr><th>Email</th><th>Name</th><th>Time zone</th><th>Joined</th><th>Cal</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="users-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== MEETINGS ===== -->
+    <div id="tab-meetings" class="tab-panel" style="display:none;">
+      <div class="admin-table-wrap">
+        <table class="admin-table" id="meetings-table">
+          <thead>
+            <tr><th>Title</th><th>Creator</th><th>Type</th><th>TZ</th><th>Invitees</th><th>Finalized</th><th>Created</th></tr>
+          </thead>
+          <tbody id="meetings-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== EVENTS LOG ===== -->
+    <div id="tab-events" class="tab-panel" style="display:none;">
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
+        <input type="text" id="event-search" class="form-control" placeholder="Filter events…"
+               style="max-width:320px;" oninput="filterEvents()"/>
+        <button class="btn btn-ghost" onclick="loadEvents()">&#x21BB; Refresh</button>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table" id="events-table">
+          <thead>
+            <tr><th>Time</th><th>Level</th><th>Function</th><th>Message</th><th>Details</th></tr>
+          </thead>
+          <tbody id="events-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /admin-page -->
+</main>
+
+<!-- User modal -->
+<div id="user-modal" class="modal-backdrop" style="display:none;" onclick="closeUserModal(event)">
+  <div class="modal-card" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2 id="modal-title">Edit User</h2>
+      <button class="modal-close" onclick="closeUserModal()">&times;</button>
+    </div>
+    <form id="user-form" class="auth-form" onsubmit="saveUser(event)">
+      <div class="form-row">
+        <div class="form-group">
+          <label>First name</label>
+          <input type="text" id="modal-first" class="form-control" placeholder="First"/>
+        </div>
+        <div class="form-group">
+          <label>Last name</label>
+          <input type="text" id="modal-last" class="form-control" placeholder="Last"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Email <span style="color:var(--red)">*</span></label>
+        <input type="email" id="modal-email" class="form-control" placeholder="user@example.com" required/>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:8px;">
+        <button type="submit" class="btn btn-primary" style="flex:1;">Save</button>
+        <button type="button" class="btn btn-ghost" onclick="closeUserModal()" style="flex:1;">Cancel</button>
+      </div>
+    </form>
+    <div id="modal-delete-zone" style="display:none;border-top:1px solid var(--border);margin-top:16px;padding-top:16px;">
+      <p class="text-muted" style="font-size:0.85rem;margin-bottom:10px;">Danger zone — this action cannot be undone.</p>
+      <button class="btn btn-danger" onclick="deleteUser()">Delete this user</button>
+    </div>
+  </div>
+</div>
+
+<!-- User detail panel -->
+<div id="user-detail-modal" class="modal-backdrop" style="display:none;" onclick="closeDetailModal(event)">
+  <div class="modal-card" style="max-width:560px;" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2 id="detail-title">User Details</h2>
+      <button class="modal-close" onclick="closeDetailModal()">&times;</button>
+    </div>
+    <div id="detail-body"></div>
+  </div>
+</div>
+
+<footer class="footer">
+  <p>MeetMe &ndash; Find the perfect time together</p>
+</footer>
+
+<script src="/static/common.js"></script>
+<script>
+let allUsers    = [];
+let allEvents   = [];
+let editingEmail = null;
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+
+  // Check admin access by trying to load stats
+  const { ok, status, data } = await apiFetch('/api/admin/stats');
+  if (!ok) {
+    if (status === 403) {
+      document.querySelector('main').innerHTML =
+        '<div style="text-align:center;padding:60px 20px;">' +
+        '<h2>Access Denied</h2>' +
+        '<p class="text-muted">You do not have admin privileges.</p>' +
+        '<a href="/dashboard.html" class="btn btn-primary" style="margin-top:16px;">Back to Dashboard</a>' +
+        '</div>';
+    } else {
+      showFlash(data.error || 'Failed to load admin panel.', 'danger');
+    }
+    return;
+  }
+
+  document.getElementById('admin-page').style.display = '';
+  renderStats(data);
+  await loadUsers();
+})();
+
+// ---- Stats ----
+function renderStats(data) {
+  document.getElementById('stat-users').textContent    = data.total_users    ?? '—';
+  document.getElementById('stat-meetings').textContent = data.total_meetings  ?? '—';
+  document.getElementById('stat-events').textContent   = data.total_events    ?? '—';
+}
+
+// ---- Tabs ----
+window.showTab = function(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById(`tab-${name}`).style.display = '';
+  btn.classList.add('active');
+  if (name === 'events' && allEvents.length === 0) loadEvents();
+  if (name === 'meetings') loadMeetings();
+};
+
+// ---- Users ----
+async function loadUsers() {
+  const { ok, data } = await apiFetch('/api/admin/users');
+  if (!ok) { showFlash(data.error || 'Failed to load users.', 'danger'); return; }
+  allUsers = data.users || [];
+  renderUsers(allUsers);
+}
+
+function renderUsers(users) {
+  const tbody = document.getElementById('users-tbody');
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td>${escapeHtml(u.email)}</td>
+      <td>${escapeHtml(u.first_name || '')} ${escapeHtml(u.last_name || '')}</td>
+      <td style="font-size:0.8rem;">${escapeHtml(u.timezone || '—')}</td>
+      <td style="font-size:0.8rem;">${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+      <td style="text-align:center;">${u.calendar_connected ? '&#x2705;' : '&#x2014;'}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-xs btn-ghost" onclick="viewUserDetail('${escapeHtml(u.email)}')">View</button>
+        <button class="btn btn-xs btn-ghost" onclick="openUserModal('${escapeHtml(u.email)}')">Edit</button>
+      </td>
+    </tr>`).join('');
+}
+
+window.filterUsers = function() {
+  const q = document.getElementById('user-search').value.toLowerCase();
+  renderUsers(allUsers.filter(u =>
+    u.email.toLowerCase().includes(q) ||
+    (u.first_name || '').toLowerCase().includes(q) ||
+    (u.last_name  || '').toLowerCase().includes(q)
+  ));
+};
+
+window.openUserModal = function(email) {
+  editingEmail = email;
+  const u = email ? allUsers.find(u => u.email === email) : null;
+  document.getElementById('modal-title').textContent = email ? 'Edit User' : 'Create User';
+  document.getElementById('modal-first').value = u?.first_name || '';
+  document.getElementById('modal-last').value  = u?.last_name  || '';
+  document.getElementById('modal-email').value  = email || '';
+  document.getElementById('modal-email').readOnly = !!email;
+  document.getElementById('modal-delete-zone').style.display = email ? '' : 'none';
+  document.getElementById('user-modal').style.display = '';
+};
+
+window.closeUserModal = function(e) {
+  if (e && e.target !== document.getElementById('user-modal')) return;
+  document.getElementById('user-modal').style.display = 'none';
+};
+
+window.saveUser = async function(e) {
+  e.preventDefault();
+  const body = {
+    email:      document.getElementById('modal-email').value.trim(),
+    first_name: document.getElementById('modal-first').value.trim(),
+    last_name:  document.getElementById('modal-last').value.trim(),
+  };
+  const { ok, data } = await apiFetch('/api/admin/user', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (ok) {
+    showFlash(data.created ? 'User created.' : 'User updated.', 'success');
+    document.getElementById('user-modal').style.display = 'none';
+    await loadUsers();
+  } else {
+    showFlash(data.error || 'Failed to save user.', 'danger');
+  }
+};
+
+window.deleteUser = async function() {
+  if (!editingEmail || !confirm(`Permanently delete ${editingEmail}? This cannot be undone.`)) return;
+  const { ok, data } = await apiFetch('/api/admin/user/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: editingEmail }),
+  });
+  if (ok) {
+    showFlash('User deleted.', 'success');
+    document.getElementById('user-modal').style.display = 'none';
+    await loadUsers();
+  } else {
+    showFlash(data.error || 'Failed to delete user.', 'danger');
+  }
+};
+
+// ---- User detail ----
+window.viewUserDetail = async function(email) {
+  document.getElementById('detail-title').textContent = email;
+  document.getElementById('detail-body').innerHTML = '<p class="text-muted">Loading…</p>';
+  document.getElementById('user-detail-modal').style.display = '';
+
+  const { ok, data } = await apiFetch(`/api/admin/user?email=${encodeURIComponent(email)}`);
+  if (!ok) { document.getElementById('detail-body').innerHTML = `<p class="text-muted">${escapeHtml(data.error || 'Failed to load.')}</p>`; return; }
+
+  const u = data.user;
+  document.getElementById('detail-body').innerHTML = `
+    <table style="width:100%;font-size:0.875rem;border-collapse:collapse;">
+      <tr><td style="padding:4px 8px;color:var(--text-muted)">Email</td><td style="padding:4px 8px;">${escapeHtml(u.email)}</td></tr>
+      <tr><td style="padding:4px 8px;color:var(--text-muted)">Name</td><td style="padding:4px 8px;">${escapeHtml((u.first_name||'') + ' ' + (u.last_name||''))}</td></tr>
+      <tr><td style="padding:4px 8px;color:var(--text-muted)">Timezone</td><td style="padding:4px 8px;">${escapeHtml(u.timezone||'—')}</td></tr>
+      <tr><td style="padding:4px 8px;color:var(--text-muted)">Joined</td><td style="padding:4px 8px;">${u.created_at ? new Date(u.created_at).toLocaleString() : '—'}</td></tr>
+      <tr><td style="padding:4px 8px;color:var(--text-muted)">Calendar</td><td style="padding:4px 8px;">${u.calendar_connected ? '✅ Connected' : '—'}</td></tr>
+      <tr><td style="padding:4px 8px;color:var(--text-muted)">Meetings created</td><td style="padding:4px 8px;">${data.meetings_created?.length ?? 0}</td></tr>
+      <tr><td style="padding:4px 8px;color:var(--text-muted)">Meetings invited</td><td style="padding:4px 8px;">${data.meetings_invited?.length ?? 0}</td></tr>
+      <tr><td style="padding:4px 8px;color:var(--text-muted)">Availability entries</td><td style="padding:4px 8px;">${data.availability_count ?? 0}</td></tr>
+    </table>
+    ${(data.meetings_created?.length) ? `
+    <div style="margin-top:14px;">
+      <strong style="font-size:0.8rem;color:var(--text-muted);">CREATED MEETINGS</strong>
+      <ul style="margin:6px 0;padding-left:18px;font-size:0.85rem;">
+        ${data.meetings_created.map(m => `<li><a href="/meeting.html?id=${escapeHtml(m.id)}" target="_blank">${escapeHtml(m.title)}</a>${m.is_finalized ? ' ✅' : ''}</li>`).join('')}
+      </ul>
+    </div>` : ''}`;
+};
+
+window.closeDetailModal = function(e) {
+  if (e && e.target !== document.getElementById('user-detail-modal')) return;
+  document.getElementById('user-detail-modal').style.display = 'none';
+};
+
+// ---- Meetings ----
+async function loadMeetings() {
+  const tbody = document.getElementById('meetings-tbody');
+  tbody.innerHTML = '<tr><td colspan="7" class="text-muted" style="padding:16px;text-align:center;">Loading…</td></tr>';
+  const { ok, data } = await apiFetch('/api/admin/meetings');
+  if (!ok) { tbody.innerHTML = `<tr><td colspan="7">${escapeHtml(data.error||'Failed')}</td></tr>`; return; }
+  const meetings = data.meetings || [];
+  tbody.innerHTML = meetings.map(m => `
+    <tr>
+      <td><a href="/meeting.html?id=${escapeHtml(m.id)}" target="_blank">${escapeHtml(m.title)}</a></td>
+      <td style="font-size:0.8rem;">${escapeHtml(m.creator)}</td>
+      <td style="font-size:0.8rem;">${(m.meeting_type||'').replace('_',' ')}</td>
+      <td style="font-size:0.78rem;">${escapeHtml(m.timezone||'UTC')}</td>
+      <td style="font-size:0.8rem;">${(m.invitees||[]).length}</td>
+      <td style="text-align:center;">${m.is_finalized ? '&#x2705;' : '&#x2014;'}</td>
+      <td style="font-size:0.78rem;">${m.created_at ? new Date(m.created_at).toLocaleDateString() : '—'}</td>
+    </tr>`).join('') || '<tr><td colspan="7" class="text-muted" style="padding:16px;text-align:center;">No meetings found.</td></tr>';
+}
+
+// ---- Events ----
+window.loadEvents = async function() {
+  const tbody = document.getElementById('events-tbody');
+  tbody.innerHTML = '<tr><td colspan="5" class="text-muted" style="padding:16px;text-align:center;">Loading…</td></tr>';
+  const { ok, data } = await apiFetch('/api/admin/events');
+  if (!ok) { tbody.innerHTML = `<tr><td colspan="5">${escapeHtml(data.error||'Failed')}</td></tr>`; return; }
+  allEvents = data.events || [];
+  renderEvents(allEvents);
+};
+
+function renderEvents(events) {
+  const tbody = document.getElementById('events-tbody');
+  tbody.innerHTML = events.map(ev => {
+    const extra = ev.extra ? JSON.stringify(ev.extra) : '';
+    return `<tr>
+      <td style="font-size:0.78rem;white-space:nowrap;">${ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '—'}</td>
+      <td><span class="log-level log-level-${ev.level||'info'}">${escapeHtml(ev.level||'info')}</span></td>
+      <td style="font-size:0.8rem;">${escapeHtml(ev.fn||'')}</td>
+      <td style="font-size:0.85rem;">${escapeHtml(ev.message||'')}</td>
+      <td style="font-size:0.75rem;color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+          title="${escapeHtml(extra)}">${escapeHtml(extra)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="5" class="text-muted" style="padding:16px;text-align:center;">No events found.</td></tr>';
+}
+
+window.filterEvents = function() {
+  const q = document.getElementById('event-search').value.toLowerCase();
+  renderEvents(allEvents.filter(ev =>
+    (ev.message||'').toLowerCase().includes(q) ||
+    (ev.fn||'').toLowerCase().includes(q) ||
+    (ev.level||'').toLowerCase().includes(q)
+  ));
+};
+</script>
+</body>
+</html>

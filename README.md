@@ -1,4 +1,4 @@
-# MeetSync — Joint Meeting Finder
+# MeetMe — Joint Meeting Finder
 
 A Flask web application for finding the perfect meeting time across your whole team.
 
@@ -68,7 +68,7 @@ Set these environment variables before running in production:
 
 | Variable     | Default                      | Purpose                  |
 |--------------|------------------------------|--------------------------|
-| `JWT_SECRET` | `meetsync-dev-secret-change-in-prod` | JWT signing secret |
+| `JWT_SECRET` | `meetme-dev-secret-change-in-prod` | JWT signing secret |
 | `APP_URL` | inferred from request | Public app URL used in sign-in links |
 | `RESEND_API_KEY` | _(required for magic-link email)_ | Resend API key for delivering login links |
 | `AUTH_FROM_EMAIL` | _(required for magic-link email)_ | Verified sender email/domain in Resend |
@@ -103,7 +103,7 @@ Use `.env.example` as the template for local development values.
 
 - **Resend error sending magic link (sender/domain)**
   - Verify your sending domain or sender identity in Resend.
-  - Set `AUTH_FROM_EMAIL` to that verified sender (for example: `MeetSync <noreply@yourdomain.com>`).
+  - Set `AUTH_FROM_EMAIL` to that verified sender (for example: `MeetMe <noreply@yourdomain.com>`).
   - Confirm `RESEND_API_KEY` is valid and has permission to send from that domain.
 
 - **Magic link email not received**

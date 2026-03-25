@@ -1,4 +1,34 @@
-// common.js — shared helpers for MeetSync static pages
+// common.js — shared helpers for MeetMe static pages
+
+/**
+ * Central fetch helper.
+ * Always returns { ok, status, data } — never throws.
+ * - data is the parsed JSON object (or { error: '...' } on failure)
+ * - Automatically redirects to / on 401 (session expired)
+ */
+async function apiFetch(url, options = {}) {
+  let res;
+  try {
+    res = await fetch(url, options);
+  } catch (networkErr) {
+    return { ok: false, status: 0, data: { error: `Network error: ${networkErr.message}` } };
+  }
+
+  if (res.status === 401) {
+    window.location.href = '/';
+    return { ok: false, status: 401, data: { error: 'Session expired. Redirecting to sign in…' } };
+  }
+
+  let data;
+  const text = await res.text().catch(() => '');
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: `Server returned non-JSON response (HTTP ${res.status}): ${text.slice(0, 200)}` };
+  }
+
+  return { ok: res.ok, status: res.status, data };
+}
 
 async function checkAuth() {
   try {
@@ -10,6 +40,34 @@ async function checkAuth() {
       const navUser = document.getElementById('nav-username');
       if (navAuth) navAuth.style.display = '';
       if (navUser) navUser.textContent = user.name;
+
+      // Inject "Edit Profile" link before logout if not already in DOM
+      if (!document.getElementById('profile-link')) {
+        const profileLink = document.createElement('a');
+        profileLink.id = 'profile-link';
+        profileLink.href = '/profile.html';
+        profileLink.className = 'nav-link';
+        profileLink.textContent = 'Edit Profile';
+        const logoutLink = document.getElementById('logout-link');
+        if (logoutLink && logoutLink.parentNode) {
+          logoutLink.parentNode.insertBefore(profileLink, logoutLink);
+
+              // Inject "Admin" link for admin users
+              if (user.is_admin && !document.getElementById('admin-nav-link')) {
+                const adminLink = document.createElement('a');
+                adminLink.id = 'admin-nav-link';
+                adminLink.href = '/admin.html';
+                adminLink.className = 'nav-link';
+                adminLink.textContent = 'Admin';
+                adminLink.style.color = '#c084fc';
+                const logoutLink = document.getElementById('logout-link');
+                if (logoutLink && logoutLink.parentNode) {
+                  logoutLink.parentNode.insertBefore(adminLink, logoutLink);
+                }
+              }
+        }
+      }
+
       return user;
     }
   } catch {}

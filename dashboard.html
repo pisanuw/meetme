@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Dashboard – MeetSync</title>
+  <title>Dashboard – MeetMe</title>
   <link rel="stylesheet" href="/static/style.css"/>
 </head>
 <body>
@@ -11,7 +11,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="/dashboard.html" class="nav-brand">
-      <span class="brand-icon">&#x27F3;</span> MeetSync
+      <span class="brand-icon">&#x27F3;</span> MeetMe
     </a>
     <div class="nav-links" id="nav-auth" style="display:none;">
       <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
@@ -44,7 +44,7 @@
 </main>
 
 <footer class="footer">
-  <p>MeetSync &ndash; Find the perfect time together</p>
+  <p>MeetMe &ndash; Find the perfect time together</p>
 </footer>
 
 <script src="/static/common.js"></script>
@@ -55,12 +55,11 @@
 
   document.getElementById('greeting').textContent = `Hello, ${user.name}`;
 
-  const res = await fetch('/api/meetings');
-  if (!res.ok) {
-    showFlash('Failed to load meetings.', 'danger');
+  const { ok, status, data } = await apiFetch('/api/meetings');
+  if (!ok) {
+    showFlash(data.error || `Failed to load meetings (HTTP ${status}).`, 'danger');
     return;
   }
-  const data = await res.json();
 
   renderMeetings('my-meetings', data.my_meetings, true);
   renderMeetings('invited-meetings', data.invited_meetings, false);
@@ -125,11 +124,11 @@ function renderMeetings(containerId, meetings, isOwner) {
 
 async function deleteMeeting(id) {
   if (!confirm('Delete this meeting?')) return;
-  const res = await fetch(`/api/meetings/${id}/delete`, { method: 'POST' });
-  if (res.ok) {
+  const { ok, status, data } = await apiFetch(`/api/meetings/${id}/delete`, { method: 'POST' });
+  if (ok) {
     window.location.reload();
   } else {
-    showFlash('Failed to delete meeting.', 'danger');
+    showFlash(data.error || `Failed to delete meeting (HTTP ${status}).`, 'danger');
   }
 }
 </script>

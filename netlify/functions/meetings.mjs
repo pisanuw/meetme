@@ -1,8 +1,21 @@
-import { getDb, getUserFromRequest, jsonResponse, generateId } from "./utils.mjs";
+import { getDb, getUserFromRequest, jsonResponse, errorResponse, log, logRequest, safeJson, validateEmail, generateId, persistEvent } from "./utils.mjs";
+
+const FN = "meetings";
 
 export default async (req, context) => {
+  try {
+    return await handleRequest(req, context);
+  } catch (err) {
+    log("error", FN, "unhandled exception", { message: err.message, stack: err.stack });
+    return errorResponse(500, `Internal server error: ${err.message}`);
+  }
+};
+
+async function handleRequest(req, context) {
+  logRequest(FN, req);
+
   const user = getUserFromRequest(req);
-  if (!user) return jsonResponse(401, { error: "Not authenticated" });
+  if (!user) return errorResponse(401, "Not authenticated. Please sign in.");
 
   const url = new URL(req.url);
   const pathParts = url.pathname.replace("/api/meetings", "").split("/").filter(Boolean);
@@ -47,11 +60,19 @@ export default async (req, context) => {
 
   // POST /api/meetings - create meeting
   if (req.method === "POST" && pathParts.length === 0) {
-    const body = await req.json();
-    const { title, description, meeting_type, dates_or_days, start_time, end_time, invite_emails } = body;
+    const body = await safeJson(req);
+    if (body === null) return errorResponse(400, "Request body must be valid JSON.");
+    const { title, description, meeting_type, dates_or_days, start_time, end_time, invite_emails, timezone } = body;
 
-    if (!title) return jsonResponse(400, { error: "Meeting title is required." });
-    if (!dates_or_days || dates_or_days.length === 0) return jsonResponse(400, { error: "Select at least one date or day." });
+    if (!title || !title.trim()) return errorResponse(400, "Meeting title is required.");
+    if (!dates_or_days || dates_or_days.length === 0) return errorResponse(400, "Select at least one date or day.");
+
+    const timeRe = /^\d{2}:\d{2}$/;
+    if (start_time && !timeRe.test(start_time)) return errorResponse(400, "start_time must be in HH:MM format.");
+    if (end_time && !timeRe.test(end_time)) return errorResponse(400, "end_time must be in HH:MM format.");
+    if (start_time && end_time && start_time >= end_time) return errorResponse(400, "end_time must be after start_time.");
+
+    log("info", FN, "creating meeting", { title, creator: user.email });
 
     const meetingId = generateId();
     const meeting = {
@@ -64,6 +85,7 @@ export default async (req, context) => {
       dates_or_days,
       start_time: start_time || "08:00",
       end_time: end_time || "20:00",
+      timezone: timezone || "UTC",
       duration_minutes: 60,
       finalized_date: null,
       finalized_slot: null,
@@ -88,7 +110,8 @@ export default async (req, context) => {
     }];
 
     if (invite_emails) {
-      const emails = invite_emails.split("\n").map(e => e.trim().toLowerCase()).filter(e => e && e.includes("@") && e !== user.email);
+      const rawEmails = invite_emails.split(/[\n,]+/);
+      const emails = rawEmails.map(e => validateEmail(e)).filter(e => e && e !== user.email);
       const users = getDb("users");
       for (const email of emails) {
         const existingUser = await users.get(email, { type: "json" }).catch(() => null);
@@ -111,21 +134,50 @@ export default async (req, context) => {
 
     await invites.setJSON(`meeting:${meetingId}`, meetingInvites);
 
+    log("info", FN, "meeting created", { meetingId, inviteCount: meetingInvites.length - 1 });
+    await persistEvent("info", FN, "meeting created", { creator: user.email, meetingId, title });
     return jsonResponse(200, { success: true, meeting_id: meetingId });
   }
 
   // GET /api/meetings/:id - get meeting detail
   if (req.method === "GET" && pathParts.length === 1) {
     const meetingId = pathParts[0];
-    const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
-    if (!meeting) return jsonResponse(404, { error: "Meeting not found" });
+    log("info", FN, "get meeting detail", { meetingId, userId: user.id });
 
-    const meetingInvites = await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []);
+    const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
+    if (!meeting) {
+      log("warn", FN, "meeting not found", { meetingId });
+      return errorResponse(404, `Meeting '${meetingId}' not found.`);
+    }
+
+    let meetingInvites = await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []);
     const isCreator = meeting.creator_id === user.id;
-    const invite = meetingInvites.find(i => i.email === user.email);
+    let invite = meetingInvites.find(i => i.email === user.email);
 
     if (!isCreator && !invite) {
-      return jsonResponse(403, { error: "You are not invited to this meeting." });
+      const newInvite = {
+        id: generateId(),
+        meeting_id: meetingId,
+        user_id: user.id,
+        email: user.email,
+        name: user.name,
+        responded: false,
+        added_via_shared_link: true,
+        added_at: new Date().toISOString(),
+      };
+      meetingInvites = [...meetingInvites, newInvite];
+      await invites.setJSON(`meeting:${meetingId}`, meetingInvites);
+      invite = newInvite;
+
+      log("info", FN, "participant added via shared link", {
+        meetingId,
+        email: user.email,
+        addedBy: "shared-link",
+      });
+      await persistEvent("info", FN, "participant added via shared link", {
+        meetingId,
+        email: user.email,
+      });
     }
 
     const allAvail = await availability.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []);
@@ -185,9 +237,11 @@ export default async (req, context) => {
   // POST /api/meetings/:id/delete
   if (req.method === "POST" && pathParts.length === 2 && pathParts[1] === "delete") {
     const meetingId = pathParts[0];
+    log("info", FN, "delete meeting", { meetingId, userId: user.id });
+
     const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
-    if (!meeting) return jsonResponse(404, { error: "Meeting not found" });
-    if (meeting.creator_id !== user.id) return jsonResponse(403, { error: "Not authorized" });
+    if (!meeting) return errorResponse(404, `Meeting '${meetingId}' not found.`);
+    if (meeting.creator_id !== user.id) return errorResponse(403, "Only the meeting creator can delete it.");
 
     await meetings.delete(meetingId);
     await invites.delete(`meeting:${meetingId}`);
@@ -197,11 +251,14 @@ export default async (req, context) => {
     const newIndex = indexData.filter(id => id !== meetingId);
     await meetings.setJSON("index", newIndex);
 
+    log("info", FN, "meeting deleted", { meetingId });
+    await persistEvent("warn", FN, "meeting deleted", { deletedBy: user.email, meetingId });
     return jsonResponse(200, { success: true });
   }
 
-  return jsonResponse(404, { error: "Not found" });
-};
+  log("warn", FN, "unmatched route", { method: req.method, pathParts });
+  return errorResponse(404, `Route not found.`);
+}
 
 export const config = {
   path: ["/api/meetings", "/api/meetings/*"],
