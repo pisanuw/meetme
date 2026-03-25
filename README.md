@@ -111,6 +111,11 @@ Use `.env.example` as the template for local development values.
   - Confirm `APP_URL` points to the same deployed site users are visiting.
   - Request a fresh link; each link expires quickly and is single-use.
 
+- **Check which env vars are missing**
+  - Open `/api/auth/health` on your deployed site.
+  - The response shows only presence/absence for required auth variables (no secret values).
+  - Use the `missing` list to update Netlify environment variables, then redeploy.
+
 For production, also switch `SQLALCHEMY_DATABASE_URI` to PostgreSQL and use a proper WSGI server (gunicorn, etc.).
 
 ---

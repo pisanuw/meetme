@@ -1,7 +1,7 @@
-import { getDb, createToken, verifyToken, getUserFromRequest, jsonResponse, setCookie, clearCookie, generateId } from "./utils.mjs";
+import { getDb, getEnv, createToken, verifyToken, getUserFromRequest, jsonResponse, setCookie, clearCookie, generateId } from "./utils.mjs";
 
 function getAppUrl(req) {
-  return Netlify.env.get("APP_URL") || new URL(req.url).origin;
+  return getEnv("APP_URL", new URL(req.url).origin);
 }
 
 function getGoogleRedirectUri(req) {
@@ -49,8 +49,8 @@ async function getOrCreateUser(email, preferredName = "") {
 }
 
 async function sendMagicLinkEmail(email, link) {
-  const apiKey = Netlify.env.get("RESEND_API_KEY");
-  const fromEmail = Netlify.env.get("AUTH_FROM_EMAIL");
+  const apiKey = getEnv("RESEND_API_KEY");
+  const fromEmail = getEnv("AUTH_FROM_EMAIL");
 
   if (!apiKey || !fromEmail) {
     return { ok: false, error: "Email delivery is not configured. Set RESEND_API_KEY and AUTH_FROM_EMAIL." };
@@ -89,6 +89,28 @@ function redirectResponse(location, extraHeaders = {}) {
 export default async (req, context) => {
   const path = context.params["0"] || "";
 
+  if (req.method === "GET" && path === "health") {
+    const checks = {
+      jwt_secret: !!getEnv("JWT_SECRET"),
+      app_url: !!getEnv("APP_URL"),
+      resend_api_key: !!getEnv("RESEND_API_KEY"),
+      auth_from_email: !!getEnv("AUTH_FROM_EMAIL"),
+      google_client_id: !!getEnv("GOOGLE_CLIENT_ID"),
+      google_client_secret: !!getEnv("GOOGLE_CLIENT_SECRET"),
+    };
+
+    const missing = Object.entries(checks)
+      .filter(([, ok]) => !ok)
+      .map(([key]) => key);
+
+    return jsonResponse(200, {
+      ok: missing.length === 0,
+      checks,
+      missing,
+      note: "This endpoint never returns secret values; only presence checks.",
+    });
+  }
+
   if (req.method === "GET" && path === "magic-link/verify") {
     const url = new URL(req.url);
     const token = url.searchParams.get("token") || "";
@@ -123,7 +145,7 @@ export default async (req, context) => {
   }
 
   if (req.method === "GET" && path === "google/start") {
-    const googleClientId = Netlify.env.get("GOOGLE_CLIENT_ID");
+    const googleClientId = getEnv("GOOGLE_CLIENT_ID");
     if (!googleClientId) {
       return redirectResponse("/?error=google-not-configured");
     }
@@ -152,8 +174,8 @@ export default async (req, context) => {
   }
 
   if (req.method === "GET" && path === "google/callback") {
-    const googleClientId = Netlify.env.get("GOOGLE_CLIENT_ID");
-    const googleClientSecret = Netlify.env.get("GOOGLE_CLIENT_SECRET");
+    const googleClientId = getEnv("GOOGLE_CLIENT_ID");
+    const googleClientSecret = getEnv("GOOGLE_CLIENT_SECRET");
     if (!googleClientId || !googleClientSecret) {
       return redirectResponse("/?error=google-not-configured");
     }

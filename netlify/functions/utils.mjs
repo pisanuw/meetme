@@ -1,8 +1,24 @@
 import { getStore } from "@netlify/blobs";
 import jwt from "jsonwebtoken";
 
+export function getEnv(name, fallback = "") {
+  const fromNetlify = typeof Netlify !== "undefined" && Netlify?.env?.get
+    ? Netlify.env.get(name)
+    : undefined;
+  if (fromNetlify !== undefined && fromNetlify !== null && fromNetlify !== "") {
+    return fromNetlify;
+  }
+
+  const fromProcess = typeof process !== "undefined" ? process.env?.[name] : undefined;
+  if (fromProcess !== undefined && fromProcess !== null && fromProcess !== "") {
+    return fromProcess;
+  }
+
+  return fallback;
+}
+
 export function getJwtSecret() {
-  return Netlify.env.get("JWT_SECRET") || "meetsync-dev-secret-change-in-prod";
+  return getEnv("JWT_SECRET", "meetsync-dev-secret-change-in-prod");
 }
 
 export function getDb(name) {
