@@ -239,6 +239,26 @@ a:hover { text-decoration: underline; }
 }
 .auth-header p { color: var(--text-muted); }
 .auth-form { display: flex; flex-direction: column; gap: 4px; }
+.auth-divider {
+  position: relative;
+  text-align: center;
+  margin: 18px 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.auth-divider::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px solid var(--border);
+}
+.auth-divider span {
+  position: relative;
+  background: white;
+  padding: 0 10px;
+}
 .auth-footer {
   text-align: center;
   margin-top: 24px;

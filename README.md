@@ -4,7 +4,7 @@ A Flask web application for finding the perfect meeting time across your whole t
 
 ## Features
 
-- **Email/password authentication** – users register once and can join any meeting they're invited to
+- **Passwordless authentication** – users sign in via email magic link or Google OAuth
 - **Two scheduling modes** – pick specific calendar dates, or generic days of the week
 - **Visual 30-minute availability grid** – click and drag to mark availability fast
 - **Group heatmap** – see at a glance when most people are free (white → dark green)
@@ -68,7 +68,48 @@ Set these environment variables before running in production:
 
 | Variable     | Default                      | Purpose                  |
 |--------------|------------------------------|--------------------------|
-| `SECRET_KEY` | `dev-secret-change-in-prod`  | Flask session signing    |
+| `JWT_SECRET` | `meetsync-dev-secret-change-in-prod` | JWT signing secret |
+| `APP_URL` | inferred from request | Public app URL used in sign-in links |
+| `RESEND_API_KEY` | _(required for magic-link email)_ | Resend API key for delivering login links |
+| `AUTH_FROM_EMAIL` | _(required for magic-link email)_ | Verified sender email/domain in Resend |
+| `GOOGLE_CLIENT_ID` | _(required for Google sign-in)_ | OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | _(required for Google sign-in)_ | OAuth client secret |
+
+Use `.env.example` as the template for local development values.
+
+### Netlify Auth Setup Checklist
+
+1. In Netlify, open **Site configuration → Environment variables** and set all variables listed above.
+2. In Google Cloud Console, create an OAuth 2.0 Web Client and add this **Authorized redirect URI**:
+  - `https://<your-netlify-domain>/api/auth/google/callback`
+3. In Resend, verify your sending domain/email and set `AUTH_FROM_EMAIL` to that verified sender.
+4. Deploy the site and test:
+  - Request an email sign-in link from `/`
+  - Sign in with Google from `/` or `/register.html`
+5. For local testing with Netlify dev, copy `.env.example` to `.env` and fill in real values.
+
+### Troubleshooting Auth
+
+- **Google error: `redirect_uri_mismatch`**
+  - Ensure the OAuth client in Google Cloud has this exact URI in **Authorized redirect URIs**:
+    - `https://<your-netlify-domain>/api/auth/google/callback`
+  - Make sure `APP_URL` in Netlify matches your public site URL (same protocol/domain).
+  - After changing Google OAuth settings, wait a minute and retry sign-in.
+
+- **Google sign-in returns to `/` with auth error**
+  - Confirm both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set in Netlify.
+  - Verify the credentials belong to the same OAuth app where the redirect URI was added.
+  - If you rotated secrets, trigger a new deploy so functions use updated values.
+
+- **Resend error sending magic link (sender/domain)**
+  - Verify your sending domain or sender identity in Resend.
+  - Set `AUTH_FROM_EMAIL` to that verified sender (for example: `MeetSync <noreply@yourdomain.com>`).
+  - Confirm `RESEND_API_KEY` is valid and has permission to send from that domain.
+
+- **Magic link email not received**
+  - Check spam/junk first.
+  - Confirm `APP_URL` points to the same deployed site users are visiting.
+  - Request a fresh link; each link expires quickly and is single-use.
 
 For production, also switch `SQLALCHEMY_DATABASE_URI` to PostgreSQL and use a proper WSGI server (gunicorn, etc.).
 

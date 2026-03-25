@@ -29,26 +29,25 @@
       <div class="auth-header">
         <div class="auth-logo">&#x27F3;</div>
         <h1>Welcome back</h1>
-        <p>Sign in to MeetSync</p>
+        <p>Sign in to MeetSync without a password</p>
       </div>
 
-      <form id="login-form" class="auth-form">
+      <form id="magic-link-form" class="auth-form">
         <div class="form-group">
           <label for="email">Email address</label>
           <input type="email" id="email" name="email" class="form-control"
                  placeholder="you@example.com" required autofocus/>
         </div>
-        <div class="form-group">
-          <label for="password">Password</label>
-          <input type="password" id="password" name="password" class="form-control"
-                 placeholder="Your password" required/>
-        </div>
-        <button type="submit" class="btn btn-primary btn-full">Sign In</button>
+        <button type="submit" class="btn btn-primary btn-full">Email me a sign-in link</button>
       </form>
 
+      <div class="auth-divider"><span>or</span></div>
+
+      <a href="/api/auth/google/start" class="btn btn-ghost btn-full">Continue with Google</a>
+
       <p class="auth-footer">
-        Don't have an account?
-        <a href="/register.html">Create one</a>
+        New here?
+        <a href="/register.html">Set your name and get a sign-in link</a>
       </p>
     </div>
   </div>
@@ -63,27 +62,39 @@
   // Redirect if already logged in
   checkAuth().then(user => {
     if (user) window.location.href = '/dashboard.html';
+
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get('error');
+    const errorMap = {
+      'invalid-link': 'That sign-in link is invalid or already used. Please request a new one.',
+      'google-not-configured': 'Google sign-in is not configured yet.',
+      'google-auth-failed': 'Google sign-in failed. Please try again.',
+      'google-email-not-verified': 'Your Google account email must be verified.',
+    };
+    if (error && errorMap[error]) {
+      showFlash(errorMap[error], 'danger');
+      window.history.replaceState({}, document.title, '/');
+    }
   });
 
-  document.getElementById('login-form').addEventListener('submit', async (e) => {
+  document.getElementById('magic-link-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
+    const email = document.getElementById('email').value.trim();
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch('/api/auth/magic-link/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email }),
       });
       const data = await res.json();
-      if (res.ok && data.success) {
-        window.location.href = '/dashboard.html';
+      if (res.ok) {
+        showFlash(data.message || 'Check your email for a sign-in link.', 'success');
       } else {
-        showFlash(data.error || 'Login failed.', 'danger');
+        showFlash(data.error || 'Could not send sign-in link.', 'danger');
       }
     } catch (err) {
-      showFlash('Login failed. Please try again.', 'danger');
+      showFlash('Could not send sign-in link. Please try again.', 'danger');
     }
   });
 </script>

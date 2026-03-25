@@ -1,6 +1,5 @@
 import { getStore } from "@netlify/blobs";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
 
 export function getJwtSecret() {
   return Netlify.env.get("JWT_SECRET") || "meetsync-dev-secret-change-in-prod";
@@ -10,16 +9,8 @@ export function getDb(name) {
   return getStore({ name, consistency: "strong" });
 }
 
-export function hashPassword(pw) {
-  return bcrypt.hashSync(pw, 10);
-}
-
-export function checkPassword(pw, hash) {
-  return bcrypt.compareSync(pw, hash);
-}
-
-export function createToken(user) {
-  return jwt.sign({ id: user.id, email: user.email, name: user.name }, getJwtSecret(), { expiresIn: "7d" });
+export function createToken(user, expiresIn = "7d") {
+  return jwt.sign(user, getJwtSecret(), { expiresIn });
 }
 
 export function verifyToken(token) {
