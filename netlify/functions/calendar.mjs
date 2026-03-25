@@ -77,6 +77,8 @@ async function refreshAccessToken(dbUser) {
 async function handleCalendar(req, context) {
   logRequest(FN, req);
 
+  const asArray = (value) => Array.isArray(value) ? value : [];
+
   const user = getUserFromRequest(req);
   if (!user) return errorResponse(401, "Not authenticated. Please sign in.");
   if (req.method !== "GET") return errorResponse(405, `Method ${req.method} not allowed.`);
@@ -128,7 +130,10 @@ async function handleCalendar(req, context) {
     }
 
     const meetingTz = meeting.timezone || "UTC";
-    const dates = [...meeting.dates_or_days].sort();
+    const dates = [...asArray(meeting.dates_or_days)].sort();
+    if (dates.length === 0) {
+      return errorResponse(400, "Meeting has no dates configured for calendar lookup.");
+    }
 
     // Determine UTC range for the FreeBusy query
     const startUTC = localToUTC(dates[0], meeting.start_time || "00:00", meetingTz);
@@ -193,7 +198,7 @@ async function handleCalendar(req, context) {
 
     const busySlots = [];
 
-    for (const dateStr of meeting.dates_or_days) {
+    for (const dateStr of dates) {
       let cur = sh * 60 + sm;
       const end = eh * 60 + em;
 
@@ -204,7 +209,7 @@ async function handleCalendar(req, context) {
 
         // Convert slot start and end to UTC
         const slotStartUTC = localToUTC(dateStr, `${hh}:${mm}`, meetingTz);
-        const slotEndMs = slotStartUTC.getTime() + 30 * 60 * 1000;
+        const slotEndMs = slotStartUTC.getTime() + 15 * 60 * 1000;
 
         // Check overlap with any busy period
         const isBusy = busyPeriods.some(p =>
@@ -212,7 +217,7 @@ async function handleCalendar(req, context) {
         );
 
         if (isBusy) busySlots.push(slotKey);
-        cur += 30;
+        cur += 15;
       }
     }
 

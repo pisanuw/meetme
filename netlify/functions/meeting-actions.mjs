@@ -17,6 +17,8 @@ export default async (req, context) => {
 async function handleMeetingActions(req, context) {
   logRequest(FN, req);
 
+  const asArray = (value) => Array.isArray(value) ? value : [];
+
   const user = getUserFromRequest(req);
   if (!user) return errorResponse(401, "Not authenticated. Please sign in.");
   if (req.method !== "POST") return errorResponse(405, `Method ${req.method} not allowed.`);
@@ -97,7 +99,7 @@ async function handleMeetingActions(req, context) {
       return errorResponse(404, `Meeting '${meetingId}' not found.`);
     }
 
-    const meetingInvites = await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []);
+    const meetingInvites = asArray(await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
     const invite = meetingInvites.find(i => i.email === user.email);
     if (meeting.creator_id !== user.id && !invite) {
       log("warn", FN, "unauthorized availability submission", { meetingId, userId: user.id });
@@ -108,7 +110,7 @@ async function handleMeetingActions(req, context) {
     if (body === null) return errorResponse(400, "Request body must be valid JSON.");
     const slots = Array.isArray(body.slots) ? body.slots : [];
 
-    const allAvail = await availability.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []);
+    const allAvail = asArray(await availability.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
     const otherAvail = allAvail.filter(a => a.user_id !== user.id);
 
     const validDates = new Set(meeting.dates_or_days);
@@ -119,7 +121,7 @@ async function handleMeetingActions(req, context) {
     const end = eh * 60 + em;
     while (cur < end) {
       validTimes.add(`${String(Math.floor(cur / 60)).padStart(2, "0")}:${String(cur % 60).padStart(2, "0")}`);
-      cur += 30;
+      cur += 15;
     }
 
     const newAvail = [];
@@ -218,7 +220,7 @@ async function handleMeetingActions(req, context) {
       return errorResponse(403, "Only the meeting creator can send reminders.");
     }
 
-    const meetingInvites = await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []);
+    const meetingInvites = asArray(await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
     const pending = meetingInvites.filter(i => !i.responded && i.email && i.email !== user.email);
 
     if (pending.length === 0) {

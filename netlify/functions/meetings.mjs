@@ -203,7 +203,7 @@ async function handleRequest(req, context) {
     const end = eh * 60 + em;
     while (cur < end) {
       timeSlots.push(`${String(Math.floor(cur / 60)).padStart(2, "0")}:${String(cur % 60).padStart(2, "0")}`);
-      cur += 30;
+      cur += 15;
     }
 
     let participants = [];

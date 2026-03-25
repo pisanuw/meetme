@@ -17,6 +17,8 @@ export default async (req, context) => {
 async function handleAdmin(req, context) {
   logRequest(FN, req);
 
+  const asArray = (value) => Array.isArray(value) ? value : [];
+
   const user = getUserFromRequest(req);
   if (!user) return errorResponse(401, "Not authenticated. Please sign in.");
   if (!isAdmin(user)) return errorResponse(403, "Admin access required.");
@@ -28,14 +30,14 @@ async function handleAdmin(req, context) {
   if (req.method === "GET" && path === "stats") {
     const meetings = getDb("meetings");
     const usersDb = getDb("users");
-    const index = await meetings.get("index", { type: "json" }).catch(() => []);
+    const index = asArray(await meetings.get("index", { type: "json" }).catch(() => []));
     const userList = await usersDb.list().catch(() => ({ blobs: [] }));
     const eventsDb = getDb("events");
     const eventList = await eventsDb.list().catch(() => ({ blobs: [] }));
     return jsonResponse(200, {
       total_meetings: index.length,
-      total_users: userList.blobs.length,
-      total_events: eventList.blobs.length,
+      total_users: asArray(userList?.blobs).length,
+      total_events: asArray(eventList?.blobs).length,
     });
   }
 
@@ -44,7 +46,7 @@ async function handleAdmin(req, context) {
     const usersDb = getDb("users");
     const list = await usersDb.list().catch(() => ({ blobs: [] }));
     const users = [];
-    for (const { key: email } of list.blobs) {
+    for (const { key: email } of asArray(list?.blobs)) {
       const u = await usersDb.get(email, { type: "json" }).catch(() => null);
       if (u) users.push(u);
     }
@@ -65,7 +67,7 @@ async function handleAdmin(req, context) {
     const u = await usersDb.get(email, { type: "json" }).catch(() => null);
     if (!u) return errorResponse(404, `User '${email}' not found.`);
 
-    const index = await meetings.get("index", { type: "json" }).catch(() => []);
+    const index = asArray(await meetings.get("index", { type: "json" }).catch(() => []));
     const createdMeetings = [];
     const invitedMeetings = [];
 
@@ -73,11 +75,11 @@ async function handleAdmin(req, context) {
       const m = await meetings.get(mid, { type: "json" }).catch(() => null);
       if (!m) continue;
 
-      const meetingInvites = await invites.get(`meeting:${mid}`, { type: "json" }).catch(() => []);
+      const meetingInvites = asArray(await invites.get(`meeting:${mid}`, { type: "json" }).catch(() => []));
       const inv = meetingInvites.find(i => i.email === email);
 
       if (m.creator_id === u.id) {
-        const avList = await availability.get(`meeting:${mid}`, { type: "json" }).catch(() => []);
+        const avList = asArray(await availability.get(`meeting:${mid}`, { type: "json" }).catch(() => []));
         const myAvail = avList.filter(a => a.user_id === u.id);
         createdMeetings.push({
           id: m.id,
@@ -89,7 +91,7 @@ async function handleAdmin(req, context) {
           my_slot_count: myAvail.length,
         });
       } else if (inv) {
-        const avList = await availability.get(`meeting:${mid}`, { type: "json" }).catch(() => []);
+        const avList = asArray(await availability.get(`meeting:${mid}`, { type: "json" }).catch(() => []));
         const myAvail = avList.filter(a => a.user_id === u.id);
         invitedMeetings.push({
           id: m.id,
@@ -181,12 +183,12 @@ async function handleAdmin(req, context) {
   if (req.method === "GET" && path === "meetings") {
     const meetings = getDb("meetings");
     const invites = getDb("invites");
-    const index = await meetings.get("index", { type: "json" }).catch(() => []);
+    const index = asArray(await meetings.get("index", { type: "json" }).catch(() => []));
     const result = [];
     for (const mid of index) {
       const m = await meetings.get(mid, { type: "json" }).catch(() => null);
       if (!m) continue;
-      const meetingInvites = await invites.get(`meeting:${mid}`, { type: "json" }).catch(() => []);
+      const meetingInvites = asArray(await invites.get(`meeting:${mid}`, { type: "json" }).catch(() => []));
       result.push({
         id: m.id,
         title: m.title,
@@ -216,7 +218,7 @@ async function handleAdmin(req, context) {
     const limit = Math.min(parseInt(url.searchParams.get("limit") || "200"), 500);
     const list = await eventsDb.list().catch(() => ({ blobs: [] }));
     // Keys are timestamp-prefixed so lexicographic desc = newest first
-    const sorted = [...list.blobs].sort((a, b) => b.key.localeCompare(a.key)).slice(0, limit);
+    const sorted = [...asArray(list?.blobs)].sort((a, b) => b.key.localeCompare(a.key)).slice(0, limit);
     const events = [];
     for (const { key } of sorted) {
       const ev = await eventsDb.get(key, { type: "json" }).catch(() => null);

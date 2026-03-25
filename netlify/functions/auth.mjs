@@ -32,11 +32,12 @@ function getClientIp(req) {
 
 async function linkPendingInvites(emailKey, user) {
   const invites = getDb("invites");
+  const asArray = (value) => Array.isArray(value) ? value : [];
   const pendingList = await invites.get(`pending:${emailKey}`, { type: "json" }).catch(() => null);
   if (!pendingList || !Array.isArray(pendingList)) return;
 
   for (const meetingId of pendingList) {
-    const meetingInvites = await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []);
+    const meetingInvites = asArray(await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
     const updated = meetingInvites.map(inv =>
       inv.email === emailKey ? { ...inv, user_id: user.id, name: inv.name || user.name } : inv
     );
