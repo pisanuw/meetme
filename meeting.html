@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Meeting – MeetSync</title>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="/dashboard.html" class="nav-brand">
+      <span class="brand-icon">&#x27F3;</span> MeetSync
+    </a>
+    <div class="nav-links" id="nav-auth" style="display:none;">
+      <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
+      <span class="nav-user" id="nav-username"></span>
+      <a href="#" class="nav-link" id="logout-link">Log out</a>
+    </div>
+  </div>
+</nav>
+
+<div id="flash-container" class="flash-container"></div>
+
+<main class="main-content">
+  <div class="meeting-page" id="meeting-page" style="display:none;">
+
+    <!-- HEADER -->
+    <div class="meeting-header">
+      <div>
+        <div class="breadcrumb"><a href="/dashboard.html">Dashboard</a> &rsaquo; Meeting</div>
+        <h1 id="meeting-title"></h1>
+        <p class="text-muted" id="meeting-desc"></p>
+        <div class="meeting-meta-row">
+          <span class="badge badge-blue" id="meeting-type-badge"></span>
+          <span class="text-muted" id="meeting-time-range"></span>
+          <span class="text-muted" id="meeting-respond-count"></span>
+          <span class="badge badge-green" id="finalized-badge" style="display:none;">&#x2713; Finalized</span>
+        </div>
+      </div>
+
+      <div class="finalized-banner" id="finalized-banner" style="display:none;">
+        <div class="finalized-time" id="finalized-time"></div>
+        <div class="finalized-note" id="finalized-note"></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-ghost" id="btn-unfinalize" style="display:none;">Edit finalization</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOOLBAR -->
+    <div class="grid-toolbar">
+      <div class="view-tabs" id="view-tabs"></div>
+      <div id="person-selector" style="display:none;">
+        <select class="form-control" id="person-select" onchange="filterPerson(this.value)"></select>
+      </div>
+      <div class="legend">
+        <span class="legend-label">Fewer</span>
+        <span class="legend-swatch" style="background:#edfaed"></span>
+        <span class="legend-swatch" style="background:#a5d6a7"></span>
+        <span class="legend-swatch" style="background:#4caf50"></span>
+        <span class="legend-swatch" style="background:#1b5e20"></span>
+        <span class="legend-label">More</span>
+      </div>
+    </div>
+
+    <div id="edit-instructions" class="instructions" style="display:none;">
+      Click or click-and-drag to select your available times. Changes save automatically.
+    </div>
+    <div id="heatmap-instructions" class="instructions"></div>
+
+    <!-- GRID -->
+    <div class="grid-scroll-wrapper">
+      <div class="av-grid" id="av-grid" data-editing="false"></div>
+    </div>
+
+    <!-- FINALIZE PANEL -->
+    <div class="finalize-panel" id="finalize-panel" style="display:none;">
+      <h3>&#x1F4CC; Finalize meeting time</h3>
+      <p class="text-muted">You've selected: <strong id="finalize-slot-label">&ndash;</strong></p>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Duration</label>
+          <select class="form-control" id="finalize-duration">
+            <option value="30">30 minutes</option>
+            <option value="60" selected>1 hour</option>
+            <option value="90">1.5 hours</option>
+            <option value="120">2 hours</option>
+            <option value="180">3 hours</option>
+            <option value="240">4 hours</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Note to participants</label>
+        <textarea class="form-control" id="finalize-note" rows="3"
+                  placeholder="Location, dial-in link, agenda..."></textarea>
+      </div>
+      <div style="display:flex; gap:12px; margin-top:16px;">
+        <button class="btn btn-primary" onclick="confirmFinalize()">&#x2713; Confirm &amp; Finalize</button>
+        <button class="btn btn-ghost" onclick="cancelFinalize()">Cancel</button>
+      </div>
+    </div>
+
+    <!-- PARTICIPANTS -->
+    <div class="participants-panel" id="participants-panel" style="display:none;">
+      <h3>Participants <span class="text-muted" id="participant-count"></span></h3>
+      <div class="participants-list" id="participants-list"></div>
+    </div>
+
+  </div>
+</main>
+
+<footer class="footer">
+  <p>MeetSync &ndash; Find the perfect time together</p>
+</footer>
+
+<script src="/static/common.js"></script>
+<script>
+// Meeting data - loaded from API
+let M = null;
+let currentView = 'heatmap';
+let currentPerson = 0;
+let isDragging = false;
+let dragAction = null;
+let saveTimer = null;
+let pendingFinalize = null;
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+
+  const params = new URLSearchParams(window.location.search);
+  const meetingId = params.get('id');
+  if (!meetingId) { window.location.href = '/dashboard.html'; return; }
+
+  const res = await fetch(`/api/meetings/${meetingId}`);
+  if (!res.ok) {
+    showFlash('Meeting not found or access denied.', 'danger');
+    setTimeout(() => window.location.href = '/dashboard.html', 1500);
+    return;
+  }
+
+  const data = await res.json();
+  M = {
+    id: data.meeting.id,
+    dates: data.meeting.dates_or_days,
+    timeSlots: data.time_slots,
+    mySlots: new Set(data.my_slots),
+    slotCounts: data.slot_counts,
+    totalInvited: data.total_invited,
+    isCreator: data.is_creator,
+    isFinalized: data.meeting.is_finalized,
+    finalizedDate: data.meeting.finalized_date,
+    finalizedSlot: data.meeting.finalized_slot,
+    meetingType: data.meeting.meeting_type,
+    participants: data.participants || [],
+    meeting: data.meeting,
+  };
+
+  document.getElementById('meeting-page').style.display = '';
+  document.title = `${M.meeting.title} – MeetSync`;
+
+  // Header
+  document.getElementById('meeting-title').textContent = M.meeting.title;
+  if (M.meeting.description) {
+    document.getElementById('meeting-desc').textContent = M.meeting.description;
+  }
+  document.getElementById('meeting-type-badge').textContent =
+    (M.meeting.meeting_type || '').replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
+  document.getElementById('meeting-time-range').textContent = `${M.meeting.start_time} – ${M.meeting.end_time}`;
+  document.getElementById('meeting-respond-count').textContent = `${data.respond_count}/${data.invite_count} responded`;
+
+  document.getElementById('heatmap-instructions').textContent =
+    `Showing combined availability for all ${data.invite_count} participant${data.invite_count !== 1 ? 's' : ''}.`;
+
+  // Finalized state
+  if (M.isFinalized) {
+    document.getElementById('finalized-badge').style.display = '';
+    const banner = document.getElementById('finalized-banner');
+    banner.style.display = '';
+    document.getElementById('finalized-time').innerHTML =
+      `&#x1F4C5; ${escapeHtml(M.finalizedDate)} at ${escapeHtml(M.finalizedSlot)} (${M.meeting.duration_minutes} min)`;
+    if (M.meeting.note) {
+      document.getElementById('finalized-note').textContent = M.meeting.note;
+    }
+    if (M.isCreator) {
+      document.getElementById('btn-unfinalize').style.display = '';
+    }
+  }
+
+  // View tabs
+  const tabsContainer = document.getElementById('view-tabs');
+  tabsContainer.innerHTML = `
+    <button class="view-tab active" data-view="heatmap" onclick="setView('heatmap',this)">&#x1F321; Group availability</button>
+    ${!M.isFinalized ? '<button class="view-tab" data-view="mine" onclick="setView(\'mine\',this)">&#x270F; My availability</button>' : ''}
+    ${M.isCreator && M.participants.length ? '<button class="view-tab" data-view="person" onclick="setView(\'person\',this)">&#x1F464; By person</button>' : ''}
+  `;
+
+  // Person selector
+  if (M.isCreator && M.participants.length) {
+    const sel = document.getElementById('person-select');
+    M.participants.forEach((p, i) => {
+      sel.innerHTML += `<option value="${i}">${escapeHtml(p.name)} (${p.slot_count} slot${p.slot_count !== 1 ? 's' : ''})${!p.responded ? ' – no response' : ''}</option>`;
+    });
+  }
+
+  // Participants panel
+  if (M.isCreator) {
+    document.getElementById('participants-panel').style.display = '';
+    document.getElementById('participant-count').textContent = `(${data.invite_count})`;
+    const list = document.getElementById('participants-list');
+    M.participants.forEach((p, i) => {
+      list.innerHTML += `
+        <div class="participant-row" onclick="jumpToParticipant(${i})">
+          <div class="participant-avatar">${escapeHtml((p.name || '?')[0].toUpperCase())}</div>
+          <div class="participant-info">
+            <div class="participant-name">${escapeHtml(p.name)}</div>
+            <div class="participant-email text-muted">${escapeHtml(p.email)}</div>
+          </div>
+          <div class="participant-slots">
+            ${p.responded
+              ? `<span class="badge badge-green">${p.slot_count} slots</span>`
+              : '<span class="badge badge-gray">No response</span>'}
+          </div>
+        </div>`;
+    });
+  }
+
+  // Unfinalize button
+  const btnUnfinalize = document.getElementById('btn-unfinalize');
+  if (btnUnfinalize) {
+    btnUnfinalize.addEventListener('click', async () => {
+      if (!confirm('Remove finalization and reopen for editing?')) return;
+      const res = await fetch(`/api/meeting/${M.id}/unfinalize`, { method: 'POST' });
+      const d = await res.json();
+      if (d.success) window.location.reload();
+    });
+  }
+
+  buildGrid();
+
+  // Default to edit mode if no slots selected
+  if (!M.isFinalized && M.mySlots.size === 0) {
+    const mineTab = document.querySelector('[data-view="mine"]');
+    if (mineTab) setView('mine', mineTab);
+  }
+})();
+
+// --- Grid rendering (same logic as original app.js) ---
+
+function heatColor(count) {
+  if (!count || count === 0) return '#f5f5f5';
+  const ratio = Math.min(count / Math.max(M.totalInvited, 1), 1);
+  if (ratio <= 0) return '#f5f5f5';
+  if (ratio <= 0.20) return '#e8f5e9';
+  if (ratio <= 0.40) return '#c8e6c9';
+  if (ratio <= 0.65) return '#81c784';
+  if (ratio <= 0.85) return '#4caf50';
+  return '#2e7d32';
+}
+
+function slotKey(date, time) { return `${date}_${time}`; }
+
+function fmtDate(d) {
+  if (!d.includes('-')) return d;
+  const [y, mo, day] = d.split('-').map(Number);
+  const dt = new Date(y, mo - 1, day);
+  return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function fmtTime(t) {
+  const [h, m] = t.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+function mkEl(tag, cls) {
+  const d = document.createElement(tag);
+  if (cls) d.className = cls;
+  return d;
+}
+
+function buildGrid() {
+  const grid = document.getElementById('av-grid');
+  grid.innerHTML = '';
+  const numCols = M.dates.length;
+  grid.style.setProperty('--cols', numCols);
+
+  const corner = mkEl('div', 'ag-corner ag-col-header');
+  grid.appendChild(corner);
+
+  M.dates.forEach(d => {
+    const hdr = mkEl('div', 'ag-col-header');
+    if (M.isFinalized && d === M.finalizedDate) hdr.classList.add('is-finalized');
+    hdr.innerHTML = `<div>${fmtDate(d)}</div>`;
+    grid.appendChild(hdr);
+  });
+
+  M.timeSlots.forEach(time => {
+    const [h, m] = time.split(':').map(Number);
+    const isHour = m === 0;
+    const lbl = mkEl('div', `ag-time-label${isHour ? ' hour-boundary' : ''}`);
+    lbl.textContent = isHour ? fmtTime(time) : '';
+    grid.appendChild(lbl);
+
+    M.dates.forEach(date => {
+      const key = slotKey(date, time);
+      const cell = mkEl('div', `ag-cell${isHour ? ' hour-boundary' : ''}`);
+      cell.dataset.date = date;
+      cell.dataset.time = time;
+      cell.dataset.key = key;
+      paintCell(cell);
+      grid.appendChild(cell);
+    });
+  });
+
+  if (!M.isFinalized) attachGridEvents(grid);
+  if (M.isCreator && !M.isFinalized) {
+    grid.addEventListener('click', e => {
+      if (currentView !== 'heatmap') return;
+      const cell = e.target.closest('.ag-cell');
+      if (!cell) return;
+      showFinalizePanel(cell.dataset.date, cell.dataset.time);
+    });
+  }
+}
+
+function paintCell(cell) {
+  const key = cell.dataset.key;
+  const date = cell.dataset.date;
+  const time = cell.dataset.time;
+  const count = M.slotCounts[key] || 0;
+  const isMine = M.mySlots.has(key);
+
+  cell.style.background = '';
+  cell.classList.remove('mine-selected', 'finalized-cell', 'person-highlighted');
+  cell.removeAttribute('data-tip');
+
+  if (M.isFinalized && date === M.finalizedDate && time === M.finalizedSlot) {
+    cell.classList.add('finalized-cell');
+  }
+
+  if (currentView === 'heatmap') {
+    cell.style.background = heatColor(count);
+    if (isMine) cell.classList.add('mine-selected');
+    cell.dataset.tip = count > 0 ? `${count}/${M.totalInvited} available` : 'No one available';
+  } else if (currentView === 'mine') {
+    cell.style.background = isMine ? '#bbdefb' : '#f5f5f5';
+    if (isMine) cell.classList.add('mine-selected');
+    cell.dataset.tip = isMine ? 'You are available' : 'Click to mark available';
+  } else if (currentView === 'person') {
+    const p = M.participants[currentPerson];
+    const pSlots = new Set(p ? p.slots : []);
+    const isp = pSlots.has(key);
+    cell.style.background = isp ? '#fff3e0' : (count > 0 ? heatColor(count * 0.3) : '#f5f5f5');
+    if (isp) cell.classList.add('person-highlighted');
+    cell.dataset.tip = isp ? `${p.name} is available` : '';
+  }
+}
+
+function repaintAll() {
+  document.querySelectorAll('.ag-cell').forEach(paintCell);
+}
+
+function attachGridEvents(grid) {
+  function startDrag(cell) {
+    if (currentView !== 'mine') return;
+    if (!cell || !cell.classList.contains('ag-cell')) return;
+    isDragging = true;
+    dragAction = M.mySlots.has(cell.dataset.key) ? 'remove' : 'add';
+    applyDrag(cell);
+  }
+  function applyDrag(cell) {
+    if (!cell || !cell.classList.contains('ag-cell')) return;
+    const key = cell.dataset.key;
+    if (dragAction === 'add') M.mySlots.add(key);
+    if (dragAction === 'remove') M.mySlots.delete(key);
+    paintCell(cell);
+  }
+  function endDrag() {
+    if (isDragging) { isDragging = false; scheduleSave(); }
+  }
+
+  grid.addEventListener('mousedown', e => {
+    const cell = e.target.closest('.ag-cell');
+    if (cell) { startDrag(cell); e.preventDefault(); }
+  });
+  document.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    const cell = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('.ag-cell');
+    if (cell) applyDrag(cell);
+  });
+  document.addEventListener('mouseup', endDrag);
+  grid.addEventListener('touchstart', e => {
+    const touch = e.touches[0];
+    const cell = document.elementFromPoint(touch.clientX, touch.clientY)?.closest?.('.ag-cell');
+    if (cell) startDrag(cell);
+  }, { passive: true });
+  grid.addEventListener('touchmove', e => {
+    if (!isDragging) return;
+    const touch = e.touches[0];
+    const cell = document.elementFromPoint(touch.clientX, touch.clientY)?.closest?.('.ag-cell');
+    if (cell) applyDrag(cell);
+  }, { passive: true });
+  grid.addEventListener('touchend', endDrag);
+}
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveAvailability, 500);
+}
+
+async function saveAvailability() {
+  const slots = Array.from(M.mySlots);
+  try {
+    const res = await fetch(`/api/meeting/${M.id}/availability`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slots }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      M.slotCounts = data.slot_counts;
+      showSavedIndicator();
+    }
+  } catch (e) { console.error('Save failed', e); }
+}
+
+function showSavedIndicator() {
+  let ind = document.getElementById('save-indicator');
+  if (!ind) {
+    ind = document.createElement('div');
+    ind.id = 'save-indicator';
+    ind.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#2e7d32;color:white;padding:10px 18px;border-radius:8px;font-size:0.85rem;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,0.2);z-index:999;transition:opacity 0.3s;';
+    document.body.appendChild(ind);
+  }
+  ind.textContent = '\u2713 Saved';
+  ind.style.opacity = '1';
+  clearTimeout(ind._timer);
+  ind._timer = setTimeout(() => { ind.style.opacity = '0'; }, 2000);
+}
+
+// View modes
+window.setView = function(view, btn) {
+  currentView = view;
+  document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  const editMode = view === 'mine';
+  document.getElementById('av-grid').dataset.editing = editMode;
+  const editInst = document.getElementById('edit-instructions');
+  const heatInst = document.getElementById('heatmap-instructions');
+  if (editInst) editInst.style.display = editMode ? '' : 'none';
+  if (heatInst) heatInst.style.display = editMode ? 'none' : '';
+  const ps = document.getElementById('person-selector');
+  if (ps) ps.style.display = view === 'person' ? '' : 'none';
+  repaintAll();
+};
+
+window.filterPerson = function(idx) {
+  currentPerson = parseInt(idx);
+  repaintAll();
+};
+
+window.jumpToParticipant = function(idx) {
+  currentPerson = idx;
+  const tab = document.querySelector('[data-view="person"]');
+  if (tab) setView('person', tab);
+  const sel = document.getElementById('person-select');
+  if (sel) sel.value = idx;
+};
+
+// Finalize
+window.showFinalizePanel = function(date, time) {
+  if (!M.isCreator || M.isFinalized) return;
+  pendingFinalize = { date, time };
+  const panel = document.getElementById('finalize-panel');
+  if (!panel) return;
+  panel.style.display = '';
+  const lbl = document.getElementById('finalize-slot-label');
+  if (lbl) lbl.textContent = `${fmtDate(date)} at ${fmtTime(time)}`;
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
+
+window.cancelFinalize = function() {
+  pendingFinalize = null;
+  const panel = document.getElementById('finalize-panel');
+  if (panel) panel.style.display = 'none';
+};
+
+window.confirmFinalize = async function() {
+  if (!pendingFinalize) return;
+  const duration = document.getElementById('finalize-duration').value;
+  const note = document.getElementById('finalize-note').value;
+  try {
+    const res = await fetch(`/api/meeting/${M.id}/finalize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date_or_day: pendingFinalize.date,
+        time_slot: pendingFinalize.time,
+        duration_minutes: parseInt(duration),
+        note,
+      }),
+    });
+    const data = await res.json();
+    if (data.success) window.location.reload();
+  } catch (e) { alert('Failed to finalize. Please try again.'); }
+};
+</script>
+</body>
+</html>

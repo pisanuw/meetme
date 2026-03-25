@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>New Meeting – MeetSync</title>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="/dashboard.html" class="nav-brand">
+      <span class="brand-icon">&#x27F3;</span> MeetSync
+    </a>
+    <div class="nav-links" id="nav-auth" style="display:none;">
+      <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
+      <span class="nav-user" id="nav-username"></span>
+      <a href="#" class="nav-link" id="logout-link">Log out</a>
+    </div>
+  </div>
+</nav>
+
+<div id="flash-container" class="flash-container"></div>
+
+<main class="main-content">
+<div class="form-page">
+  <div class="form-card">
+    <h1>New Meeting</h1>
+    <p class="text-muted">Set up a meeting and invite others to share their availability.</p>
+
+    <form id="create-form">
+      <div class="form-group">
+        <label for="title">Meeting title <span class="required">*</span></label>
+        <input type="text" id="title" name="title" class="form-control"
+               placeholder="e.g. Q3 Planning, Team Lunch..." required autofocus/>
+      </div>
+
+      <div class="form-group">
+        <label for="description">Description (optional)</label>
+        <textarea id="description" name="description" class="form-control" rows="2"
+                  placeholder="Any context for invitees..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Meeting type <span class="required">*</span></label>
+        <div class="type-toggle">
+          <label class="type-option active" id="tab-dates">
+            <input type="radio" name="meeting_type" value="specific_dates" checked
+                   onchange="switchType('specific_dates')"/>
+            &#x1F4C5; Specific dates
+          </label>
+          <label class="type-option" id="tab-days">
+            <input type="radio" name="meeting_type" value="days_of_week"
+                   onchange="switchType('days_of_week')"/>
+            &#x1F5D3; Days of week
+          </label>
+        </div>
+      </div>
+
+      <div id="panel-specific-dates" class="form-group">
+        <label>Select dates</label>
+        <div class="date-picker-wrapper">
+          <input type="text" id="date-input" class="form-control"
+                 placeholder="Click to add dates..." readonly/>
+          <div class="mini-calendar" id="mini-calendar"></div>
+        </div>
+        <div id="selected-dates-chips" class="chips-row"></div>
+      </div>
+
+      <div id="panel-days-of-week" class="form-group" style="display:none;">
+        <label>Select days</label>
+        <div class="day-checkboxes" id="day-checkboxes"></div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="start_time">Earliest time</label>
+          <select id="start_time" name="start_time" class="form-control"></select>
+        </div>
+        <div class="form-group">
+          <label for="end_time">Latest time</label>
+          <select id="end_time" name="end_time" class="form-control"></select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="invite_emails">Invite people</label>
+        <textarea id="invite_emails" name="invite_emails" class="form-control" rows="3"
+                  placeholder="One email per line&#10;alice@example.com&#10;bob@example.com"></textarea>
+        <small class="form-hint">Each person will be asked to mark their availability.</small>
+      </div>
+
+      <div class="form-actions">
+        <a href="/dashboard.html" class="btn btn-ghost">Cancel</a>
+        <button type="submit" class="btn btn-primary">Create Meeting &rarr;</button>
+      </div>
+    </form>
+  </div>
+</div>
+</main>
+
+<footer class="footer">
+  <p>MeetSync &ndash; Find the perfect time together</p>
+</footer>
+
+<script src="/static/common.js"></script>
+<script>
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+})();
+
+// Build time selectors
+const startSel = document.getElementById('start_time');
+const endSel = document.getElementById('end_time');
+for (let h = 6; h < 24; h++) {
+  for (const m of [0, 30]) {
+    const t = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    startSel.innerHTML += `<option value="${t}" ${t==='08:00'?'selected':''}>${t}</option>`;
+  }
+}
+for (let h = 6; h <= 24; h++) {
+  for (const m of [0, 30]) {
+    if (h === 24 && m === 30) continue;
+    const t = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    endSel.innerHTML += `<option value="${t}" ${t==='20:00'?'selected':''}>${t}</option>`;
+  }
+}
+
+// Day checkboxes
+const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+const dayContainer = document.getElementById('day-checkboxes');
+days.forEach(day => {
+  dayContainer.innerHTML += `<label class="day-chip"><input type="checkbox" name="days_of_week" value="${day}"/>${day.slice(0,3)}</label>`;
+});
+
+// Type switch
+function switchType(type) {
+  document.getElementById('panel-specific-dates').style.display = type === 'specific_dates' ? '' : 'none';
+  document.getElementById('panel-days-of-week').style.display = type === 'days_of_week' ? '' : 'none';
+  document.getElementById('tab-dates').classList.toggle('active', type === 'specific_dates');
+  document.getElementById('tab-days').classList.toggle('active', type === 'days_of_week');
+}
+
+// Mini Calendar
+const selectedDates = new Set();
+let calYear, calMonth;
+
+function initCalendar() {
+  const now = new Date();
+  calYear = now.getFullYear();
+  calMonth = now.getMonth();
+  renderCalendar();
+}
+
+function renderCalendar() {
+  const cal = document.getElementById('mini-calendar');
+  const first = new Date(calYear, calMonth, 1);
+  const last = new Date(calYear, calMonth + 1, 0);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  let html = `<div class="cal-nav"><button type="button" onclick="shiftMonth(-1)">&lsaquo;</button><span>${months[calMonth]} ${calYear}</span><button type="button" onclick="shiftMonth(1)">&rsaquo;</button></div><div class="cal-grid"><div class="cal-dow">Mo</div><div class="cal-dow">Tu</div><div class="cal-dow">We</div><div class="cal-dow">Th</div><div class="cal-dow">Fr</div><div class="cal-dow">Sa</div><div class="cal-dow">Su</div>`;
+
+  let startDow = (first.getDay() + 6) % 7;
+  for (let i = 0; i < startDow; i++) html += '<div></div>';
+
+  for (let d = 1; d <= last.getDate(); d++) {
+    const dt = new Date(calYear, calMonth, d);
+    const key = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isPast = dt < today;
+    const isSel = selectedDates.has(key);
+    html += `<div class="cal-day ${isPast?'past':''} ${isSel?'selected':''}" onclick="${isPast?'':`toggleDate('${key}')`}">${d}</div>`;
+  }
+  html += '</div>';
+  cal.innerHTML = html;
+}
+
+function shiftMonth(delta) {
+  calMonth += delta;
+  if (calMonth < 0) { calMonth = 11; calYear--; }
+  if (calMonth > 11) { calMonth = 0; calYear++; }
+  renderCalendar();
+}
+
+function toggleDate(key) {
+  if (selectedDates.has(key)) selectedDates.delete(key);
+  else selectedDates.add(key);
+  renderCalendar();
+  updateChips();
+}
+
+function updateChips() {
+  const container = document.getElementById('selected-dates-chips');
+  const sorted = Array.from(selectedDates).sort();
+  container.innerHTML = sorted.map(d => {
+    const [y,m,day] = d.split('-').map(Number);
+    const label = new Date(y, m-1, day).toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+    return `<span class="date-chip removable" onclick="toggleDate('${d}')">${label} &#x2715;</span>`;
+  }).join('');
+  document.getElementById('date-input').value = sorted.length ? `${sorted.length} date${sorted.length>1?'s':''} selected` : '';
+}
+
+document.getElementById('date-input').addEventListener('click', () => {
+  document.getElementById('mini-calendar').classList.toggle('visible');
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('.date-picker-wrapper'))
+    document.getElementById('mini-calendar').classList.remove('visible');
+});
+
+initCalendar();
+
+// Form submission
+document.getElementById('create-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const title = document.getElementById('title').value.trim();
+  const description = document.getElementById('description').value.trim();
+  const meetingType = document.querySelector('input[name="meeting_type"]:checked').value;
+  const startTime = document.getElementById('start_time').value;
+  const endTime = document.getElementById('end_time').value;
+  const inviteEmails = document.getElementById('invite_emails').value;
+
+  let datesOrDays;
+  if (meetingType === 'specific_dates') {
+    datesOrDays = Array.from(selectedDates).sort();
+    if (datesOrDays.length === 0) {
+      showFlash('Select at least one date.', 'danger');
+      return;
+    }
+  } else {
+    datesOrDays = Array.from(document.querySelectorAll('input[name="days_of_week"]:checked')).map(el => el.value);
+    const dayOrder = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    datesOrDays.sort((a,b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+    if (datesOrDays.length === 0) {
+      showFlash('Select at least one day.', 'danger');
+      return;
+    }
+  }
+
+  try {
+    const res = await fetch('/api/meetings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title, description, meeting_type: meetingType,
+        dates_or_days: datesOrDays, start_time: startTime, end_time: endTime,
+        invite_emails: inviteEmails,
+      }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      window.location.href = `/meeting.html?id=${data.meeting_id}`;
+    } else {
+      showFlash(data.error || 'Failed to create meeting.', 'danger');
+    }
+  } catch (err) {
+    showFlash('Failed to create meeting.', 'danger');
+  }
+});
+</script>
+</body>
+</html>
