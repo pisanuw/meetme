@@ -55,7 +55,11 @@
       </div>
 
       <div id="share-controls" style="display:none; margin-top:10px;">
-        <a id="share-email-link" class="btn btn-sm btn-ghost" href="#">Share privately by email</a>
+        <div style="margin-bottom:8px;font-size:0.8rem;color:var(--text-muted);font-weight:600;">Private meeting URL</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input id="share-url" class="form-control" type="text" readonly style="min-width:280px;max-width:520px;" />
+          <button id="copy-share-url-btn" class="btn btn-sm btn-ghost" onclick="copyShareUrl()" type="button">Copy URL</button>
+        </div>
         <button id="remind-pending-btn" class="btn btn-sm btn-ghost" onclick="sendPendingReminders()" type="button">Send reminder to non-responders</button>
       </div>
     </div>
@@ -280,14 +284,9 @@ let busySlots = new Set();   // slot keys from Google Calendar
 
     // Share control for creator
     const shareWrap = document.getElementById('share-controls');
-    const shareLink = document.getElementById('share-email-link');
+    const shareInput = document.getElementById('share-url');
     const meetingUrl = `${window.location.origin}/meeting.html?id=${encodeURIComponent(M.id)}`;
-    const subject = encodeURIComponent(`MeetMe: ${M.meeting.title}`);
-    const body = encodeURIComponent(
-      `Hi,\n\nPlease share your availability for this meeting:\n${meetingUrl}\n\n` +
-      `This is a private link.\n\nThanks!`
-    );
-    shareLink.href = `mailto:?subject=${subject}&body=${body}`;
+    shareInput.value = meetingUrl;
     shareWrap.style.display = '';
   }
 
@@ -435,6 +434,21 @@ window.sendPendingReminders = async function() {
 
   btn.disabled = false;
   btn.textContent = prev;
+};
+
+window.copyShareUrl = async function() {
+  const input = document.getElementById('share-url');
+  if (!input || !input.value) return;
+
+  try {
+    await navigator.clipboard.writeText(input.value);
+    showFlash('Meeting URL copied.', 'success');
+  } catch {
+    input.select();
+    input.setSelectionRange(0, input.value.length);
+    const ok = document.execCommand('copy');
+    showFlash(ok ? 'Meeting URL copied.' : 'Could not copy URL automatically.', ok ? 'success' : 'warning');
+  }
 };
 
 function mkEl(tag, cls) {
