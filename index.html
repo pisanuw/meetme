@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Log In – MeetSync</title>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="/dashboard.html" class="nav-brand">
+      <span class="brand-icon">&#x27F3;</span> MeetSync
+    </a>
+    <div class="nav-links" id="nav-auth" style="display:none;">
+      <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
+      <span class="nav-user" id="nav-username"></span>
+      <a href="#" class="nav-link" id="logout-link">Log out</a>
+    </div>
+  </div>
+</nav>
+
+<div id="flash-container" class="flash-container"></div>
+
+<main class="main-content">
+  <div class="auth-wrapper">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-logo">&#x27F3;</div>
+        <h1>Welcome back</h1>
+        <p>Sign in to MeetSync</p>
+      </div>
+
+      <form id="login-form" class="auth-form">
+        <div class="form-group">
+          <label for="email">Email address</label>
+          <input type="email" id="email" name="email" class="form-control"
+                 placeholder="you@example.com" required autofocus/>
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" class="form-control"
+                 placeholder="Your password" required/>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Sign In</button>
+      </form>
+
+      <p class="auth-footer">
+        Don't have an account?
+        <a href="/register.html">Create one</a>
+      </p>
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <p>MeetSync &ndash; Find the perfect time together</p>
+</footer>
+
+<script src="/static/common.js"></script>
+<script>
+  // Redirect if already logged in
+  checkAuth().then(user => {
+    if (user) window.location.href = '/dashboard.html';
+  });
+
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        window.location.href = '/dashboard.html';
+      } else {
+        showFlash(data.error || 'Login failed.', 'danger');
+      }
+    } catch (err) {
+      showFlash('Login failed. Please try again.', 'danger');
+    }
+  });
+</script>
+</body>
+</html>
