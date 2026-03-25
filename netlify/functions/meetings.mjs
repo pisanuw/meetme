@@ -14,6 +14,8 @@ export default async (req, context) => {
 async function handleRequest(req, context) {
   logRequest(FN, req);
 
+  const asArray = (value) => Array.isArray(value) ? value : [];
+
   const user = getUserFromRequest(req);
   if (!user) return errorResponse(401, "Not authenticated. Please sign in.");
 
@@ -26,7 +28,11 @@ async function handleRequest(req, context) {
 
   // GET /api/meetings - list dashboard data
   if (req.method === "GET" && pathParts.length === 0) {
-    const indexData = await meetings.get("index", { type: "json" }).catch(() => []);
+    const rawIndexData = await meetings.get("index", { type: "json" }).catch(() => []);
+    const indexData = asArray(rawIndexData);
+    if (!Array.isArray(rawIndexData)) {
+      log("warn", FN, "meetings index is malformed; expected array", { type: typeof rawIndexData });
+    }
 
     const myMeetings = [];
     const invitedMeetings = [];
@@ -35,7 +41,7 @@ async function handleRequest(req, context) {
       const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
       if (!meeting) continue;
 
-      const meetingInvites = await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []);
+      const meetingInvites = asArray(await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
       const respondCount = meetingInvites.filter(i => i.responded).length;
       const inviteCount = meetingInvites.length;
 
@@ -96,7 +102,7 @@ async function handleRequest(req, context) {
 
     await meetings.setJSON(meetingId, meeting);
 
-    const indexData = await meetings.get("index", { type: "json" }).catch(() => []);
+    const indexData = asArray(await meetings.get("index", { type: "json" }).catch(() => []));
     indexData.push(meetingId);
     await meetings.setJSON("index", indexData);
 
@@ -125,7 +131,7 @@ async function handleRequest(req, context) {
         });
 
         if (!existingUser) {
-          const pending = await invites.get(`pending:${email}`, { type: "json" }).catch(() => []);
+          const pending = asArray(await invites.get(`pending:${email}`, { type: "json" }).catch(() => []));
           pending.push(meetingId);
           await invites.setJSON(`pending:${email}`, pending);
         }
@@ -150,7 +156,7 @@ async function handleRequest(req, context) {
       return errorResponse(404, `Meeting '${meetingId}' not found.`);
     }
 
-    let meetingInvites = await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []);
+    let meetingInvites = asArray(await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
     const isCreator = meeting.creator_id === user.id;
     let invite = meetingInvites.find(i => i.email === user.email);
 
@@ -180,7 +186,7 @@ async function handleRequest(req, context) {
       });
     }
 
-    const allAvail = await availability.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []);
+    const allAvail = asArray(await availability.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
     const myAvail = allAvail.filter(a => a.user_id === user.id);
     const mySlots = myAvail.map(a => `${a.date_or_day}_${a.time_slot}`);
 
@@ -247,7 +253,7 @@ async function handleRequest(req, context) {
     await invites.delete(`meeting:${meetingId}`);
     await availability.delete(`meeting:${meetingId}`);
 
-    const indexData = await meetings.get("index", { type: "json" }).catch(() => []);
+    const indexData = asArray(await meetings.get("index", { type: "json" }).catch(() => []));
     const newIndex = indexData.filter(id => id !== meetingId);
     await meetings.setJSON("index", newIndex);
 
