@@ -53,7 +53,7 @@ const MAX_NAME_LENGTH = 100;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Return the application's public base URL, e.g. "https://meetme.pisan.me". */
+/** Return the application's public base URL */
 function getAppUrl(req) {
   return getEnv("APP_URL", new URL(req.url).origin);
 }
