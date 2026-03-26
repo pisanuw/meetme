@@ -101,6 +101,22 @@
       <div class="av-grid" id="av-grid" data-editing="false"></div>
     </div>
 
+    <!-- SLOT DETAIL PANEL -->
+    <div id="slot-detail" style="display:none; margin-top:14px; padding:14px 16px; background:var(--surface); border:1px solid var(--border); border-radius:10px; font-size:0.875rem;">
+      <div id="slot-detail-heading" style="font-weight:700; margin-bottom:10px; color:var(--text);"></div>
+      <div id="slot-detail-body" style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+        <div>
+          <div style="font-size:0.72rem; font-weight:700; color:#2e7d32; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px;">&#x2713; Available</div>
+          <ul id="slot-detail-available" style="margin:0; padding:0; list-style:none;"></ul>
+        </div>
+        <div>
+          <div style="font-size:0.72rem; font-weight:700; color:#c62828; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px;">&#x2717; Not available</div>
+          <ul id="slot-detail-unavailable" style="margin:0; padding:0; list-style:none;"></ul>
+        </div>
+      </div>
+      <div id="slot-detail-no-participants" style="display:none; color:var(--text-muted); font-size:0.82rem; margin-top:2px;">Hover over a time slot to see availability details.</div>
+    </div>
+
     <!-- FINALIZE PANEL -->
     <div class="finalize-panel" id="finalize-panel" style="display:none;">
       <h3>&#x1F4CC; Finalize meeting time</h3>
@@ -139,13 +155,14 @@
 </main>
 
 <footer class="footer">
-  <p>MeetMe &ndash; Find the perfect time together</p>
+  <p>MeetMe &ndash; Find the perfect time together &mdash; <a href="/feedback.html" style="color:inherit;">Send feedback</a></p>
 </footer>
 
 <script src="/static/common.js"></script>
 <script>
 // Meeting data - loaded from API
 let M = null;
+let currentUser = null;  // set after auth, used to update M.participants on save
 let currentView = 'heatmap';
 let currentPerson = 0;
 let isDragging = false;
@@ -160,6 +177,7 @@ let busySlots = new Set();   // slot keys from Google Calendar
 (async () => {
   const user = await requireAuth();
   if (!user) return;
+  currentUser = user;
 
   const params = new URLSearchParams(window.location.search);
   const meetingId = params.get('id');
@@ -261,28 +279,31 @@ let busySlots = new Set();   // slot keys from Google Calendar
     });
   }
 
-  // Participants panel
-  if (M.isCreator) {
+  // Participants panel — visible to all participants, not just the creator
+  if (M.participants.length > 0) {
     document.getElementById('participants-panel').style.display = '';
     document.getElementById('participant-count').textContent = `(${data.invite_count})`;
     const list = document.getElementById('participants-list');
     M.participants.forEach((p, i) => {
+      const clickable = M.isCreator ? `onclick="jumpToParticipant(${i})" style="cursor:pointer;"` : '';
       list.innerHTML += `
-        <div class="participant-row" onclick="jumpToParticipant(${i})">
+        <div class="participant-row" ${clickable}>
           <div class="participant-avatar">${escapeHtml((p.name || '?')[0].toUpperCase())}</div>
           <div class="participant-info">
             <div class="participant-name">${escapeHtml(p.name)}</div>
-            <div class="participant-email text-muted">${escapeHtml(p.email)}</div>
+            ${M.isCreator && p.email ? `<div class="participant-email text-muted">${escapeHtml(p.email)}</div>` : ''}
           </div>
           <div class="participant-slots">
             ${p.responded
-              ? `<span class="badge badge-green">${p.slot_count} slots</span>`
+              ? `<span class="badge badge-green">${p.slot_count} slot${p.slot_count !== 1 ? 's' : ''}</span>`
               : '<span class="badge badge-gray">No response</span>'}
           </div>
         </div>`;
     });
+  }
 
-    // Share control for creator
+  // Share control for creator
+  if (M.isCreator) {
     const shareWrap = document.getElementById('share-controls');
     const shareInput = document.getElementById('share-url');
     const meetingUrl = `${window.location.origin}/meeting.html?id=${encodeURIComponent(M.id)}`;
@@ -500,6 +521,84 @@ function buildGrid() {
       showFinalizePanel(cell.dataset.date, cell.dataset.time);
     });
   }
+
+  // Hover detail panel
+  grid.addEventListener('mouseover', e => {
+    if (currentView !== 'heatmap') return;
+    const cell = e.target.closest('.ag-cell');
+    if (!cell) return;
+    updateSlotDetail(cell.dataset.key, cell.dataset.date, cell.dataset.time);
+  });
+  grid.addEventListener('mouseleave', () => clearSlotDetail());
+}
+
+function updateSlotDetail(key, date, time) {
+  const panel       = document.getElementById('slot-detail');
+  const heading     = document.getElementById('slot-detail-heading');
+  const availList   = document.getElementById('slot-detail-available');
+  const unavailList = document.getElementById('slot-detail-unavailable');
+  const body        = document.getElementById('slot-detail-body');
+  const noParticipants = document.getElementById('slot-detail-no-participants');
+  if (!panel) return;
+
+  const count = M.slotCounts[key] || 0;
+  const label = `${fmtDate(date)} at ${fmtTime(time, date)}`;
+  heading.textContent = `${label} \u2014 ${count}/${M.totalInvited} available`;
+
+  if (!M.participants || M.participants.length === 0) {
+    // Non-creator: no names available, just show count
+    body.style.display = 'none';
+    noParticipants.style.display = '';
+    noParticipants.textContent = `${count} of ${M.totalInvited} participant${M.totalInvited !== 1 ? 's' : ''} available at this time.`;
+    panel.style.display = '';
+    return;
+  }
+
+  body.style.display = 'grid';
+  noParticipants.style.display = 'none';
+  availList.innerHTML = '';
+  unavailList.innerHTML = '';
+
+  const available   = [];
+  const unavailable = [];
+  const noResponse  = [];
+
+  for (const p of M.participants) {
+    if (p.slots.includes(key)) {
+      available.push(p.name);
+    } else if (p.responded) {
+      unavailable.push(p.name);
+    } else {
+      noResponse.push(p.name);
+    }
+  }
+
+  const mkLi = (text, color) => {
+    const li = document.createElement('li');
+    li.style.cssText = `padding:2px 0; color:${color};`;
+    li.textContent = text;
+    return li;
+  };
+
+  if (available.length === 0) {
+    availList.appendChild(mkLi('\u2014', 'var(--text-muted)'));
+  } else {
+    available.forEach(n => availList.appendChild(mkLi(n, 'var(--text)')));
+  }
+
+  if (unavailable.length === 0 && noResponse.length === 0) {
+    unavailList.appendChild(mkLi('\u2014', 'var(--text-muted)'));
+  } else {
+    unavailable.forEach(n => unavailList.appendChild(mkLi(n, 'var(--text)')));
+    noResponse.forEach(n => unavailList.appendChild(mkLi(`${n} (no response)`, 'var(--text-muted)')));
+  }
+
+  panel.style.display = '';
+}
+
+function clearSlotDetail() {
+  const panel = document.getElementById('slot-detail');
+  if (panel) panel.style.display = 'none';
 }
 
 function paintCell(cell) {
@@ -601,6 +700,16 @@ async function saveAvailability() {
   });
   if (ok && data.success) {
     M.slotCounts = data.slot_counts;
+    // Keep M.participants in sync so the "By person" view reflects the current selection
+    if (currentUser && Array.isArray(M.participants)) {
+      const myEmail = currentUser.email;
+      const myEntry = M.participants.find(p => (p.email || '').toLowerCase() === myEmail.toLowerCase());
+      if (myEntry) {
+        myEntry.slots = Array.from(M.mySlots);
+        myEntry.slot_count = myEntry.slots.length;
+        myEntry.responded = myEntry.slot_count > 0;
+      }
+    }
     showSavedIndicator();
   } else if (!ok) {
     showFlash(data.error || 'Failed to save availability. Please try again.', 'danger');
@@ -626,6 +735,7 @@ window.setView = function(view, btn) {
   currentView = view;
   document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
+  if (view !== 'heatmap') clearSlotDetail();
   const editMode = view === 'mine';
   document.getElementById('av-grid').dataset.editing = editMode;
   const editInst = document.getElementById('edit-instructions');

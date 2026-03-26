@@ -1,6 +1,14 @@
-import { getDb, getUserFromRequest, jsonResponse, errorResponse, log, logRequest, safeJson, validateEmail, generateId, persistEvent } from "./utils.mjs";
+import { getDb, getEnv, getUserFromRequest, jsonResponse, errorResponse, log, logRequest, safeJson, validateEmail, generateId, persistEvent, sendEmail } from "./utils.mjs";
 
 const FN = "meetings";
+
+function escapeHtmlEmail(str) {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 export default async (req, context) => {
   try {
@@ -53,7 +61,7 @@ async function handleRequest(req, context) {
 
       if (meeting.creator_id === user.id) {
         myMeetings.push(summary);
-      } else if (meetingInvites.some(i => i.email === user.email)) {
+      } else if (meetingInvites.some(i => (i.email || '').toLowerCase() === user.email.toLowerCase())) {
         invitedMeetings.push(summary);
       }
     }
@@ -140,9 +148,83 @@ async function handleRequest(req, context) {
 
     await invites.setJSON(`meeting:${meetingId}`, meetingInvites);
 
-    log("info", FN, "meeting created", { meetingId, inviteCount: meetingInvites.length - 1 });
+    // Send invitation emails to all invitees (skip creator's own entry)
+    const appUrl = getEnv("APP_URL", new URL(req.url).origin);
+    const meetingUrl = `${appUrl}/meeting.html?id=${encodeURIComponent(meetingId)}`;
+    const emailTracker = getDb("email_records");
+
+    const typeLabel = (meeting.meeting_type || "").replace("_", " ").replace(/\b\w/g, c => c.toUpperCase());
+    const datesText = Array.isArray(meeting.dates_or_days) ? meeting.dates_or_days.join(", ") : "";
+    const timeRange = `${meeting.start_time || "08:00"} – ${meeting.end_time || "20:00"}${meeting.timezone ? ` (${meeting.timezone})` : ""}`;
+
+    const invite_results = [];
+    for (const inv of meetingInvites) {
+      if (inv.email === user.email) continue; // skip creator
+
+      const inviteSubject = `You've been invited to share availability: ${meeting.title}`;
+      const inviteHtml = `
+        <p>Hello${inv.name ? ` ${inv.name}` : ""},</p>
+        <p><strong>${escapeHtmlEmail(user.name || user.email)}</strong> has invited you to coordinate a meeting:</p>
+        <table cellpadding="0" cellspacing="0" style="margin:16px 0;font-size:14px;">
+          <tr><th align="left" style="padding:4px 16px 4px 0;color:#555;white-space:nowrap;">Meeting</th>
+              <td>${escapeHtmlEmail(meeting.title)}</td></tr>
+          ${meeting.description ? `<tr><th align="left" style="padding:4px 16px 4px 0;color:#555;">Description</th><td>${escapeHtmlEmail(meeting.description)}</td></tr>` : ""}
+          <tr><th align="left" style="padding:4px 16px 4px 0;color:#555;white-space:nowrap;">Type</th>
+              <td>${escapeHtmlEmail(typeLabel)}</td></tr>
+          <tr><th align="left" style="padding:4px 16px 4px 0;color:#555;white-space:nowrap;">${meeting.meeting_type === "days_of_week" ? "Days" : "Dates"}</th>
+              <td>${escapeHtmlEmail(datesText)}</td></tr>
+          <tr><th align="left" style="padding:4px 16px 4px 0;color:#555;white-space:nowrap;">Time range</th>
+              <td>${escapeHtmlEmail(timeRange)}</td></tr>
+        </table>
+        <p>
+          <a href="${meetingUrl}" style="display:inline-block;background:#1a73e8;color:white;padding:10px 22px;border-radius:6px;text-decoration:none;font-weight:600;">
+            Open meeting &amp; set availability
+          </a>
+        </p>
+        <p style="color:#888;font-size:12px;">If you weren't expecting this, you can ignore this email.</p>
+      `;
+
+      const inviteText = `${user.name || user.email} invited you to coordinate a meeting: "${meeting.title}".\n\nDates/days: ${datesText}\nTime range: ${timeRange}\n\nOpen the meeting and set your availability:\n${meetingUrl}`;
+
+      const result = await sendEmail({
+        to: inv.email,
+        subject: inviteSubject,
+        html: inviteHtml,
+        text: inviteText,
+        tags: [
+          { name: "type", value: "invite" },
+          { name: "meeting_id", value: meetingId },
+        ],
+      });
+
+      invite_results.push({ email: inv.email, ok: result.ok, error: result.error });
+
+      if (result.ok && result.emailId) {
+        // Store tracking record keyed by Resend email ID for bounce correlation
+        await emailTracker.setJSON(result.emailId, {
+          meeting_id: meetingId,
+          meeting_title: meeting.title,
+          creator_email: user.email,
+          creator_name: user.name,
+          invitee_email: inv.email,
+          sent_at: new Date().toISOString(),
+        }).catch(() => null);
+      }
+
+      if (!result.ok) {
+        log("warn", FN, "invite email failed", { to: inv.email, meetingId, error: result.error });
+      }
+    }
+
+    const failedInvites = invite_results.filter(r => !r.ok);
+    log("info", FN, "meeting created", { meetingId, inviteCount: meetingInvites.length - 1, emailsFailed: failedInvites.length });
     await persistEvent("info", FN, "meeting created", { creator: user.email, meetingId, title });
-    return jsonResponse(200, { success: true, meeting_id: meetingId });
+    return jsonResponse(200, {
+      success: true,
+      meeting_id: meetingId,
+      invite_results,
+      email_failures: failedInvites.map(r => r.email),
+    });
   }
 
   // GET /api/meetings/:id - get meeting detail
@@ -207,7 +289,7 @@ async function handleRequest(req, context) {
     }
 
     let participants = [];
-    if (isCreator) {
+    {
       const usersDb = getDb("users");
       for (const inv of meetingInvites) {
         const ua = allAvail.filter(a => a.user_id === inv.user_id);
@@ -216,13 +298,15 @@ async function handleRequest(req, context) {
           const u = await usersDb.get(inv.email, { type: "json" }).catch(() => null);
           if (u) pName = u.name;
         }
-        participants.push({
-          email: inv.email,
+        const entry = {
           name: pName,
           slot_count: ua.length,
           responded: inv.responded,
           slots: ua.map(a => `${a.date_or_day}_${a.time_slot}`),
-        });
+        };
+        // Include email only for the meeting creator
+        if (isCreator) entry.email = inv.email;
+        participants.push(entry);
       }
     }
 

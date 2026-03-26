@@ -241,3 +241,41 @@ export async function checkRateLimit({ bucket, key, limit, windowMs }) {
 export function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
+
+// ─── Email delivery (Resend) ──────────────────────────────────────────────────
+// Central email sending helper used by all function files.
+// Returns { ok, emailId?, error? }
+
+export async function sendEmail({ to, subject, html, text, replyTo, tags } = {}) {
+  const apiKey = getEnv("RESEND_API_KEY");
+  const fromEmail = getEnv("AUTH_FROM_EMAIL");
+  if (!apiKey || !fromEmail) {
+    return { ok: false, error: "Email delivery is not configured (RESEND_API_KEY / AUTH_FROM_EMAIL missing)." };
+  }
+  try {
+    const payload = {
+      from: fromEmail,
+      to: Array.isArray(to) ? to : [to],
+      subject,
+      html,
+      text,
+    };
+    if (replyTo) payload.reply_to = replyTo;
+    if (tags && tags.length) payload.tags = tags;
+
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      return { ok: false, error: `Resend API error (HTTP ${res.status}): ${body.slice(0, 200)}` };
+    }
+    const data = await res.json().catch(() => ({}));
+    return { ok: true, emailId: data.id };
+  } catch (err) {
+    return { ok: false, error: `Email send failed: ${err.message}` };
+  }
+}

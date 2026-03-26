@@ -45,20 +45,20 @@
       <div class="form-group">
         <label>Meeting type <span class="required">*</span></label>
         <div class="type-toggle">
-          <label class="type-option active" id="tab-dates">
-            <input type="radio" name="meeting_type" value="specific_dates" checked
+          <label class="type-option" id="tab-dates">
+            <input type="radio" name="meeting_type" value="specific_dates"
                    onchange="switchType('specific_dates')"/>
             &#x1F4C5; Specific dates
           </label>
-          <label class="type-option" id="tab-days">
-            <input type="radio" name="meeting_type" value="days_of_week"
+          <label class="type-option active" id="tab-days">
+            <input type="radio" name="meeting_type" value="days_of_week" checked
                    onchange="switchType('days_of_week')"/>
             &#x1F5D3; Days of week
           </label>
         </div>
       </div>
 
-      <div id="panel-specific-dates" class="form-group">
+      <div id="panel-specific-dates" class="form-group" style="display:none;">
         <label>Select dates</label>
         <div class="date-picker-wrapper">
           <input type="text" id="date-input" class="form-control"
@@ -170,7 +170,7 @@
 </main>
 
 <footer class="footer">
-  <p>MeetMe &ndash; Find the perfect time together</p>
+  <p>MeetMe &ndash; Find the perfect time together &mdash; <a href="/feedback.html" style="color:inherit;">Send feedback</a></p>
 </footer>
 
 <script src="/static/common.js"></script>
@@ -211,10 +211,15 @@ for (let h = 6; h <= 24; h++) {
 
 // Day checkboxes
 const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+const defaultDays = new Set(['Monday','Tuesday','Wednesday','Thursday','Friday']);
 const dayContainer = document.getElementById('day-checkboxes');
 days.forEach(day => {
-  dayContainer.innerHTML += `<label class="day-chip"><input type="checkbox" name="days_of_week" value="${day}"/>${day.slice(0,3)}</label>`;
+  const checked = defaultDays.has(day) ? ' checked' : '';
+  dayContainer.innerHTML += `<label class="day-chip"><input type="checkbox" name="days_of_week" value="${day}"${checked}/>${day.slice(0,3)}</label>`;
 });
+
+// Initialize the correct panel visibility on load
+switchType('days_of_week');
 
 // Type switch
 function switchType(type) {
@@ -334,7 +339,17 @@ document.getElementById('create-form').addEventListener('submit', async (e) => {
     }),
   });
   if (ok && data.success) {
-    window.location.href = `/meeting.html?id=${data.meeting_id}`;
+    const failures = data.email_failures || [];
+    if (failures.length) {
+      showFlash(
+        `Meeting created! However, invitation emails could not be sent to: ${failures.join(', ')}. ` +
+        `These participants can still join via the sharing link.`,
+        'warning'
+      );
+      setTimeout(() => { window.location.href = `/meeting.html?id=${data.meeting_id}`; }, 3500);
+    } else {
+      window.location.href = `/meeting.html?id=${data.meeting_id}`;
+    }
   } else {
     showFlash(data.error || `Server error (${status}) — check Netlify function logs.`, 'danger');
   }

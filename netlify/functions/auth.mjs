@@ -34,7 +34,7 @@ async function linkPendingInvites(emailKey, user) {
   const invites = getDb("invites");
   const asArray = (value) => Array.isArray(value) ? value : [];
   const pendingList = await invites.get(`pending:${emailKey}`, { type: "json" }).catch(() => null);
-  if (!pendingList || !Array.isArray(pendingList)) return;
+  if (!pendingList || !Array.isArray(pendingList) || pendingList.length === 0) return;
 
   for (const meetingId of pendingList) {
     const meetingInvites = asArray(await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
@@ -44,6 +44,9 @@ async function linkPendingInvites(emailKey, user) {
     await invites.setJSON(`meeting:${meetingId}`, updated);
     log("info", FN, "linked pending invite", { email: emailKey, meetingId });
   }
+
+  // Clear the pending list so it is not processed again on subsequent logins
+  await invites.delete(`pending:${emailKey}`).catch(() => null);
 }
 
 async function getOrCreateUser(email, preferredName = "") {
@@ -198,6 +201,10 @@ async function handleAuth(req, context) {
       log("error", FN, "getOrCreateUser returned null during magic link verify", { email: payload.email });
       return redirectResponse("/?error=invalid-link");
     }
+
+    // Always attempt to link pending invites at verify time — handles the case where
+    // the user was invited to a new meeting after their account was already created.
+    await linkPendingInvites(payload.email, user);
 
     const appToken = createToken(user);
     log("info", FN, "magic link sign-in successful", { email: user.email, isNew });
@@ -612,6 +619,67 @@ async function handleAuth(req, context) {
   if (path === "logout") {
     log("info", FN, "user logged out");
     return jsonResponse(200, { success: true }, { "Set-Cookie": clearCookie("token") });
+  }
+
+  if (path === "feedback") {
+    const senderName    = (body.name    || "").trim();
+    const senderEmail   = (body.email   || "").trim();
+    const feedbackType  = (body.type    || "other").trim();
+    const message       = (body.message || "").trim();
+
+    if (!senderEmail || !senderEmail.includes("@")) {
+      return errorResponse(400, "A valid email address is required.");
+    }
+    if (!message) {
+      return errorResponse(400, "Message is required.");
+    }
+
+    const adminEmails = getEnv("ADMIN_EMAILS", "").split(",").map(e => e.trim()).filter(Boolean);
+    const apiKey    = getEnv("RESEND_API_KEY");
+    const fromEmail = getEnv("AUTH_FROM_EMAIL");
+
+    if (!apiKey || !fromEmail || adminEmails.length === 0) {
+      log("warn", FN, "feedback not sent: email not configured or no admin emails", { adminEmails });
+      return errorResponse(500, "Feedback email delivery is not configured on this server.");
+    }
+
+    const typeLabels = { bug: "Bug Report", feature: "Feature Request", question: "Question", other: "General Feedback" };
+    const typeLabel  = typeLabels[feedbackType] || "Feedback";
+    const subject    = `[MeetMe Feedback] ${typeLabel} from ${senderName || senderEmail}`;
+    const html = `
+      <h2 style="margin:0 0 16px">MeetMe Feedback &mdash; ${typeLabel}</h2>
+      <table style="font-size:14px;border-collapse:collapse;width:100%">
+        <tr><th style="text-align:left;padding:6px 12px 6px 0;color:#555">From</th>
+            <td style="padding:6px 0">${senderName ? `${senderName} &lt;${senderEmail}&gt;` : senderEmail}</td></tr>
+        <tr><th style="text-align:left;padding:6px 12px 6px 0;color:#555">Type</th>
+            <td style="padding:6px 0">${typeLabel}</td></tr>
+      </table>
+      <hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb">
+      <h3 style="margin:0 0 8px;font-size:14px;color:#555">Message</h3>
+      <p style="white-space:pre-wrap;font-size:14px;line-height:1.6">${message.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</p>
+    `;
+
+    const text = `MeetMe Feedback (${typeLabel})\nFrom: ${senderName || senderEmail} <${senderEmail}>\n\n${message}`;
+
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ from: fromEmail, to: adminEmails, reply_to: senderEmail, subject, html, text }),
+      });
+      if (!res.ok) {
+        const body2 = await res.text().catch(() => "");
+        log("error", FN, "feedback email failed", { status: res.status, body: body2 });
+        return errorResponse(500, `Could not send feedback email (HTTP ${res.status}).`);
+      }
+    } catch (err) {
+      log("error", FN, "feedback email threw", { error: err.message });
+      return errorResponse(500, `Could not send feedback: ${err.message}`);
+    }
+
+    log("info", FN, "feedback sent", { from: senderEmail, type: feedbackType });
+    await persistEvent("info", FN, "feedback received", { from: senderEmail, type: feedbackType });
+    return jsonResponse(200, { success: true, message: "Feedback sent. Thank you!" });
   }
 
   return errorResponse(404, `Auth route '${path}' not found.`);
