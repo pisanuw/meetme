@@ -115,7 +115,7 @@ function renderMeetings(containerId, meetings, isOwner) {
       ${m.is_finalized ? `<div class="finalized-info">&#x1F4C5; <strong>${escapeHtml(m.finalized_date || '')}</strong> at <strong>${escapeHtml(m.finalized_slot || '')}</strong> (${m.duration_minutes} min)</div>` : ''}
       <div class="meeting-actions">
         <a href="/meeting.html?id=${m.id}" class="btn btn-sm btn-primary">${m.is_finalized ? 'View' : isOwner ? 'View' : 'Add Availability'}</a>
-        ${isOwner ? `<button class="btn btn-sm btn-danger" onclick="deleteMeeting('${m.id}')">Delete</button>` : ''}
+        ${isOwner ? `<button class="btn btn-sm btn-danger" onclick="deleteMeeting('${m.id}')">Delete</button>` : `<button class="btn btn-sm btn-danger" onclick="removeMeeting('${m.id}')">Remove</button>`}
       </div>
     </div>`;
   }
@@ -130,6 +130,16 @@ async function deleteMeeting(id) {
     window.location.reload();
   } else {
     showFlash(data.error || `Failed to delete meeting (HTTP ${status}).`, 'danger');
+  }
+}
+
+async function removeMeeting(id) {
+  if (!confirm('Remove this meeting from your dashboard?')) return;
+  const { ok, status, data } = await apiFetch(`/api/meetings/${id}/leave`, { method: 'POST' });
+  if (ok) {
+    window.location.reload();
+  } else {
+    showFlash(data.error || `Failed to remove meeting (HTTP ${status}).`, 'danger');
   }
 }
 </script>

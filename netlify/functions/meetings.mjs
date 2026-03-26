@@ -346,6 +346,34 @@ async function handleRequest(req, context) {
     return jsonResponse(200, { success: true });
   }
 
+  // POST /api/meetings/:id/leave
+  if (req.method === "POST" && pathParts.length === 2 && pathParts[1] === "leave") {
+    const meetingId = pathParts[0];
+    log("info", FN, "leave meeting", { meetingId, userId: user.id });
+
+    const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
+    if (!meeting) return errorResponse(404, `Meeting '${meetingId}' not found.`);
+    if (meeting.creator_id === user.id) return errorResponse(403, "Meeting creators cannot leave their own meeting. Use delete instead.");
+
+    const meetingInvites = asArray(await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
+    const userEmail = user.email.toLowerCase();
+    const isInvited = meetingInvites.some(i => (i.email || '').toLowerCase() === userEmail);
+    if (!isInvited) return errorResponse(403, "You are not an invitee of this meeting.");
+
+    // Remove the user's invite entry
+    const updatedInvites = meetingInvites.filter(i => (i.email || '').toLowerCase() !== userEmail);
+    await invites.setJSON(`meeting:${meetingId}`, updatedInvites);
+
+    // Also remove the user's availability entries for this meeting
+    const allAvail = asArray(await availability.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
+    const updatedAvail = allAvail.filter(a => a.user_id !== user.id);
+    await availability.setJSON(`meeting:${meetingId}`, updatedAvail);
+
+    log("info", FN, "user left meeting", { meetingId, userId: user.id });
+    await persistEvent("info", FN, "user left meeting", { meetingId, email: user.email });
+    return jsonResponse(200, { success: true });
+  }
+
   log("warn", FN, "unmatched route", { method: req.method, pathParts });
   return errorResponse(404, `Route not found.`);
 }
