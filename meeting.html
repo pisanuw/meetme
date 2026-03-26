@@ -645,6 +645,8 @@ function repaintAll() {
 }
 
 function attachGridEvents(grid) {
+  let lastTouchTime = 0;
+
   function startDrag(cell) {
     if (currentView !== 'mine') return;
     if (!cell || !cell.classList.contains('ag-cell')) return;
@@ -664,6 +666,7 @@ function attachGridEvents(grid) {
   }
 
   grid.addEventListener('mousedown', e => {
+    if (Date.now() - lastTouchTime < 500) return; // suppress synthetic mouse event after touch
     const cell = e.target.closest('.ag-cell');
     if (cell) { startDrag(cell); e.preventDefault(); }
   });
@@ -674,10 +677,12 @@ function attachGridEvents(grid) {
   });
   document.addEventListener('mouseup', endDrag);
   grid.addEventListener('touchstart', e => {
+    lastTouchTime = Date.now();
+    e.preventDefault(); // prevent synthetic mousedown/click firing after touch
     const touch = e.touches[0];
     const cell = document.elementFromPoint(touch.clientX, touch.clientY)?.closest?.('.ag-cell');
     if (cell) startDrag(cell);
-  }, { passive: true });
+  }); // intentionally not passive so preventDefault() works
   grid.addEventListener('touchmove', e => {
     if (!isDragging) return;
     const touch = e.touches[0];
