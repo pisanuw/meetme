@@ -1,15 +1,32 @@
-import { getDb, getEnv, getUserFromRequest, jsonResponse, errorResponse, log, logRequest, safeJson, validateEmail, generateId, persistEvent, sendEmail } from "./utils.mjs";
+/**
+ * meetings.mjs — CRUD operations for meeting records
+ *
+ * Routes handled:
+ *   GET  /api/meetings              — list the caller's created and invited meetings
+ *   POST /api/meetings              — create a new meeting (and send invitation emails)
+ *   GET  /api/meetings/:id          — get full meeting detail including availability grid
+ *   POST /api/meetings/:id/delete   — delete a meeting (creator only)
+ *   POST /api/meetings/:id/leave    — remove yourself from a meeting (invitee only)
+ *
+ * Data model (Netlify Blobs):
+ *   meetings:"index"          — string[] of all meeting IDs
+ *   meetings:<id>             — Meeting object
+ *   invites:"meeting:<id>"    — Invite[] for that meeting
+ *   invites:"pending:<email>" — string[] of meeting IDs awaiting a not-yet-registered user
+ *   availability:"meeting:<id>" — AvailabilitySlot[] (one entry per person per slot)
+ *   email_records:<resend_id> — tracking record used by the bounce webhook
+ */
+import {
+  getDb, getEnv, getUserFromRequest, jsonResponse, errorResponse,
+  log, logRequest, safeJson, validateEmail, generateId,
+  persistEvent, sendEmail, asArray, escapeHtml,
+} from "./utils.mjs";
 
 const FN = "meetings";
 
-function escapeHtmlEmail(str) {
-  return String(str || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
+// Top-level Netlify Function entry point. Wraps everything in a try/catch so
+// an unexpected exception always returns a clean JSON error instead of a
+// platform-level 500 with no body.
 export default async (req, context) => {
   try {
     return await handleRequest(req, context);
@@ -22,8 +39,7 @@ export default async (req, context) => {
 async function handleRequest(req, context) {
   logRequest(FN, req);
 
-  const asArray = (value) => Array.isArray(value) ? value : [];
-
+  // Require a valid session cookie for every endpoint in this function.
   const user = getUserFromRequest(req);
   if (!user) return errorResponse(401, "Not authenticated. Please sign in.");
 
@@ -36,11 +52,13 @@ async function handleRequest(req, context) {
 
   // GET /api/meetings - list dashboard data
   if (req.method === "GET" && pathParts.length === 0) {
+    // Defensively read the index: if the blob is absent or malformed,
+    // treat it as an empty list. asArray() handles both cases cleanly.
     const rawIndexData = await meetings.get("index", { type: "json" }).catch(() => []);
-    const indexData = asArray(rawIndexData);
     if (!Array.isArray(rawIndexData)) {
       log("warn", FN, "meetings index is malformed; expected array", { type: typeof rawIndexData });
     }
+    const indexData = asArray(rawIndexData);
 
     const myMeetings = [];
     const invitedMeetings = [];
@@ -148,7 +166,11 @@ async function handleRequest(req, context) {
 
     await invites.setJSON(`meeting:${meetingId}`, meetingInvites);
 
-    // Send invitation emails to all invitees (skip creator's own entry)
+    // ── Send invitation emails ─────────────────────────────────────────────
+    // For each invitee (including the creator), send an HTML invitation email.
+    // We store a tracking record keyed by the Resend email ID so the bounce
+    // webhook (webhooks.mjs) can look up which meeting was affected and
+    // notify the creator.
     const appUrl = getEnv("APP_URL", new URL(req.url).origin);
     const meetingUrl = `${appUrl}/meeting.html?id=${encodeURIComponent(meetingId)}`;
     const emailTracker = getDb("email_records");
@@ -159,22 +181,22 @@ async function handleRequest(req, context) {
 
     const invite_results = [];
     for (const inv of meetingInvites) {
-      if (inv.email === user.email) continue; // skip creator
-
       const inviteSubject = `You've been invited to share availability: ${meeting.title}`;
+      // Build the email body. escapeHtml() prevents XSS if any user-supplied
+      // text (title, name, description) were rendered in an HTML context.
       const inviteHtml = `
         <p>Hello${inv.name ? ` ${inv.name}` : ""},</p>
-        <p><strong>${escapeHtmlEmail(user.name || user.email)}</strong> has invited you to coordinate a meeting:</p>
+        <p><strong>${escapeHtml(user.name || user.email)}</strong> has invited you to coordinate a meeting:</p>
         <table cellpadding="0" cellspacing="0" style="margin:16px 0;font-size:14px;">
           <tr><th align="left" style="padding:4px 16px 4px 0;color:#555;white-space:nowrap;">Meeting</th>
-              <td>${escapeHtmlEmail(meeting.title)}</td></tr>
-          ${meeting.description ? `<tr><th align="left" style="padding:4px 16px 4px 0;color:#555;">Description</th><td>${escapeHtmlEmail(meeting.description)}</td></tr>` : ""}
+              <td>${escapeHtml(meeting.title)}</td></tr>
+          ${meeting.description ? `<tr><th align="left" style="padding:4px 16px 4px 0;color:#555;">Description</th><td>${escapeHtml(meeting.description)}</td></tr>` : ""}
           <tr><th align="left" style="padding:4px 16px 4px 0;color:#555;white-space:nowrap;">Type</th>
-              <td>${escapeHtmlEmail(typeLabel)}</td></tr>
+              <td>${escapeHtml(typeLabel)}</td></tr>
           <tr><th align="left" style="padding:4px 16px 4px 0;color:#555;white-space:nowrap;">${meeting.meeting_type === "days_of_week" ? "Days" : "Dates"}</th>
-              <td>${escapeHtmlEmail(datesText)}</td></tr>
+              <td>${escapeHtml(datesText)}</td></tr>
           <tr><th align="left" style="padding:4px 16px 4px 0;color:#555;white-space:nowrap;">Time range</th>
-              <td>${escapeHtmlEmail(timeRange)}</td></tr>
+              <td>${escapeHtml(timeRange)}</td></tr>
         </table>
         <p>
           <a href="${meetingUrl}" style="display:inline-block;background:#1a73e8;color:white;padding:10px 22px;border-radius:6px;text-decoration:none;font-weight:600;">
@@ -218,7 +240,12 @@ async function handleRequest(req, context) {
 
     const failedInvites = invite_results.filter(r => !r.ok);
     log("info", FN, "meeting created", { meetingId, inviteCount: meetingInvites.length - 1, emailsFailed: failedInvites.length });
-    await persistEvent("info", FN, "meeting created", { creator: user.email, meetingId, title });
+    await persistEvent("info", FN, "meeting created", {
+      creator_email: user.email,
+      creator_name: user.name || user.email,
+      meeting_id: meetingId,
+      meeting_name: title,
+    });
     return jsonResponse(200, {
       success: true,
       meeting_id: meetingId,
@@ -269,15 +296,20 @@ async function handleRequest(req, context) {
     }
 
     const allAvail = asArray(await availability.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
+
+    // Pull out only this user's selected slots for pre-populating the editor.
     const myAvail = allAvail.filter(a => a.user_id === user.id);
     const mySlots = myAvail.map(a => `${a.date_or_day}_${a.time_slot}`);
 
+    // Aggregate slot counts across all participants to power the heatmap grid.
     const slotCounts = {};
     for (const a of allAvail) {
       const k = `${a.date_or_day}_${a.time_slot}`;
       slotCounts[k] = (slotCounts[k] || 0) + 1;
     }
 
+    // Build the ordered list of 15-minute time slots between the meeting's
+    // start and end times. The front-end uses this to render column headers.
     const timeSlots = [];
     const [sh, sm] = meeting.start_time.split(":").map(Number);
     const [eh, em] = meeting.end_time.split(":").map(Number);
@@ -288,26 +320,27 @@ async function handleRequest(req, context) {
       cur += 15;
     }
 
-    let participants = [];
-    {
-      const usersDb = getDb("users");
-      for (const inv of meetingInvites) {
-        const ua = allAvail.filter(a => a.user_id === inv.user_id);
-        let pName = inv.name || inv.email;
-        if (inv.user_id) {
-          const u = await usersDb.get(inv.email, { type: "json" }).catch(() => null);
-          if (u) pName = u.name;
-        }
-        const entry = {
-          name: pName,
-          slot_count: ua.length,
-          responded: inv.responded,
-          slots: ua.map(a => `${a.date_or_day}_${a.time_slot}`),
-        };
-        // Include email only for the meeting creator
-        if (isCreator) entry.email = inv.email;
-        participants.push(entry);
+    // Build the participants list for the "By person" panel.
+    // We re-read the user record to pick up any name changes since the invite
+    // was created. Email addresses are only sent to the creator to avoid
+    // exposing participant contact details to other attendees.
+    const usersDb = getDb("users");
+    const participants = [];
+    for (const inv of meetingInvites) {
+      const ua = allAvail.filter(a => a.user_id === inv.user_id);
+      let pName = inv.name || inv.email;
+      if (inv.user_id) {
+        const u = await usersDb.get(inv.email, { type: "json" }).catch(() => null);
+        if (u) pName = u.name;
       }
+      const entry = {
+        name: pName,
+        slot_count: ua.length,
+        responded: inv.responded,
+        slots: ua.map(a => `${a.date_or_day}_${a.time_slot}`),
+      };
+      if (isCreator) entry.email = inv.email;
+      participants.push(entry);
     }
 
     return jsonResponse(200, {

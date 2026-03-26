@@ -836,8 +836,17 @@ window.confirmFinalize = async function() {
       note,
     }),
   });
-  if (ok && data.success) window.location.reload();
-  else showFlash(data.error || 'Failed to finalize. Please try again.', 'danger');
+  if (ok && data.success) {
+    const sent = Number(data.sent_count || 0);
+    const failed = Number(data.failed_count || 0);
+    const msg = failed > 0
+      ? `Meeting finalized. Sent ${sent} email${sent === 1 ? '' : 's'} (${failed} failed).`
+      : `Meeting finalized. Sent ${sent} email${sent === 1 ? '' : 's'}.`;
+    showFlash(msg, failed > 0 ? 'warning' : 'success');
+    setTimeout(() => window.location.reload(), 1400);
+  } else {
+    showFlash(data.error || 'Failed to finalize. Please try again.', 'danger');
+  }
 };
 </script>
 </body>

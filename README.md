@@ -1,129 +1,220 @@
 # MeetMe — Joint Meeting Finder
 
-A Flask web application for finding the perfect meeting time across your whole team.
+A serverless web application for finding the perfect meeting time across your whole team.
+Built with Netlify Functions (Node.js ES modules) and Netlify Blobs for storage — no
+traditional server or database required.
 
 ## Features
 
 - **Passwordless authentication** – users sign in via email magic link or Google OAuth
 - **Two scheduling modes** – pick specific calendar dates, or generic days of the week
-- **Visual 30-minute availability grid** – click and drag to mark availability fast
+- **Visual 15-minute availability grid** – click and drag to mark availability fast
 - **Group heatmap** – see at a glance when most people are free (white → dark green)
-- **Per-person breakdown** – meeting creator can see exactly how many slots each person has given
+- **Slot detail panel** – hover any heatmap cell to see exactly who is available
+- **Per-person breakdown** – all participants can inspect each other's slot counts
+- **Reminder emails** – creator can nudge non-responders with one click
 - **Finalization** – creator picks the time, sets duration, adds a note
-- **iCalendar download** – all participants can download a `.ics` calendar invite
+- **Google Calendar integration** – connect your calendar to see conflicts while filling in availability
+- **Bounce notifications** – creator is notified by email when an invitation can't be delivered
+- **Admin panel** – view site-wide stats, user list, meeting list, and audit log
+- **Feedback page** – users can submit bug reports and feature requests
 
 ---
 
-## Quick Start
+## Quick Start (local development)
 
-### 1. Install dependencies
+### 1. Prerequisites
 
-```bash
-cd meeting_app
-pip install -r requirements.txt
-```
+- [Node.js](https://nodejs.org/) 18 or later
+- [Netlify CLI](https://docs.netlify.com/cli/get-started/): `npm install -g netlify-cli`
 
-### 2. Run the app
+### 2. Install dependencies
 
 ```bash
-python app.py
+npm install
 ```
 
-Open **http://localhost:5000** in your browser.
+### 3. Configure environment
 
-### 3. First use
+```bash
+cp .env.example .env
+# Edit .env and fill in real values (see Configuration section below)
+```
 
-1. Register an account at `/register`
-2. Create a meeting → choose specific dates or days of the week
-3. Enter invited email addresses (one per line)
-4. Share the meeting URL with invitees – they register/login and fill in their availability
-5. As the creator, view the heatmap, inspect per-person availability, then click any time slot in the heatmap to finalize
+### 4. Run locally
+
+```bash
+netlify dev
+```
+
+Open **http://localhost:8888** in your browser.
+
+### 5. First use
+
+1. Go to `http://localhost:8888` and request a magic link sign-in
+2. Check the Netlify dev console — the magic link URL is printed there in development
+3. Create a meeting → choose specific dates or days of the week
+4. Enter invited email addresses (one per line)
+5. Share the meeting URL with invitees — they sign in and fill in their availability
+6. As the creator, view the heatmap, inspect per-person availability, then click any slot to finalize
 
 ---
 
 ## Project Structure
 
 ```
-meeting_app/
-├── app.py                  # Flask app, models, routes
-├── requirements.txt
-├── README.md
-├── templates/
-│   ├── base.html           # Navbar, flash messages
-│   ├── login.html
-│   ├── register.html
-│   ├── dashboard.html
-│   ├── create_meeting.html # Date picker + day selector
-│   └── meeting.html        # Availability grid page
-└── static/
-    ├── style.css           # All styles (no external dependencies)
-    └── app.js              # Grid rendering, drag selection, heatmap
+meetme/
+├── netlify.toml              # Build config and Netlify Function settings
+├── package.json              # Node dependencies
+├── .env.example              # Template for local environment variables
+│
+├── index.html                # Sign-in page (magic link / Google OAuth)
+├── register.html             # Alternative entry point (redirects to index)
+├── dashboard.html            # Lists user's meetings
+├── create-meeting.html       # New meeting form
+├── meeting.html              # Availability grid, heatmap, finalize
+├── email-sent.html           # Shown after requesting a magic link
+├── profile.html              # Edit name, timezone, connect Google Calendar
+├── admin.html                # Admin-only: stats, users, meetings, event log
+├── feedback.html             # User feedback form
+│
+├── static/
+│   ├── common.js             # Shared JS helpers (apiFetch, requireAuth, showFlash)
+│   └── style.css             # All styles (no external CSS dependencies)
+│
+└── netlify/
+    └── functions/
+        ├── utils.mjs          # Shared helpers: env, JWT, crypto, logging, email, DB
+        ├── auth.mjs           # /api/auth/* — sign-in, OAuth, profile, logout, feedback
+        ├── meetings.mjs       # /api/meetings/* — create, list, detail, delete, leave
+        ├── meeting-actions.mjs # /api/meeting/* — availability, finalize, remind
+        ├── calendar.mjs       # /api/calendar/* — Google Calendar free/busy
+        ├── admin.mjs          # /api/admin/* — admin panel data
+        └── webhooks.mjs       # /api/webhooks/* — Resend bounce/complaint handler
 ```
 
 ---
 
 ## Configuration
 
-Set these environment variables before running in production:
+Set these environment variables in Netlify (Site configuration → Environment variables)
+and in your local `.env` file for development:
 
-| Variable     | Default                      | Purpose                  |
-|--------------|------------------------------|--------------------------|
-| `JWT_SECRET` | `meetme-dev-secret-change-in-prod` | JWT signing secret |
-| `APP_URL` | inferred from request | Public app URL used in sign-in links |
-| `RESEND_API_KEY` | _(required for magic-link email)_ | Resend API key for delivering login links |
-| `AUTH_FROM_EMAIL` | _(required for magic-link email)_ | Verified sender email/domain in Resend |
-| `GOOGLE_CLIENT_ID` | _(required for Google sign-in)_ | OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | _(required for Google sign-in)_ | OAuth client secret |
+| Variable | Default | Purpose |
+|---|---|---|
+| `JWT_SECRET` | _(required)_ | Secret used to sign session JWTs — use a long random string |
+| `TOKEN_ENCRYPTION_KEY` | _(required)_ | Key for AES-256-GCM encryption of stored OAuth tokens — use a different long random string |
+| `APP_URL` | inferred from request | Public base URL, e.g. `https://your-site.netlify.app` |
+| `RESEND_API_KEY` | _(required for email)_ | API key from [resend.com](https://resend.com) |
+| `AUTH_FROM_EMAIL` | _(required for email)_ | Verified sender address, e.g. `MeetMe <noreply@yourdomain.com>` |
+| `RESEND_WEBHOOK_SECRET` | _(optional)_ | Shared secret for the Resend bounce/complaint webhook |
+| `ADMIN_EMAILS` | _(optional)_ | Comma-separated admin addresses, e.g. `alice@example.com,bob@example.com` |
+| `GOOGLE_CLIENT_ID` | _(optional)_ | OAuth 2.0 client ID (required for Google sign-in and Calendar) |
+| `GOOGLE_CLIENT_SECRET` | _(optional)_ | OAuth 2.0 client secret |
+
+Generate strong secrets with:
+```bash
+openssl rand -hex 32
+```
 
 Use `.env.example` as the template for local development values.
 
-### Netlify Auth Setup Checklist
+### Netlify Setup Checklist
 
-1. In Netlify, open **Site configuration → Environment variables** and set all variables listed above.
-2. In Google Cloud Console, create an OAuth 2.0 Web Client and add this **Authorized redirect URI**:
-  - `https://<your-netlify-domain>/api/auth/google/callback`
-3. In Resend, verify your sending domain/email and set `AUTH_FROM_EMAIL` to that verified sender.
-4. Deploy the site and test:
-  - Request an email sign-in link from `/`
-  - Sign in with Google from `/` or `/register.html`
-5. For local testing with Netlify dev, copy `.env.example` to `.env` and fill in real values.
+1. In Netlify, open **Site configuration → Environment variables** and set all variables above.
+2. In Google Cloud Console, create an OAuth 2.0 Web Client and add these **Authorized redirect URIs**:
+   - `https://<your-netlify-domain>/api/auth/google/callback`
+   - `https://<your-netlify-domain>/api/auth/google/calendar-callback`
+3. In Resend, verify your sending domain and set `AUTH_FROM_EMAIL` to that verified sender.
+4. _(Optional)_ In Resend → Webhooks, add endpoint:
+   - URL: `https://<your-netlify-domain>/api/webhooks/resend?secret=<RESEND_WEBHOOK_SECRET>`
+   - Subscribe to: `email.bounced`, `email.complained`
+5. Deploy and test:
+   - Request a magic link from `/`
+   - Open `/api/auth/health` to verify all env vars are detected
+
+### Should do before production launch
+
+These are strongly recommended hardening steps before opening the app to real users:
+
+1. **Add and verify a custom 404 page**
+  - `404.html` should exist at the site root (included in this repo)
+  - After deploy, open a non-existent URL like `/does-not-exist` and verify the custom page renders
+
+2. **Verify bounce/complaint webhook behavior end-to-end**
+  - In Resend → Webhooks, ensure your endpoint is configured with `RESEND_WEBHOOK_SECRET`
+  - Confirm subscriptions include `email.bounced` and `email.complained`
+  - Trigger a test event and verify creator notification + event log entry in `/admin.html`
+
+3. **Enable production observability**
+  - Enable Netlify Function logs monitoring (or a log drain/third-party monitor)
+  - Set alerting for repeated `error` events from `/api/auth/*`, `/api/meetings/*`, and `/api/webhooks/*`
+  - Review `/admin.html` event logs regularly during the first week after launch
 
 ### Troubleshooting Auth
 
 - **Google error: `redirect_uri_mismatch`**
-  - Ensure the OAuth client in Google Cloud has this exact URI in **Authorized redirect URIs**:
-    - `https://<your-netlify-domain>/api/auth/google/callback`
-  - Make sure `APP_URL` in Netlify matches your public site URL (same protocol/domain).
-  - After changing Google OAuth settings, wait a minute and retry sign-in.
+  - Ensure the Google Cloud OAuth client has the exact redirect URI above in **Authorized redirect URIs**.
+  - Make sure `APP_URL` in Netlify matches your public site URL exactly (same protocol and domain).
+  - After changing Google OAuth settings, wait a minute and retry.
 
-- **Google sign-in returns to `/` with auth error**
+- **Google sign-in returns to `/` with an error**
   - Confirm both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set in Netlify.
   - Verify the credentials belong to the same OAuth app where the redirect URI was added.
-  - If you rotated secrets, trigger a new deploy so functions use updated values.
-
-- **Resend error sending magic link (sender/domain)**
-  - Verify your sending domain or sender identity in Resend.
-  - Set `AUTH_FROM_EMAIL` to that verified sender (for example: `MeetMe <noreply@yourdomain.com>`).
-  - Confirm `RESEND_API_KEY` is valid and has permission to send from that domain.
+  - If you rotated secrets, redeploy so the functions pick up the updated values.
 
 - **Magic link email not received**
   - Check spam/junk first.
-  - Confirm `APP_URL` points to the same deployed site users are visiting.
-  - Request a fresh link; each link expires quickly and is single-use.
+  - Verify your Resend sending domain and confirm `AUTH_FROM_EMAIL` matches.
+  - Each link expires in 15 minutes and can only be used once — request a fresh one.
 
 - **Check which env vars are missing**
   - Open `/api/auth/health` on your deployed site.
-  - The response shows only presence/absence for required auth variables (no secret values).
-  - Use the `missing` list to update Netlify environment variables, then redeploy.
+  - The response shows only presence/absence (never secret values).
+  - Use the `missing` list to identify what to add in Netlify, then redeploy.
 
-For production, also switch `SQLALCHEMY_DATABASE_URI` to PostgreSQL and use a proper WSGI server (gunicorn, etc.).
+### Docker / Dev Container Troubleshooting
+
+If you run `netlify dev` inside Docker or a VS Code dev container, you may see
+errors like:
+
+- `Function auth has returned an error: connect ECONNREFUSED 127.0.0.1:<random-port>`
+- `this function has crashed`
+
+In this scenario, function code may execute and log normally, but the local
+Netlify function runtime callback can fail in the container network namespace.
+
+Recommended approach:
+
+1. **Run Netlify dev on the host machine** (outside Docker) for full function testing.
+2. Keep editing code in the container if preferred, but use host `netlify dev` for auth/function flows.
+3. For local Google OAuth testing, set:
+   - `APP_URL=http://localhost:8888`
+   - Redirect URIs in Google Cloud Console:
+     - `http://localhost:8888/api/auth/google/callback`
+     - `http://localhost:8888/api/auth/google/calendar-callback`
+
+If you must run inside Docker, use deployed Netlify preview/production for
+auth/function validation and limit container-local checks to static/UI behavior.
 
 ---
 
 ## How the Grid Works
 
 - **Group heatmap view** — cell color represents the fraction of invited participants who are free
-  - ⬜ No one → 🟩 Light green (few) → 🟢 Dark green (everyone)
-- **My availability view** — click or click-and-drag to select/deselect time blocks; saves automatically
-- **By-person view** (creator only) — use the dropdown to inspect a single participant's slots
-- **Finalize** (creator only) — while in heatmap view, click any cell to open the finalize panel; set duration, add a note, confirm. All participants can then download the `.ics` invite.
+  - ⬜ No one available → 🟩 Some people → 🟢 Everyone available
+  - Hover a cell to see exactly who is available and who hasn't responded
+- **My availability view** — click or click-and-drag to select/deselect 15-minute blocks; saves on button click
+- **By-person view** — click any participant's row to see only their availability overlaid on the grid
+- **Finalize** (creator only) — while in heatmap view, click any cell to open the finalize panel; set duration, add a note, confirm
+
+---
+
+## Security Notes
+
+- Sessions are stored as signed JWTs in an `HttpOnly` cookie (not accessible from JavaScript)
+- Google OAuth tokens are encrypted at rest with AES-256-GCM using `TOKEN_ENCRYPTION_KEY`
+- OAuth CSRF protection is implemented via a signed JWT state parameter + cookie comparison
+- Magic links are single-use and expire after 15 minutes
+- All auth endpoints have per-IP and per-email rate limiting
+- Email addresses of participants are only visible to the meeting creator

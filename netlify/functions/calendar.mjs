@@ -1,6 +1,20 @@
+/**
+ * calendar.mjs — Google Calendar free/busy integration
+ *
+ * Routes handled:
+ *   GET /api/calendar/busy?meeting_id=X
+ *       Returns the caller's busy intervals (from Google Calendar) that overlap
+ *       with the meeting's dates/days and time range so the front-end can
+ *       pre-highlight conflict slots in the availability grid.
+ *
+ * Requires the user to have completed the Google Calendar OAuth flow
+ * (google/calendar-start → google/calendar-callback in auth.mjs).
+ * Access tokens are stored AES-256-GCM encrypted in Netlify Blobs and are
+ * refreshed automatically when they expire.
+ */
 import {
   getDb, getEnv, getUserFromRequest, jsonResponse, errorResponse,
-  log, logRequest, decryptSecret, encryptSecret,
+  log, logRequest, decryptSecret, encryptSecret, asArray,
 } from "./utils.mjs";
 
 const FN = "calendar";
@@ -15,8 +29,19 @@ export default async (req, context) => {
 };
 
 // ─── Timezone helpers ─────────────────────────────────────────────────────────
-// Converts a local date+time in a given timezone to a UTC Date object.
-// Technique: parse as UTC, measure offset via Intl, then correct.
+
+/**
+ * Convert a local date + time string in a given timezone to a UTC Date.
+ *
+ * Technique: we parse the datetime as if it were UTC, then use
+ * `Intl.DateTimeFormat` to find out what that UTC instant looks like in the
+ * target timezone. The difference tells us the UTC offset, which we subtract.
+ *
+ * @param {string} dateStr - "YYYY-MM-DD"
+ * @param {string} timeStr - "HH:MM"
+ * @param {string} timezone - IANA timezone, e.g. "America/New_York"
+ * @returns {Date}
+ */
 function localToUTC(dateStr, timeStr, timezone) {
   const localStr = `${dateStr}T${timeStr}:00`;
   const utcCandidate = new Date(localStr + "Z");
@@ -39,6 +64,15 @@ function localToUTC(dateStr, timeStr, timezone) {
 }
 
 // ─── Google token refresh ─────────────────────────────────────────────────────
+
+/**
+ * Use the stored refresh token to obtain a new Google access token.
+ * Returns `{ access_token, expiry }` on success, or `null` on failure.
+ * The caller is responsible for persisting the new access token to the database.
+ *
+ * @param {{ google_refresh_token: string }} dbUser - User record from Netlify Blobs
+ * @returns {Promise<{ access_token: string, expiry: number }|null>}
+ */
 async function refreshAccessToken(dbUser) {
   const refreshToken = decryptSecret(dbUser.google_refresh_token);
   if (!refreshToken) return null;
@@ -76,8 +110,6 @@ async function refreshAccessToken(dbUser) {
 // ─── Main handler ─────────────────────────────────────────────────────────────
 async function handleCalendar(req, context) {
   logRequest(FN, req);
-
-  const asArray = (value) => Array.isArray(value) ? value : [];
 
   const user = getUserFromRequest(req);
   if (!user) return errorResponse(401, "Not authenticated. Please sign in.");

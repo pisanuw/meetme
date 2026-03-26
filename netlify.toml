@@ -5,3 +5,40 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
+
+# Explicit fallback for unknown routes to custom 404 page.
+# This keeps deep-link mistakes and old URLs user-friendly in production.
+[[redirects]]
+  from = "/*"
+  to = "/404.html"
+  status = 404
+
+# ── Security headers applied to every response ────────────────────────────────
+# These headers harden the site against common web attacks.
+# Adjust Content-Security-Policy if you add third-party scripts or fonts.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Prevent the browser from sniffing MIME types (defends against MIME confusion attacks).
+    X-Content-Type-Options = "nosniff"
+
+    # Disallow embedding this site in an <iframe> on other origins (clickjacking defence).
+    X-Frame-Options = "DENY"
+
+    # Enforce HTTPS for 1 year, including subdomains.
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+
+    # Limit information sent in the Referer header to same-origin requests.
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+    # Disable browser features that this app doesn't use.
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+
+    # Content Security Policy:
+    #   default-src 'self'          — only load resources from this origin by default
+    #   script-src  'self' 'unsafe-inline' — inline scripts are used in the HTML pages
+    #   style-src   'self' 'unsafe-inline' — inline styles are used for dynamic UI
+    #   img-src     'self' data:    — data URIs are used for some icons
+    #   connect-src 'self'          — API calls only go back to this origin
+    #   frame-ancestors 'none'      — reinforces X-Frame-Options: DENY
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"

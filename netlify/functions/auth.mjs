@@ -1,38 +1,98 @@
+/**
+ * auth.mjs — Authentication and user account management
+ *
+ * Routes handled (path relative to /api/auth/):
+ *   GET  health                   — environment variable presence check
+ *   GET  me                       — return current user (from JWT cookie)
+ *   GET  profile                  — return full user profile from the database
+ *   POST profile                  — update name, timezone, profile_complete flag
+ *   POST magic-link/request       — send a one-time sign-in link via email
+ *   GET  magic-link/verify        — verify magic link token and set session cookie
+ *   GET  google/start             — begin Google OAuth flow (sign-in)
+ *   GET  google/callback          — handle Google OAuth callback
+ *   GET  google/calendar-start    — begin Google Calendar OAuth flow
+ *   GET  google/calendar-callback — handle Calendar OAuth callback
+ *   POST google/calendar-disconnect — revoke calendar access
+ *   POST logout                   — clear session cookie
+ *   POST feedback                 — send user feedback to admin email addresses
+ *
+ * Security model:
+ *   - Sessions are stored as signed JWTs in an HttpOnly cookie (not localStorage)
+ *   - Magic links use a single-use JTI stored in Netlify Blobs
+ *   - OAuth state is verified with a signed JWT + matching cookie (CSRF protection)
+ *   - Sensitive tokens (Google OAuth) are AES-256-GCM encrypted at rest
+ *   - All auth endpoints have per-IP and per-email rate limiting
+ */
 import {
   getDb, getEnv, createToken, verifyToken, verifyTokenVerbose,
   getUserFromRequest, jsonResponse, errorResponse,
   setCookie, clearCookie, generateId,
   log, logRequest, safeJson, validateEmail, persistEvent,
   isAdmin, checkRateLimit, encryptSecret, decryptSecret,
+  sendEmail, asArray, escapeHtml,
 } from "./utils.mjs";
 
 const FN = "auth";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/** Return the application's public base URL, e.g. "https://meetme.pisan.me". */
 function getAppUrl(req) {
   return getEnv("APP_URL", new URL(req.url).origin);
 }
 
+/** Build the Google OAuth redirect URI for sign-in (must match Google Console setting). */
 function getGoogleRedirectUri(req) {
   return `${getAppUrl(req)}/api/auth/google/callback`;
 }
 
+/**
+ * Build a 302 redirect response, optionally with extra headers such as Set-Cookie.
+ *
+ * @param {string} location
+ * @param {object} [extraHeaders]
+ * @returns {Response}
+ */
 function redirectResponse(location, extraHeaders = {}) {
-  return new Response(null, {
+  return new Response("", {
     status: 302,
     headers: { Location: location, ...extraHeaders },
   });
 }
 
+/**
+ * Extract the client IP address from the forwarded-for header.
+ * Used for rate limiting sign-in attempts per IP.
+ *
+ * @param {Request} req
+ * @returns {string}
+ */
 function getClientIp(req) {
   const forwarded = req.headers.get("x-forwarded-for") || "";
   return forwarded.split(",")[0]?.trim() || "unknown";
 }
 
+/**
+ * Detect local development requests (localhost / 127.0.0.1).
+ * In some container setups, Netlify Blobs sandbox can be flaky and cause
+ * connection-refused errors on otherwise successful auth flows.
+ */
+function isLocalDevRequest(req) {
+  const host = req.headers.get("host") || "";
+  return host.includes("localhost") || host.includes("127.0.0.1");
+}
+
+/**
+ * When a user is invited before registering, their invite is stored under
+ * `invites:"pending:<email>"`. As soon as they verify a magic link or sign in
+ * with Google, this function links those pending invites to their new user ID.
+ * The pending blob is deleted afterwards to avoid double-processing on future logins.
+ *
+ * @param {string} emailKey - Lower-cased email address
+ * @param {{ id: string, name: string }} user
+ */
 async function linkPendingInvites(emailKey, user) {
   const invites = getDb("invites");
-  const asArray = (value) => Array.isArray(value) ? value : [];
   const pendingList = await invites.get(`pending:${emailKey}`, { type: "json" }).catch(() => null);
   if (!pendingList || !Array.isArray(pendingList) || pendingList.length === 0) return;
 
@@ -49,6 +109,15 @@ async function linkPendingInvites(emailKey, user) {
   await invites.delete(`pending:${emailKey}`).catch(() => null);
 }
 
+/**
+ * Find an existing user by email or create a new one.
+ * New user records get a generated ID and a name derived from the email local-part
+ * as a reasonable default until the user completes their profile.
+ *
+ * @param {string} email         - Lower-cased, validated email address
+ * @param {string} preferredName - Name hint from the sign-in form or OAuth provider
+ * @returns {Promise<{ user: object|null, isNew: boolean }>}
+ */
 async function getOrCreateUser(email, preferredName = "") {
   const users = getDb("users");
   const emailKey = (email || "").trim().toLowerCase();
@@ -77,45 +146,36 @@ async function getOrCreateUser(email, preferredName = "") {
   return { user, isNew: true };
 }
 
+/**
+ * Send the one-time magic link email using the shared sendEmail helper.
+ * Adds developer-friendly hints to the error message for common Resend API
+ * failures (domain not verified, invalid API key, etc.) to ease debugging.
+ *
+ * @param {string} email - Recipient address
+ * @param {string} link  - Full HTTPS magic-link URL
+ * @returns {Promise<{ ok: boolean, error?: string }>}
+ */
 async function sendMagicLinkEmail(email, link) {
-  const apiKey = getEnv("RESEND_API_KEY");
-  const fromEmail = getEnv("AUTH_FROM_EMAIL");
+  const result = await sendEmail({
+    to: email,
+    subject: "Your MeetMe sign-in link",
+    html: `
+      <p>Sign in to MeetMe by clicking the link below:</p>
+      <p><a href="${link}">Sign in to MeetMe</a></p>
+      <p>This link expires in 15 minutes and can only be used once.</p>
+    `,
+    text: `Sign in to MeetMe: ${link}\n\nThis link expires in 15 minutes and can only be used once.`,
+    tags: [{ name: "type", value: "magic-link" }],
+  });
 
-  if (!apiKey) {
-    log("error", FN, "RESEND_API_KEY is not set");
-    return { ok: false, error: "Email delivery is not configured — RESEND_API_KEY is missing." };
-  }
-  if (!fromEmail) {
-    log("error", FN, "AUTH_FROM_EMAIL is not set");
-    return { ok: false, error: "Email delivery is not configured — AUTH_FROM_EMAIL is missing." };
-  }
-
-  let response;
-  try {
-    response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: [email],
-        subject: "Your MeetMe sign-in link",
-        html: `<p>Sign in to MeetMe by clicking the link below:</p><p><a href="${link}">Sign in to MeetMe</a></p><p>This link expires in 15 minutes and can only be used once.</p>`,
-        text: `Sign in to MeetMe: ${link}\n\nThis link expires in 15 minutes and can only be used once.`,
-      }),
-    });
-  } catch (err) {
-    log("error", FN, "Resend fetch threw", { error: err.message });
-    return { ok: false, error: `Could not reach email delivery service: ${err.message}` };
-  }
-
-  if (!response.ok) {
-    const payload = await response.text().catch(() => "");
-    log("error", FN, "Resend API error", { status: response.status, body: payload });
+  if (!result.ok) {
+    // Add actionable hints for the most common Resend delivery failures.
     let hint = "";
-    if (response.status === 403) hint = " (check sender domain verification in Resend)";
-    if (response.status === 401) hint = " (RESEND_API_KEY may be invalid or expired)";
-    if (response.status === 422) hint = " (AUTH_FROM_EMAIL may not be a verified sender in Resend)";
-    return { ok: false, error: `Email delivery failed (HTTP ${response.status})${hint}.` };
+    if (result.error?.includes("HTTP 403")) hint = " (Check sender domain verification in Resend.)";
+    if (result.error?.includes("HTTP 401")) hint = " (RESEND_API_KEY may be invalid or expired.)";
+    if (result.error?.includes("HTTP 422")) hint = " (AUTH_FROM_EMAIL may not be a verified sender.)";
+    log("error", FN, "magic link email failed", { to: email, error: result.error });
+    return { ok: false, error: (result.error || "Unknown error") + hint };
   }
 
   log("info", FN, "magic link email sent", { to: email });
@@ -135,6 +195,10 @@ async function handleAuth(req, context) {
   const path = context.params["0"] || "";
   logRequest(FN, req, { path });
 
+  // ── GET /api/auth/health ──────────────────────────────────────────────────
+  // Returns a JSON object showing which required environment variables are set.
+  // Never returns the secret values — only boolean "is it present?" checks.
+  // Useful for diagnosing misconfigured Netlify deployments.
   if (req.method === "GET" && path === "health") {
     const checks = {
       jwt_secret: !!getEnv("JWT_SECRET"),
@@ -208,21 +272,28 @@ async function handleAuth(req, context) {
 
     const appToken = createToken(user);
     log("info", FN, "magic link sign-in successful", { email: user.email, isNew });
-    await persistEvent("info", FN, "sign-in", { method: "magic-link", email: user.email, isNew });
+    await persistEvent("info", FN, "sign-in", {
+      sign_in_method: "magic-link",
+      email: user.email,
+      name: user.name || user.email,
+      is_new_user: !!isNew,
+    });
     const dest = (isNew || !user.profile_complete) ? "/profile.html?setup=1" : "/dashboard.html";
     return redirectResponse(dest, { "Set-Cookie": setCookie("token", appToken) });
   }
 
   if (req.method === "GET" && path === "google/start") {
-    const ip = getClientIp(req);
-    const ipRate = await checkRateLimit({
-      bucket: "auth_google_start_ip",
-      key: ip,
-      limit: 20,
-      windowMs: 15 * 60 * 1000,
-    });
-    if (!ipRate.ok) {
-      return redirectResponse(`/?error=rate-limited&retry=${ipRate.retryAfterSec}`);
+    if (!isLocalDevRequest(req)) {
+      const ip = getClientIp(req);
+      const ipRate = await checkRateLimit({
+        bucket: "auth_google_start_ip",
+        key: ip,
+        limit: 20,
+        windowMs: 15 * 60 * 1000,
+      });
+      if (!ipRate.ok) {
+        return redirectResponse(`/?error=rate-limited&retry=${ipRate.retryAfterSec}`);
+      }
     }
 
     const googleClientId = getEnv("GOOGLE_CLIENT_ID");
@@ -356,7 +427,12 @@ async function handleAuth(req, context) {
 
     const appToken = createToken(user);
     log("info", FN, "google sign-in successful", { email: user.email, isNew });
-    await persistEvent("info", FN, "sign-in", { method: "google", email: user.email, isNew });
+    await persistEvent("info", FN, "sign-in", {
+      sign_in_method: "google",
+      email: user.email,
+      name: user.name || user.email,
+      is_new_user: !!isNew,
+    });
     const dest = (isNew || !user.profile_complete) ? "/profile.html?setup=1" : (statePayload.return_to || "/dashboard.html");
     return redirectResponse(dest, { "Set-Cookie": setCookie("token", appToken) });
   }
@@ -366,14 +442,16 @@ async function handleAuth(req, context) {
     const calUser = getUserFromRequest(req);
     if (!calUser) return redirectResponse("/?error=not-authenticated");
 
-    const userRate = await checkRateLimit({
-      bucket: "auth_calendar_start_user",
-      key: calUser.email,
-      limit: 8,
-      windowMs: 15 * 60 * 1000,
-    });
-    if (!userRate.ok) {
-      return redirectResponse(`/profile.html?error=calendar-rate-limited&retry=${userRate.retryAfterSec}`);
+    if (!isLocalDevRequest(req)) {
+      const userRate = await checkRateLimit({
+        bucket: "auth_calendar_start_user",
+        key: calUser.email,
+        limit: 8,
+        windowMs: 15 * 60 * 1000,
+      });
+      if (!userRate.ok) {
+        return redirectResponse(`/profile.html?error=calendar-rate-limited&retry=${userRate.retryAfterSec}`);
+      }
     }
 
     const googleClientId = getEnv("GOOGLE_CLIENT_ID");
@@ -488,7 +566,15 @@ async function handleAuth(req, context) {
   if (req.method === "GET" && (path === "me" || path === "")) {
     const user = getUserFromRequest(req);
     if (!user) return errorResponse(401, "Not authenticated. Please sign in.");
-    return jsonResponse(200, { id: user.id, email: user.email, name: user.name, is_admin: isAdmin(user) });
+    return jsonResponse(200, {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      is_admin: isAdmin(user),
+      is_impersonated: !!user.is_impersonated,
+      impersonator_email: user.impersonator_email || null,
+      impersonator_name: user.impersonator_name || null,
+    });
   }
 
   if (req.method !== "POST") {
@@ -526,6 +612,32 @@ async function handleAuth(req, context) {
 
     await persistEvent("info", FN, "calendar disconnected", { email: user.email });
     return jsonResponse(200, { success: true, message: "Google Calendar disconnected." });
+  }
+
+  if (path === "impersonation/stop") {
+    const tokenUser = getUserFromRequest(req);
+    if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
+    if (!tokenUser.is_impersonated || !tokenUser.impersonator_email) {
+      return errorResponse(403, "This session is not impersonating another user.");
+    }
+
+    const usersDb = getDb("users");
+    const adminUser = await usersDb.get(tokenUser.impersonator_email, { type: "json" }).catch(() => null);
+    if (!adminUser || !isAdmin(adminUser)) {
+      return errorResponse(403, "Cannot restore admin session. Please sign in again.");
+    }
+
+    const adminToken = createToken(adminUser);
+    await persistEvent("warn", FN, "admin stopped impersonation", {
+      admin_email: adminUser.email,
+      admin_name: adminUser.name || adminUser.email,
+      previous_user_email: tokenUser.email,
+      previous_user_name: tokenUser.name || tokenUser.email,
+    });
+
+    return jsonResponse(200, { success: true, message: "Returned to admin session." }, {
+      "Set-Cookie": setCookie("token", adminToken),
+    });
   }
 
   const body = await safeJson(req);
@@ -566,31 +678,33 @@ async function handleAuth(req, context) {
       return errorResponse(400, "A valid email address is required.");
     }
 
-    const ip = getClientIp(req);
-    const ipRate = await checkRateLimit({
-      bucket: "auth_magic_link_ip",
-      key: ip,
-      limit: 12,
-      windowMs: 15 * 60 * 1000,
-    });
-    if (!ipRate.ok) {
-      return jsonResponse(429, {
-        error: "Too many sign-in requests from this network. Please wait and try again.",
-        retry_after_seconds: ipRate.retryAfterSec,
+    if (!isLocalDevRequest(req)) {
+      const ip = getClientIp(req);
+      const ipRate = await checkRateLimit({
+        bucket: "auth_magic_link_ip",
+        key: ip,
+        limit: 12,
+        windowMs: 15 * 60 * 1000,
       });
-    }
+      if (!ipRate.ok) {
+        return jsonResponse(429, {
+          error: "Too many sign-in requests from this network. Please wait and try again.",
+          retry_after_seconds: ipRate.retryAfterSec,
+        });
+      }
 
-    const emailRate = await checkRateLimit({
-      bucket: "auth_magic_link_email",
-      key: emailKey,
-      limit: 5,
-      windowMs: 15 * 60 * 1000,
-    });
-    if (!emailRate.ok) {
-      return jsonResponse(429, {
-        error: "Too many sign-in links requested for this email. Please wait before requesting another.",
-        retry_after_seconds: emailRate.retryAfterSec,
+      const emailRate = await checkRateLimit({
+        bucket: "auth_magic_link_email",
+        key: emailKey,
+        limit: 5,
+        windowMs: 15 * 60 * 1000,
       });
+      if (!emailRate.ok) {
+        return jsonResponse(429, {
+          error: "Too many sign-in links requested for this email. Please wait before requesting another.",
+          retry_after_seconds: emailRate.retryAfterSec,
+        });
+      }
     }
 
     await getOrCreateUser(emailKey, name); // pre-create user record; isNew redirect handled at verify step
@@ -635,46 +749,43 @@ async function handleAuth(req, context) {
     }
 
     const adminEmails = getEnv("ADMIN_EMAILS", "").split(",").map(e => e.trim()).filter(Boolean);
-    const apiKey    = getEnv("RESEND_API_KEY");
-    const fromEmail = getEnv("AUTH_FROM_EMAIL");
-
-    if (!apiKey || !fromEmail || adminEmails.length === 0) {
-      log("warn", FN, "feedback not sent: email not configured or no admin emails", { adminEmails });
+    if (adminEmails.length === 0) {
+      log("warn", FN, "feedback not sent: ADMIN_EMAILS is not configured");
       return errorResponse(500, "Feedback email delivery is not configured on this server.");
     }
 
     const typeLabels = { bug: "Bug Report", feature: "Feature Request", question: "Question", other: "General Feedback" };
     const typeLabel  = typeLabels[feedbackType] || "Feedback";
     const subject    = `[MeetMe Feedback] ${typeLabel} from ${senderName || senderEmail}`;
+
+    // escapeHtml() prevents XSS if message content were ever rendered in HTML.
+    const escapedMessage = escapeHtml(message);
     const html = `
       <h2 style="margin:0 0 16px">MeetMe Feedback &mdash; ${typeLabel}</h2>
       <table style="font-size:14px;border-collapse:collapse;width:100%">
         <tr><th style="text-align:left;padding:6px 12px 6px 0;color:#555">From</th>
-            <td style="padding:6px 0">${senderName ? `${senderName} &lt;${senderEmail}&gt;` : senderEmail}</td></tr>
+            <td style="padding:6px 0">${senderName ? `${escapeHtml(senderName)} &lt;${escapeHtml(senderEmail)}&gt;` : escapeHtml(senderEmail)}</td></tr>
         <tr><th style="text-align:left;padding:6px 12px 6px 0;color:#555">Type</th>
             <td style="padding:6px 0">${typeLabel}</td></tr>
       </table>
       <hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb">
       <h3 style="margin:0 0 8px;font-size:14px;color:#555">Message</h3>
-      <p style="white-space:pre-wrap;font-size:14px;line-height:1.6">${message.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</p>
+      <p style="white-space:pre-wrap;font-size:14px;line-height:1.6">${escapedMessage}</p>
     `;
-
     const text = `MeetMe Feedback (${typeLabel})\nFrom: ${senderName || senderEmail} <${senderEmail}>\n\n${message}`;
 
-    try {
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ from: fromEmail, to: adminEmails, reply_to: senderEmail, subject, html, text }),
-      });
-      if (!res.ok) {
-        const body2 = await res.text().catch(() => "");
-        log("error", FN, "feedback email failed", { status: res.status, body: body2 });
-        return errorResponse(500, `Could not send feedback email (HTTP ${res.status}).`);
-      }
-    } catch (err) {
-      log("error", FN, "feedback email threw", { error: err.message });
-      return errorResponse(500, `Could not send feedback: ${err.message}`);
+    const result = await sendEmail({
+      to: adminEmails,
+      subject,
+      html,
+      text,
+      replyTo: senderEmail,
+      tags: [{ name: "type", value: "feedback" }],
+    });
+
+    if (!result.ok) {
+      log("error", FN, "feedback email failed", { error: result.error });
+      return errorResponse(500, `Could not send feedback email: ${result.error}`);
     }
 
     log("info", FN, "feedback sent", { from: senderEmail, type: feedbackType });

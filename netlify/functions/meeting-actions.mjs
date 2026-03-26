@@ -1,10 +1,24 @@
+/**
+ * meeting-actions.mjs — Per-meeting action endpoints
+ *
+ * Routes handled (all require POST + valid session):
+ *   POST /api/meeting/:id/availability    — save this user's availability slots
+ *   POST /api/meeting/:id/finalize        — mark a meeting as finalized + notify participants (creator only)
+ *   POST /api/meeting/:id/unfinalize      — revert finalization (creator only)
+ *   POST /api/meeting/:id/remind-pending  — email non-responders (creator only)
+ *
+ * Slot key format: "<date_or_day>_<HH:MM>"
+ *   e.g. "2024-03-15_09:00" (specific dates) or "Monday_14:00" (days of week)
+ */
 import {
   getDb, getUserFromRequest, jsonResponse, errorResponse,
   log, logRequest, safeJson, getEnv, persistEvent,
+  sendEmail, asArray, escapeHtml,
 } from "./utils.mjs";
 
 const FN = "meeting-actions";
 
+// Top-level entry point — catch-all for unhandled exceptions.
 export default async (req, context) => {
   try {
     return await handleMeetingActions(req, context);
@@ -17,8 +31,7 @@ export default async (req, context) => {
 async function handleMeetingActions(req, context) {
   logRequest(FN, req);
 
-  const asArray = (value) => Array.isArray(value) ? value : [];
-
+  // All routes in this function require authentication and POST method.
   const user = getUserFromRequest(req);
   if (!user) return errorResponse(401, "Not authenticated. Please sign in.");
   if (req.method !== "POST") return errorResponse(405, `Method ${req.method} not allowed.`);
@@ -29,64 +42,15 @@ async function handleMeetingActions(req, context) {
   const invites = getDb("invites");
   const availability = getDb("availability");
 
+  /** Resolve the public app URL for building links in emails. */
   function getAppUrl() {
     return getEnv("APP_URL", new URL(req.url).origin);
   }
 
-  async function sendReminderEmail(toEmail, meeting, meetingUrl) {
-    const apiKey = getEnv("RESEND_API_KEY");
-    const fromEmail = getEnv("AUTH_FROM_EMAIL");
-    if (!apiKey || !fromEmail) {
-      return { ok: false, error: "Email delivery is not configured (RESEND_API_KEY / AUTH_FROM_EMAIL missing)." };
-    }
-
-    const whenText = `${meeting.start_time || "08:00"} - ${meeting.end_time || "20:00"} (${meeting.timezone || "UTC"})`;
-    const subject = `Reminder: Share your availability for ${meeting.title}`;
-    const html = `
-      <p>Hello,</p>
-      <p>This is a reminder to share your availability for <strong>${meeting.title}</strong>.</p>
-      <p><strong>Time range:</strong> ${whenText}</p>
-      <p><a href="${meetingUrl}">Open meeting and submit availability</a></p>
-      <p>Thanks!</p>
-    `;
-    const text = [
-      "Hello,",
-      "",
-      `This is a reminder to share your availability for ${meeting.title}.`,
-      `Time range: ${whenText}`,
-      "",
-      `Open meeting and submit availability: ${meetingUrl}`,
-      "",
-      "Thanks!",
-    ].join("\n");
-
-    try {
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          from: fromEmail,
-          to: [toEmail],
-          subject,
-          html,
-          text,
-        }),
-      });
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        return { ok: false, error: `Resend failed (HTTP ${res.status})`, detail: body };
-      }
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: `Email send failed: ${err.message}` };
-    }
-  }
-
-  // POST /api/meeting/:id/availability
+  // POST /api/meeting/:id/availability ─────────────────────────────────────
+  // Replace the caller's saved slots for a meeting.  Any slots that reference
+  // dates/times outside the meeting's configured range are silently dropped
+  // (they could be stale front-end data) and a warning is logged.
   const availMatch = path.match(/^\/api\/meeting\/([^/]+)\/availability$/);
   if (availMatch) {
     const meetingId = availMatch[1];
@@ -159,7 +123,9 @@ async function handleMeetingActions(req, context) {
     return jsonResponse(200, { success: true, slot_counts: slotCounts });
   }
 
-  // POST /api/meeting/:id/finalize
+  // POST /api/meeting/:id/finalize ──────────────────────────────────────────
+  // Lock a meeting to a specific date/time slot chosen by the creator.
+  // After finalization the grid becomes read-only for all participants.
   const finalizeMatch = path.match(/^\/api\/meeting\/([^/]+)\/finalize$/);
   if (finalizeMatch) {
     const meetingId = finalizeMatch[1];
@@ -183,8 +149,74 @@ async function handleMeetingActions(req, context) {
     meeting.is_finalized = true;
     await meetings.setJSON(meetingId, meeting);
 
-    log("info", FN, "meeting finalized", { meetingId, date: body.date_or_day, slot: body.time_slot });
-    return jsonResponse(200, { success: true });
+    const meetingInvites = asArray(await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
+    const recipients = [...new Set(meetingInvites.map(i => (i?.email || "").trim().toLowerCase()).filter(Boolean))];
+    const meetingUrl = `${getAppUrl()}/meeting.html?id=${encodeURIComponent(meetingId)}`;
+    const whenText = `${body.date_or_day} at ${body.time_slot} (${meeting.timezone || "UTC"})`;
+    const durationText = `${meeting.duration_minutes} minute${meeting.duration_minutes === 1 ? "" : "s"}`;
+
+    let sentCount = 0;
+    let failedCount = 0;
+    const failures = [];
+
+    for (const email of recipients) {
+      const result = await sendEmail({
+        to: email,
+        subject: `Finalized: ${meeting.title}`,
+        html: `
+          <p>Hello,</p>
+          <p><strong>${escapeHtml(meeting.title)}</strong> has been finalized.</p>
+          <p><strong>When:</strong> ${escapeHtml(whenText)}<br />
+             <strong>Duration:</strong> ${escapeHtml(durationText)}</p>
+          ${meeting.note ? `<p><strong>Note from organizer:</strong><br />${escapeHtml(meeting.note)}</p>` : ""}
+          <p><a href="${meetingUrl}">Open meeting details</a></p>
+        `,
+        text: [
+          `\"${meeting.title}\" has been finalized.`,
+          `When: ${whenText}`,
+          `Duration: ${durationText}`,
+          ...(meeting.note ? [`Note from organizer: ${meeting.note}`] : []),
+          "",
+          `Open meeting details: ${meetingUrl}`,
+        ].join("\n"),
+        tags: [
+          { name: "type", value: "finalized" },
+          { name: "meeting_id", value: meetingId },
+        ],
+      });
+
+      if (result.ok) {
+        sentCount += 1;
+      } else {
+        failedCount += 1;
+        failures.push({ email, error: result.error });
+        log("warn", FN, "finalize email failed", { meetingId, email, error: result.error });
+      }
+    }
+
+    await persistEvent("info", FN, "meeting finalized", {
+      meetingId,
+      meeting_name: meeting.title,
+      finalized_date: body.date_or_day,
+      finalized_slot: body.time_slot,
+      sent_count: sentCount,
+      failed_count: failedCount,
+      triggered_by: user.email,
+    });
+
+    log("info", FN, "meeting finalized", {
+      meetingId,
+      date: body.date_or_day,
+      slot: body.time_slot,
+      sentCount,
+      failedCount,
+    });
+    return jsonResponse(200, {
+      success: true,
+      sent_count: sentCount,
+      failed_count: failedCount,
+      failures,
+    });
   }
 
   // POST /api/meeting/:id/unfinalize
@@ -238,7 +270,31 @@ async function handleMeetingActions(req, context) {
     const failures = [];
 
     for (const inv of pending) {
-      const result = await sendReminderEmail(inv.email, meeting, meetingUrl);
+      // Build reminder email using the shared sendEmail helper (utils.mjs).
+      const whenText = `${meeting.start_time || "08:00"} - ${meeting.end_time || "20:00"} (${meeting.timezone || "UTC"})`;
+      const result = await sendEmail({
+        to: inv.email,
+        subject: `Reminder: Share your availability for ${meeting.title}`,
+        html: `
+          <p>Hello,</p>
+          <p>This is a reminder to share your availability for <strong>${meeting.title}</strong>.</p>
+          <p><strong>Time range:</strong> ${whenText}</p>
+          <p><a href="${meetingUrl}">Open meeting and submit availability</a></p>
+          <p>Thanks!</p>
+        `,
+        text: [
+          "Hello,",
+          "",
+          `This is a reminder to share your availability for ${meeting.title}.`,
+          `Time range: ${whenText}`,
+          "",
+          `Open meeting and submit availability: ${meetingUrl}`,
+          "",
+          "Thanks!",
+        ].join("\n"),
+        tags: [{ name: "type", value: "reminder" }, { name: "meeting_id", value: meetingId }],
+      });
+
       if (result.ok) {
         sentCount += 1;
       } else {

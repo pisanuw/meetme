@@ -1,6 +1,22 @@
+/**
+ * admin.mjs — Admin-only dashboard API
+ *
+ * All routes require the caller to be both authenticated and listed in
+ * the ADMIN_EMAILS environment variable. Non-admin requests are rejected
+ * with a 403 before any data is read.
+ *
+ * Routes handled (all require admin):
+ *   GET  /api/admin/stats    — site-wide counts (users, meetings, events)
+ *   GET  /api/admin/users    — paginated user list
+ *   GET  /api/admin/meetings — paginated meeting list with participation details
+ *   GET  /api/admin/events   — recent audit log entries
+ *   POST /api/admin/users/:email/make-admin    — grant admin to a user (future use)
+ *   POST /api/admin/meetings/:id/delete        — force-delete any meeting
+ */
 import {
   getDb, getUserFromRequest, jsonResponse, errorResponse, isAdmin, persistEvent,
-  log, logRequest, safeJson, validateEmail, generateId,
+  log, logRequest, safeJson, validateEmail, generateId, asArray,
+  createToken, setCookie,
 } from "./utils.mjs";
 
 const FN = "admin";
@@ -16,8 +32,6 @@ export default async (req, context) => {
 
 async function handleAdmin(req, context) {
   logRequest(FN, req);
-
-  const asArray = (value) => Array.isArray(value) ? value : [];
 
   const user = getUserFromRequest(req);
   if (!user) return errorResponse(401, "Not authenticated. Please sign in.");
@@ -177,6 +191,56 @@ async function handleAdmin(req, context) {
     await persistEvent("warn", FN, "admin deleted user", { admin: user.email, target: email });
     log("info", FN, "admin deleted user", { admin: user.email, target: email });
     return jsonResponse(200, { success: true });
+  }
+
+  // ─── POST /api/admin/impersonate ─────────────────────────────────────────
+  // Allows an admin to temporarily act as a specific user and experience the
+  // app exactly as that user would. The issued JWT includes impersonation
+  // metadata so the session can be restored via /api/auth/impersonation/stop.
+  if (req.method === "POST" && path === "impersonate") {
+    const body = await safeJson(req);
+    if (!body) return errorResponse(400, "Request body must be valid JSON.");
+
+    const targetEmail = validateEmail(body.email || "");
+    if (!targetEmail) return errorResponse(400, "A valid target email is required.");
+    if (targetEmail === (user.email || "").toLowerCase()) {
+      return errorResponse(400, "You are already signed in as this user.");
+    }
+
+    const usersDb = getDb("users");
+    const targetUser = await usersDb.get(targetEmail, { type: "json" }).catch(() => null);
+    if (!targetUser) return errorResponse(404, `User '${targetEmail}' not found.`);
+
+    const tokenPayload = {
+      id: targetUser.id,
+      email: targetUser.email,
+      name: targetUser.name,
+      first_name: targetUser.first_name || "",
+      last_name: targetUser.last_name || "",
+      profile_complete: !!targetUser.profile_complete,
+      timezone: targetUser.timezone || "",
+      is_impersonated: true,
+      impersonator_email: user.email,
+      impersonator_name: user.name || user.email,
+    };
+
+    const token = createToken(tokenPayload);
+    await persistEvent("warn", FN, "admin started impersonation", {
+      admin_email: user.email,
+      admin_name: user.name || user.email,
+      target_email: targetUser.email,
+      target_name: targetUser.name || targetUser.email,
+    });
+
+    return jsonResponse(200, {
+      success: true,
+      impersonating: {
+        email: targetUser.email,
+        name: targetUser.name || targetUser.email,
+      },
+    }, {
+      "Set-Cookie": setCookie("token", token),
+    });
   }
 
   // ─── GET /api/admin/meetings ──────────────────────────────────────────────

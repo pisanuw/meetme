@@ -215,9 +215,24 @@ function renderUsers(users) {
       <td style="white-space:nowrap;">
         <button class="btn btn-xs btn-ghost" onclick="viewUserDetail('${escapeHtml(u.email)}')">View</button>
         <button class="btn btn-xs btn-ghost" onclick="openUserModal('${escapeHtml(u.email)}')">Edit</button>
+        <button class="btn btn-xs btn-ghost" onclick="impersonateUser('${escapeHtml(u.email)}')">Act as</button>
       </td>
     </tr>`).join('');
 }
+
+window.impersonateUser = async function(email) {
+  if (!confirm(`Act as ${email}? You can return to your admin account from the top navigation.`)) return;
+  const { ok, data } = await apiFetch('/api/admin/impersonate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  if (!ok) {
+    showFlash(data.error || 'Failed to start impersonation.', 'danger');
+    return;
+  }
+  window.location.href = '/dashboard.html';
+};
 
 window.filterUsers = function() {
   const q = document.getElementById('user-search').value.toLowerCase();
@@ -327,7 +342,7 @@ async function loadMeetings() {
   tbody.innerHTML = meetings.map(m => `
     <tr>
       <td><a href="/meeting.html?id=${escapeHtml(m.id)}" target="_blank">${escapeHtml(m.title)}</a></td>
-      <td style="font-size:0.8rem;">${escapeHtml(m.creator)}</td>
+      <td style="font-size:0.8rem;">${escapeHtml(m.creator_name || '—')}</td>
       <td style="font-size:0.8rem;">${(m.meeting_type||'').replace('_',' ')}</td>
       <td style="font-size:0.78rem;">${escapeHtml(m.timezone||'UTC')}</td>
       <td style="font-size:0.8rem;">${(m.invitees||[]).length}</td>
@@ -348,10 +363,28 @@ window.loadEvents = async function() {
 
 function renderEvents(events) {
   const tbody = document.getElementById('events-tbody');
+  const formatEventTime = (isoTs) => {
+    if (!isoTs) return '—';
+    const d = new Date(isoTs);
+    if (Number.isNaN(d.getTime())) return isoTs;
+    return `${d.toLocaleString()} (${d.toISOString().replace('T', ' ').slice(0, 19)} UTC)`;
+  };
+
+  const extractDetails = (ev) => {
+    const reserved = new Set(['ts', 'level', 'fn', 'message']);
+    const detailObj = {};
+    for (const [key, value] of Object.entries(ev || {})) {
+      if (!reserved.has(key)) detailObj[key] = value;
+    }
+    const keys = Object.keys(detailObj);
+    if (keys.length === 0) return '';
+    return JSON.stringify(detailObj);
+  };
+
   tbody.innerHTML = events.map(ev => {
-    const extra = ev.extra ? JSON.stringify(ev.extra) : '';
+    const extra = extractDetails(ev);
     return `<tr>
-      <td style="font-size:0.78rem;white-space:nowrap;">${ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '—'}</td>
+      <td style="font-size:0.78rem;white-space:nowrap;">${escapeHtml(formatEventTime(ev.ts || ev.timestamp || ''))}</td>
       <td><span class="log-level log-level-${ev.level||'info'}">${escapeHtml(ev.level||'info')}</span></td>
       <td style="font-size:0.8rem;">${escapeHtml(ev.fn||'')}</td>
       <td style="font-size:0.85rem;">${escapeHtml(ev.message||'')}</td>
