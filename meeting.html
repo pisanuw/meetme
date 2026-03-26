@@ -207,6 +207,18 @@ let busySlots = new Set();   // slot keys from Google Calendar
     meeting: data.meeting,
   };
 
+  // Find and store the current user's index in M.participants for later updates
+  M.myParticipantIndex = -1;
+  if (currentUser && Array.isArray(M.participants)) {
+    // First try matching by email (only available for creator's view)
+    let idx = currentUser.email
+      ? M.participants.findIndex(p => (p.email || '').toLowerCase() === currentUser.email.toLowerCase())
+      : -1;
+    // Fallback: match by name
+    if (idx === -1) idx = M.participants.findIndex(p => (p.name || '').toLowerCase() === (currentUser.name || '').toLowerCase());
+    M.myParticipantIndex = idx;
+  }
+
   meetingTz = data.meeting.timezone || 'UTC';
 
   // Load viewer timezone from profile
@@ -706,16 +718,16 @@ async function saveAvailability() {
   });
   if (ok && data.success) {
     M.slotCounts = data.slot_counts;
-    // Keep M.participants in sync so the "By person" view reflects the current selection
-    if (currentUser && Array.isArray(M.participants)) {
-      const myEmail = currentUser.email;
-      const myEntry = M.participants.find(p => (p.email || '').toLowerCase() === myEmail.toLowerCase());
+    // Update the current user's entry in M.participants using the pre-stored index
+    if (M.myParticipantIndex >= 0) {
+      const myEntry = M.participants[M.myParticipantIndex];
       if (myEntry) {
         myEntry.slots = Array.from(M.mySlots);
         myEntry.slot_count = myEntry.slots.length;
         myEntry.responded = myEntry.slot_count > 0;
       }
     }
+    refreshParticipantsPanel(); // re-render the participants list with updated slot counts
     showSavedIndicator();
   } else if (!ok) {
     showFlash(data.error || 'Failed to save availability. Please try again.', 'danger');
@@ -734,6 +746,29 @@ function showSavedIndicator() {
   ind.style.opacity = '1';
   clearTimeout(ind._timer);
   ind._timer = setTimeout(() => { ind.style.opacity = '0'; }, 2000);
+}
+
+function refreshParticipantsPanel() {
+  const list = document.getElementById('participants-list');
+  if (!list || !M.participants || M.participants.length === 0) return;
+  let html = '';
+  M.participants.forEach((p, i) => {
+    const clickable = M.isCreator ? `onclick="jumpToParticipant(${i})" style="cursor:pointer;"` : '';
+    html += `
+      <div class="participant-row" ${clickable}>
+        <div class="participant-avatar">${escapeHtml((p.name || '?')[0].toUpperCase())}</div>
+        <div class="participant-info">
+          <div class="participant-name">${escapeHtml(p.name)}</div>
+          ${M.isCreator && p.email ? `<div class="participant-email text-muted">${escapeHtml(p.email)}</div>` : ''}
+        </div>
+        <div class="participant-slots">
+          ${p.responded
+            ? `<span class="badge badge-green">${p.slot_count} slot${p.slot_count !== 1 ? 's' : ''}</span>`
+            : '<span class="badge badge-gray">No response</span>'}
+        </div>
+      </div>`;
+  });
+  list.innerHTML = html;
 }
 
 // View modes
