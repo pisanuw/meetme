@@ -73,7 +73,22 @@ meetme/
 │
 ├── static/
 │   ├── common.js           ← Shared JavaScript that every page uses
-│   └── style.css           ← All CSS styles (no external stylesheet needed)
+│   ├── layout.js           ← Shared page-shell helpers (footer rendering)
+│   ├── style.css           ← All CSS styles (no external stylesheet needed)
+│   ├── admin.js            ← Page script for admin.html
+│   ├── create-meeting.js   ← Page script for create-meeting.html
+│   ├── dashboard.js        ← Page script for dashboard.html
+│   ├── email-sent.js       ← Page script for email-sent.html
+│   ├── feedback.js         ← Page script for feedback.html
+│   ├── index.js            ← Page script for index.html
+│   ├── meeting.js          ← Page script for meeting.html
+│   ├── not-found.js        ← Page script for 404.html
+│   ├── profile.js          ← Page script for profile.html
+│   └── register.js         ← Page script for register.html
+│
+├── test/
+│   ├── utils.test.mjs      ← Unit tests for shared utilities
+│   └── api-routes.test.mjs ← Integration tests for auth/meetings/admin routes
 │
 ├── netlify/
 │   └── functions/          ← All backend code lives here (Node.js serverless functions)
@@ -91,6 +106,7 @@ meetme/
 ```
 
 **Important vocabulary:**
+
 - **Frontend** — code that runs in the user's web browser (HTML, CSS, JavaScript files in the
   root and `static/` folder).
 - **Backend** — code that runs on a server (JavaScript files in `netlify/functions/`).
@@ -105,7 +121,7 @@ Before diving into files, it helps to understand the basic communication pattern
 When you open a browser and visit `https://meetme.example.com`, the browser asks the server
 for the HTML file for that page. The server sends it back. The browser renders the page.
 
-But MeetMe also needs to *do things*: log in, save availability, load meetings. For that, the
+But MeetMe also needs to _do things_: log in, save availability, load meetings. For that, the
 JavaScript in the page sends **API requests** — specifically, HTTP requests — to the server's
 backend functions. The server processes them and sends back JSON data. JavaScript then updates
 the page with that data.
@@ -125,9 +141,9 @@ User's Browser ─────────────────────�
 ```
 
 Every backend function lives at a URL that starts with `/api/`:
+
 - `/api/auth/...` → `auth.mjs`
-- `/api/meetings/...` → `meetings.mjs`
-- `/api/meeting/...` → `meeting-actions.mjs`
+- `/api/meetings/...` → `meetings.mjs` and `meeting-actions.mjs`
 - `/api/calendar/...` → `calendar.mjs`
 - `/api/admin/...` → `admin.mjs`
 - `/api/webhooks/...` → `webhooks.mjs`
@@ -151,32 +167,30 @@ Each HTML page is a standalone file. They all follow the same structure:
   <main>...</main>              <!-- the actual page content -->
   <footer>...</footer>
 
-  <script src="/static/common.js"></script>  <!-- shared JS helpers, ALWAYS last -->
-  <script>
-    /* page-specific JS goes here */
-  </script>
+  <script src="/static/layout.js"></script>  <!-- shared page shell pieces (footer) -->
+  <script src="/static/common.js"></script>  <!-- shared auth/fetch/flash helpers -->
+  <script src="/static/page-name.js" defer></script> <!-- page-specific logic -->
 
 </body>
 </html>
 ```
 
-The `<script src="/static/common.js">` line is critical — it loads shared helper functions
-*before* the page-specific script runs, so those helpers are available when the page script
-needs them.
+The shared scripts are loaded first, and each page’s own `defer` script runs afterward.
+This keeps helper functions available while avoiding inline scripts so CSP can stay strict.
 
 ### Page-by-page overview
 
-| File | Who sees it | What it does |
-|------|-------------|--------------|
-| `index.html` | Everyone | Enter email to get a magic sign-in link, or click "Continue with Google" |
-| `register.html` | New users | Same as index but also collects a name; acts as a friendlier first-time entry point |
-| `email-sent.html` | After requesting a link | Just shows "check your email" — no real logic |
-| `dashboard.html` | Signed-in users | Lists meetings created by you and meetings you were invited to |
-| `create-meeting.html` | Signed-in users | Form to name a meeting, pick dates/days, set time window, and invite others |
-| `meeting.html` | Meeting participants | The main grid: click cells to mark availability; view heat-map; creator can finalize |
-| `profile.html` | Signed-in users | Edit display name; connect Google Calendar |
-| `admin.html` | Admin users only | View all users, all meetings, and an event log |
-| `feedback.html` | Everyone | Simple feedback form |
+| File                  | Who sees it             | What it does                                                                         |
+| --------------------- | ----------------------- | ------------------------------------------------------------------------------------ |
+| `index.html`          | Everyone                | Enter email to get a magic sign-in link, or click "Continue with Google"             |
+| `register.html`       | New users               | Same as index but also collects a name; acts as a friendlier first-time entry point  |
+| `email-sent.html`     | After requesting a link | Just shows "check your email" — no real logic                                        |
+| `dashboard.html`      | Signed-in users         | Lists meetings created by you and meetings you were invited to                       |
+| `create-meeting.html` | Signed-in users         | Form to name a meeting, pick dates/days, set time window, and invite others          |
+| `meeting.html`        | Meeting participants    | The main grid: click cells to mark availability; view heat-map; creator can finalize |
+| `profile.html`        | Signed-in users         | Edit display name; connect Google Calendar                                           |
+| `admin.html`          | Admin users only        | View all users, all meetings, and an event log                                       |
+| `feedback.html`       | Everyone                | Simple feedback form                                                                 |
 
 ### How pages know whether you are logged in
 
@@ -204,6 +218,7 @@ This file is included on every page. It provides three things that every page ne
 ### 5.1 `apiFetch(url, options)` — the central network helper
 
 Instead of calling `fetch()` directly, every page uses `apiFetch`. It wraps `fetch` so that:
+
 - Network errors do not crash the page — they return `{ ok: false, ... }`.
 - A 401 (Unauthorized) response automatically redirects to the login page.
 - The response is always parsed as JSON, even if the server returns an error.
@@ -218,12 +233,12 @@ async function apiFetch(url, options = {}) {
   }
 
   if (res.status === 401) {
-    window.location.href = '/';   // session expired — send to login
-    return { ok: false, status: 401, data: { error: 'Session expired.' } };
+    window.location.href = "/"; // session expired — send to login
+    return { ok: false, status: 401, data: { error: "Session expired." } };
   }
 
   let data;
-  const text = await res.text().catch(() => '');
+  const text = await res.text().catch(() => "");
   try {
     data = text ? JSON.parse(text) : {};
   } catch {
@@ -253,18 +268,29 @@ Any page can call `showFlash('Something went wrong', 'danger')` to show a red ba
 top of the page. Banners disappear automatically after 5 seconds.
 
 ```js
-function showFlash(message, category = 'info') {
-  const container = document.getElementById('flash-container');
-  const div = document.createElement('div');
-  div.className = `flash flash-${category}`;  // CSS class controls color
-  div.innerHTML = `${escapeHtml(message)} <button ...>✕</button>`;
+function showFlash(message, category = "info") {
+  const container = document.getElementById("flash-container");
+  if (!container) return;
+  const div = document.createElement("div");
+  div.className = `flash flash-${category}`; // CSS class controls color
+
+  // Build content with DOM APIs — never innerHTML — to prevent XSS
+  const textNode = document.createTextNode(`${message} `);
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "flash-close";
+  closeBtn.type = "button";
+  closeBtn.innerHTML = "&#x2715;"; // ✕ glyph (safe — no user data here)
+  closeBtn.addEventListener("click", () => div.remove());
+
+  div.append(textNode, closeBtn);
   container.appendChild(div);
   setTimeout(() => div.remove(), 5000);
 }
 ```
 
-Note the use of `escapeHtml()` before inserting user-provided text — this prevents **XSS
-(Cross-Site Scripting)** attacks where a malicious string could inject JavaScript.
+Text is inserted via `createTextNode`, which the browser treats as plain text — not markup.
+This prevents **XSS (Cross-Site Scripting)** attacks where a malicious string could inject
+JavaScript. (Using `innerHTML` with any user-supplied content is a common security mistake.)
 
 ### 5.4 Logout handler
 
@@ -338,6 +364,7 @@ export function getDb(name) {
 ```
 
 Usage in other files:
+
 ```js
 const meetings = getDb("meetings");
 const meeting  = await meetings.get("abc123", { type: "json" });
@@ -352,6 +379,7 @@ database, but without schemas — you store whatever JSON object you like.
 
 After a user logs in, the server needs a way to remember them on future requests. It uses a
 **JWT (JSON Web Token)**. Think of it as a tamper-proof name badge:
+
 - The server creates a token containing the user's id, email, and name.
 - It signs the token with a secret key so it cannot be forged.
 - The token is sent to the browser as a **cookie** (an HTTP header the browser sends
@@ -366,7 +394,7 @@ export function createToken(payload, expiresIn = "7d") {
 
 export function verifyToken(token) {
   try {
-    return jwt.verify(token, getJwtSecret());  // returns the payload, or null if invalid
+    return jwt.verify(token, getJwtSecret()); // returns the payload, or null if invalid
   } catch {
     return null;
   }
@@ -374,13 +402,14 @@ export function verifyToken(token) {
 
 export function getUserFromRequest(req) {
   const cookie = req.headers.get("cookie") || "";
-  const match  = cookie.match(/(?:^|;\s*)token=([^;]+)/);  // find "token=..." in the cookie string
+  const match = cookie.match(/(?:^|;\s*)token=([^;]+)/); // find "token=..." in the cookie string
   if (!match) return null;
   return verifyToken(match[1]);
 }
 ```
 
 Every protected backend route starts the same way:
+
 ```js
 const user = getUserFromRequest(req);
 if (!user) return errorResponse(401, "Not authenticated. Please sign in.");
@@ -413,13 +442,21 @@ them in its dashboard under "Functions → Logs".
 export function log(level, fn, message, extra = {}) {
   const entry = { ts: new Date().toISOString(), level, fn, msg: message, ...extra };
   if (level === "error") console.error(JSON.stringify(entry));
-  else                   console.log(JSON.stringify(entry));
+  else console.log(JSON.stringify(entry));
 }
 ```
 
 Example output:
+
 ```json
-{"ts":"2026-03-26T10:00:00.000Z","level":"info","fn":"meetings","msg":"creating meeting","title":"Team Lunch","creator":"alice@example.com"}
+{
+  "ts": "2026-03-26T10:00:00.000Z",
+  "level": "info",
+  "fn": "meetings",
+  "msg": "creating meeting",
+  "title": "Team Lunch",
+  "creator": "alice@example.com"
+}
 ```
 
 ### 7.5 `checkRateLimit` — preventing abuse
@@ -431,9 +468,9 @@ store.
 ```js
 const { ok, retryAfterSec } = await checkRateLimit({
   bucket: "magic_link_email",
-  key:    email,         // rate limit per email address
-  limit:  5,            // at most 5 requests …
-  windowMs: 60 * 60 * 1000,  // … per hour
+  key: email, // rate limit per email address
+  limit: 5, // at most 5 requests …
+  windowMs: 60 * 60 * 1000, // … per hour
 });
 if (!ok) return errorResponse(429, `Too many requests. Retry after ${retryAfterSec}s.`);
 ```
@@ -499,6 +536,7 @@ User enters email → browser POSTs to /api/auth/magic-link/request
 ```
 
 The link looks like:
+
 ```
 https://meetme.example.com/api/auth/magic-link/verify?token=eyJhbGci...
 ```
@@ -557,12 +595,12 @@ async function getOrCreateUser(email, preferredName = "") {
   let user = await users.get(email, { type: "json" }).catch(() => null);
 
   if (user) {
-    return { user, isNew: false };  // existing user — just return them
+    return { user, isNew: false }; // existing user — just return them
   }
 
   // Create a new user record
   user = {
-    id:   generateId(),
+    id: generateId(),
     email,
     name: preferredName || email.split("@")[0],
     profile_complete: false,
@@ -577,7 +615,7 @@ async function getOrCreateUser(email, preferredName = "") {
 }
 ```
 
-**`linkPendingInvites`** handles a common case: someone was invited to a meeting *before*
+**`linkPendingInvites`** handles a common case: someone was invited to a meeting _before_
 they had an account. The meeting creator's email might appear in the `pending:{email}` blob,
 waiting to be connected once they sign up. This function does that connection.
 
@@ -604,7 +642,7 @@ A **meeting** object looks like this (stored in the `"meetings"` blob store, key
   "end_time": "14:00",
   "timezone": "America/Los_Angeles",
   "is_finalized": false,
-  "finalized_date": null,   // the chosen date/day for the meeting (set when finalized)
+  "finalized_date": null, // the chosen date/day for the meeting (set when finalized)
   "finalized_slot": null,
   "note": "",
   "created_at": "2026-03-26T10:00:00.000Z"
@@ -612,6 +650,7 @@ A **meeting** object looks like this (stored in the `"meetings"` blob store, key
 ```
 
 A list of all meeting IDs is stored separately under the key `"index"` in the same store:
+
 ```json
 ["abc123xyz", "ghi789", "jkl012"]
 ```
@@ -620,10 +659,25 @@ This is a common pattern when using a key-value store: you need a separate "inde
 all items, because you cannot query by value like in a SQL database.
 
 An **invite** entry (in the `"invites"` store, keyed by `"meeting:{id}"`):
+
 ```json
 [
-  { "id": "inv1", "meeting_id": "abc123xyz", "user_id": "def456", "email": "alice@example.com", "name": "Alice",   "responded": true  },
-  { "id": "inv2", "meeting_id": "abc123xyz", "user_id": "ghi789", "email": "bob@example.com",   "name": "Bob",     "responded": false }
+  {
+    "id": "inv1",
+    "meeting_id": "abc123xyz",
+    "user_id": "def456",
+    "email": "alice@example.com",
+    "name": "Alice",
+    "responded": true
+  },
+  {
+    "id": "inv2",
+    "meeting_id": "abc123xyz",
+    "user_id": "ghi789",
+    "email": "bob@example.com",
+    "name": "Bob",
+    "responded": false
+  }
 ]
 ```
 
@@ -683,7 +737,7 @@ the link" feature — anyone with the link can join.
 
 ## 10. Availability and Finalizing — `meeting-actions.mjs`
 
-This file handles the actions that happen *inside* a meeting.
+This file handles the actions that happen _inside_ a meeting.
 
 ### 10.1 Slot format
 
@@ -699,17 +753,33 @@ The format is `{date_or_day}_{HH:MM}`. The underscore separates the date (or day
 from the time.
 
 An **availability** entry (in the `"availability"` store, keyed by `"meeting:{id}"`):
+
 ```json
 [
-  { "meeting_id": "abc123xyz", "user_id": "def456", "date_or_day": "2026-04-01", "time_slot": "11:00" },
-  { "meeting_id": "abc123xyz", "user_id": "def456", "date_or_day": "2026-04-01", "time_slot": "11:15" },
-  { "meeting_id": "abc123xyz", "user_id": "ghi789", "date_or_day": "2026-04-01", "time_slot": "11:00" }
+  {
+    "meeting_id": "abc123xyz",
+    "user_id": "def456",
+    "date_or_day": "2026-04-01",
+    "time_slot": "11:00"
+  },
+  {
+    "meeting_id": "abc123xyz",
+    "user_id": "def456",
+    "date_or_day": "2026-04-01",
+    "time_slot": "11:15"
+  },
+  {
+    "meeting_id": "abc123xyz",
+    "user_id": "ghi789",
+    "date_or_day": "2026-04-01",
+    "time_slot": "11:00"
+  }
 ]
 ```
 
-### 10.2 Submitting availability (`POST /api/meeting/:id/availability`)
+### 10.2 Submitting availability (`POST /api/meetings/:id/availability`)
 
-The browser sends the *complete* list of selected slots every time availability is saved
+The browser sends the _complete_ list of selected slots every time availability is saved
 (not just the changes). The server:
 
 1. Validates that each submitted slot refers to a real date and a real time in the meeting's window.
@@ -720,12 +790,12 @@ The browser sends the *complete* list of selected slots every time availability 
 
 ```js
 // Server keeps other users' data, replaces current user's data
-const otherAvail    = allAvail.filter(a => a.user_id !== user.id);
-const updatedAvail  = [...otherAvail, ...newAvail];
+const otherAvail = allAvail.filter((a) => a.user_id !== user.id);
+const updatedAvail = [...otherAvail, ...newAvail];
 await availability.setJSON(`meeting:${meetingId}`, updatedAvail);
 ```
 
-### 10.3 Finalizing a meeting (`POST /api/meeting/:id/finalize`)
+### 10.3 Finalizing a meeting (`POST /api/meetings/:id/finalize`)
 
 Only the meeting creator can finalize. The request body contains:
 
@@ -742,7 +812,7 @@ The server updates the meeting object in place — setting `is_finalized: true` 
 chosen date/slot. From this point on, the meeting page shows a finalized banner and a calendar
 download button instead of the availability grid.
 
-### 10.4 Sending reminders (`POST /api/meeting/:id/remind-pending`)
+### 10.4 Sending reminders (`POST /api/meetings/:id/remind-pending`)
 
 The creator can press a "Send reminder" button to email everyone who has not yet responded.
 The server filters the invite list to those with `responded: false` and sends each a reminder
@@ -764,10 +834,10 @@ and an `access_token`. These are encrypted with AES-256-GCM and stored in the us
 
 ```json
 {
-  "google_access_token":  "enc:v1:...",
+  "google_access_token": "enc:v1:...",
   "google_refresh_token": "enc:v1:...",
-  "google_token_expiry":  1743000000000,
-  "calendar_connected":   true
+  "google_token_expiry": 1743000000000,
+  "calendar_connected": true
 }
 ```
 
@@ -784,9 +854,8 @@ When the meeting page loads, it calls this endpoint if the user has calendar con
    browser can grey out those cells.
 
 ```js
-const isBusy = busyPeriods.some(p =>
-  slotStartUTC.getTime() < p.end.getTime() &&
-  slotEndMs   > p.start.getTime()
+const isBusy = busyPeriods.some(
+  (p) => slotStartUTC.getTime() < p.end.getTime() && slotEndMs > p.start.getTime()
 );
 ```
 
@@ -809,11 +878,11 @@ When `meetings.mjs` sends an invitation, it saves a record keyed by the Resend e
 
 ```js
 await emailTracker.setJSON(result.emailId, {
-  meeting_id:    meetingId,
+  meeting_id: meetingId,
   meeting_title: meeting.title,
   creator_email: user.email,
   invitee_email: inv.email,
-  sent_at:       new Date().toISOString(),
+  sent_at: new Date().toISOString(),
 });
 ```
 
@@ -839,7 +908,7 @@ variable. Every admin route starts with:
 
 ```js
 const user = getUserFromRequest(req);
-if (!user)        return errorResponse(401, "Not authenticated.");
+if (!user) return errorResponse(401, "Not authenticated.");
 if (!isAdmin(user)) return errorResponse(403, "Admin access required.");
 ```
 
@@ -847,17 +916,22 @@ if (!isAdmin(user)) return errorResponse(403, "Admin access required.");
 
 ```js
 export function isAdmin(user) {
-  const adminEmails = getEnv("ADMIN_EMAILS", "").split(",").map(e => e.trim().toLowerCase());
+  const adminEmails = getEnv("ADMIN_EMAILS", "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase());
   return adminEmails.includes((user.email || "").toLowerCase());
 }
 ```
 
 The admin routes provide:
+
 - `GET /api/admin/stats` — total users, meetings, and logged events
 - `GET /api/admin/users` — list all user records
-- `GET /api/admin/user?email=X` — full details for one user
-- `POST /api/admin/user` — create or update a user
-- `POST /api/admin/user/delete` — delete a user (cannot delete admin accounts)
+- `GET /api/admin/users/:email` — full details for one user
+- `POST /api/admin/users` — create or update a user
+- `POST /api/admin/users/delete` — delete a user (cannot delete admin accounts)
+- `POST /api/admin/impersonate` — sign in as another user temporarily (issues a JWT with
+  `is_impersonated: true` and `impersonator_email` so the session can be stopped later)
 - `GET /api/admin/meetings` — list all meetings with invitee counts
 - `GET /api/admin/events` — recent event log (newest first)
 
@@ -870,18 +944,18 @@ MeetMe does not use a traditional SQL database (like PostgreSQL or MySQL). Inste
 
 Here is a map of every "store" (think: table) and what is stored in it:
 
-| Store name | Keys | Values |
-|------------|------|--------|
-| `users` | `alice@example.com` (email) | User profile object |
-| `meetings` | `abc123` (meeting ID) | Meeting object |
-| `meetings` | `"index"` | Array of all meeting IDs |
-| `invites` | `"meeting:abc123"` | Array of invite objects for that meeting |
-| `invites` | `"pending:bob@example.com"` | Array of meeting IDs the user was invited to before creating an account |
-| `availability` | `"meeting:abc123"` | Array of all availability entries for that meeting |
-| `login_tokens` | `jti` (unique token ID) | `{ email, used, used_at }` |
-| `rate_limits` | `"bucket:key"` (e.g. `"magic_link:alice@example.com"`) | `{ window_start, count }` |
-| `events` | Timestamp-prefixed ID | Structured event log entry |
-| `email_records` | Resend email ID | `{ meeting_id, creator_email, invitee_email, ... }` |
+| Store name      | Keys                                                   | Values                                                                  |
+| --------------- | ------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `users`         | `alice@example.com` (email)                            | User profile object                                                     |
+| `meetings`      | `abc123` (meeting ID)                                  | Meeting object                                                          |
+| `meetings`      | `"index"`                                              | Array of all meeting IDs                                                |
+| `invites`       | `"meeting:abc123"`                                     | Array of invite objects for that meeting                                |
+| `invites`       | `"pending:bob@example.com"`                            | Array of meeting IDs the user was invited to before creating an account |
+| `availability`  | `"meeting:abc123"`                                     | Array of all availability entries for that meeting                      |
+| `login_tokens`  | `jti` (unique token ID)                                | `{ email, used, used_at }`                                              |
+| `rate_limits`   | `"bucket:key"` (e.g. `"magic_link:alice@example.com"`) | `{ window_start, count }`                                               |
+| `events`        | Timestamp-prefixed ID                                  | Structured event log entry                                              |
+| `email_records` | Resend email ID                                        | `{ meeting_id, creator_email, invitee_email, ... }`                     |
 
 **Why a key-value store instead of SQL?**
 
@@ -1007,14 +1081,17 @@ Having walked through the whole codebase, here are the design patterns you will 
 over in real-world web apps:
 
 ### Separation of concerns
+
 Each file has a clear job: `utils.mjs` for shared helpers, `auth.mjs` for authentication,
 `meetings.mjs` for meeting data. This makes code easier to find, understand, and fix.
 
 ### DRY — Don't Repeat Yourself
+
 `apiFetch` in `common.js` and `jsonResponse`/`errorResponse` in `utils.mjs` both exist so
 the same logic is written once. If the behavior needs to change, you change it in one place.
 
 ### Guard clauses / early returns
+
 Every protected route checks authentication first and returns early if it fails:
 
 ```js
@@ -1027,23 +1104,26 @@ This pattern (called a "guard clause") keeps the happy path at the top level and
 deeply nested `if/else` chains.
 
 ### Never trust input
+
 The server always validates data it receives from the browser: required fields are checked,
 time formats are matched against a regex, emails are normalized to lowercase, and
 user-controlled strings are HTML-escaped before being inserted into HTML. A browser can be
 tricked or replaced by a script, so the server cannot assume the data is well-formed.
 
 ### Failing gracefully
+
 Calls to the Blobs store are wrapped in `.catch(() => null)` or `.catch(() => [])` so that
 a missing key does not crash the entire request. The `apiFetch` function in the browser does
 the same — a network error returns a safe object instead of throwing an exception.
 
 ### Logging with context
+
 Every log line includes: timestamp, log level, which function produced it, a message, and
 relevant IDs (meeting ID, user email). This makes it possible to trace a problem through the
 logs even when many users are using the app simultaneously.
 
 ---
 
-*End of Codebase Review. If something is unclear, reading the source file alongside this
+_End of Codebase Review. If something is unclear, reading the source file alongside this
 document is the best way to deepen your understanding — every concept above is directly
-visible in the code.*
+visible in the code._

@@ -1,48 +1,41 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Page not found — MeetMe</title>
-  <link rel="stylesheet" href="/static/style.css" />
-</head>
-<body>
-  <header class="topbar">
-    <div class="topbar-inner">
-      <a class="brand" href="/">MeetMe</a>
-      <nav class="topnav" id="nav-auth" style="display:none;">
-        <span id="nav-username" class="nav-user"></span>
-        <a href="/dashboard.html" class="nav-link">Dashboard</a>
-        <a href="#" id="logout-link" class="nav-link">Logout</a>
-      </nav>
-    </div>
-  </header>
-
-  <main class="container" style="max-width: 760px; padding-top: 32px;">
-    <section class="card" style="text-align: center; padding: 32px 24px;">
-      <h1 style="margin-bottom: 8px;">404 — Page not found</h1>
-      <p class="muted" style="margin-bottom: 20px;">
-        The page you requested does not exist or may have been moved.
-      </p>
-
-      <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-        <a href="/" class="btn btn-primary">Go to Home</a>
-        <a href="/dashboard.html" class="btn btn-secondary">Go to Dashboard</a>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Page not found — MeetMe</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="/">MeetMe</a>
+        <nav class="topnav" id="nav-auth" style="display: none">
+          <span id="nav-username" class="nav-user"></span>
+          <a href="/dashboard.html" class="nav-link">Dashboard</a>
+          <a href="#" id="logout-link" class="nav-link">Logout</a>
+        </nav>
       </div>
-    </section>
-  </main>
+    </header>
 
-  <script src="/static/common.js"></script>
-  <script>
-    checkAuth();
-    const logout = document.getElementById('logout-link');
-    if (logout) {
-      logout.addEventListener('click', async (e) => {
-        e.preventDefault();
-        await apiFetch('/api/auth/logout', { method: 'POST' });
-        window.location.href = '/';
-      });
-    }
-  </script>
-</body>
+    <main class="container" style="max-width: 760px; padding-top: 32px">
+      <section class="card" style="text-align: center; padding: 32px 24px">
+        <h1 style="margin-bottom: 8px">404 — Page not found</h1>
+        <p class="muted" style="margin-bottom: 20px">
+          The page you requested does not exist or may have been moved.
+        </p>
+
+        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap">
+          <a href="/" class="btn btn-primary">Go to Home</a>
+          <a href="/dashboard.html" class="btn btn-secondary">Go to Dashboard</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer" data-shared-footer></footer>
+
+    <script src="/static/layout.js"></script>
+    <script src="/static/common.js"></script>
+    <script src="/static/not-found.js" defer></script>
+  </body>
 </html>

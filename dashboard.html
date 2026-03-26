@@ -1,147 +1,51 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Dashboard – MeetMe</title>
-  <link rel="stylesheet" href="/static/style.css"/>
-</head>
-<body>
-
-<nav class="navbar">
-  <div class="nav-inner">
-    <a href="/dashboard.html" class="nav-brand">
-      <span class="brand-icon">&#x27F3;</span> MeetMe
-    </a>
-    <div class="nav-links" id="nav-auth" style="display:none;">
-      <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
-      <span class="nav-user" id="nav-username"></span>
-      <a href="#" class="nav-link" id="logout-link">Log out</a>
-    </div>
-  </div>
-</nav>
-
-<div id="flash-container" class="flash-container"></div>
-
-<main class="main-content">
-  <div class="page-header">
-    <div>
-      <h1>Dashboard</h1>
-      <p class="text-muted" id="greeting"></p>
-    </div>
-    <a href="/create-meeting.html" class="btn btn-primary">+ New Meeting</a>
-  </div>
-
-  <section class="section">
-    <h2 class="section-title">Meetings I Created</h2>
-    <div id="my-meetings"></div>
-  </section>
-
-  <section class="section">
-    <h2 class="section-title">Meetings I'm Invited To</h2>
-    <div id="invited-meetings"></div>
-  </section>
-</main>
-
-<footer class="footer">
-  <p>MeetMe &ndash; Find the perfect time together &mdash; <a href="/feedback.html" style="color:inherit;">Send feedback</a></p>
-  <p><a href="https://buymeacoffee.com/yusufpisanh" target="_blank" rel="noopener noreferrer" style="color:inherit;">&#x2615; Buy me a coffee</a></p>
-</footer>
-
-<script src="/static/common.js"></script>
-<script>
-(async () => {
-  const user = await requireAuth();
-  if (!user) return;
-
-  document.getElementById('greeting').textContent = `Hello, ${user.name}`;
-
-  const { ok, status, data } = await apiFetch('/api/meetings');
-  if (!ok) {
-    showFlash(data.error || `Failed to load meetings (HTTP ${status}).`, 'danger');
-    return;
-  }
-
-  renderMeetings('my-meetings', data.my_meetings, true);
-  renderMeetings('invited-meetings', data.invited_meetings, false);
-})();
-
-function renderMeetings(containerId, meetings, isOwner) {
-  const container = document.getElementById(containerId);
-
-  if (!meetings || meetings.length === 0) {
-    if (isOwner) {
-      container.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">&#x1F4C5;</div>
-          <p>You haven't created any meetings yet.</p>
-          <a href="/create-meeting.html" class="btn btn-primary">Create your first meeting</a>
-        </div>`;
-    } else {
-      container.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">&#x2709;&#xFE0F;</div>
-          <p>You haven't been invited to any meetings yet.</p>
-        </div>`;
-    }
-    return;
-  }
-
-  let html = '<div class="meeting-grid">';
-  for (const m of meetings) {
-    const dates = m.dates_or_days || [];
-    const datesHtml = dates.slice(0, 4).map(d => `<span class="date-chip">${escapeHtml(d)}</span>`).join('');
-    const moreHtml = dates.length > 4 ? `<span class="date-chip muted">+${dates.length - 4} more</span>` : '';
-
-    html += `
-    <div class="meeting-card ${m.is_finalized ? 'finalized' : ''}">
-      <div class="meeting-card-top">
-        <div>
-          <h3 class="meeting-title">
-            <a href="/meeting.html?id=${m.id}">${escapeHtml(m.title)}</a>
-          </h3>
-          <span class="meeting-meta">
-            ${escapeHtml((m.meeting_type || '').replace('_', ' '))} &middot;
-            ${m.respond_count || 0}/${m.invite_count || 0} responded
-            ${!isOwner && m.creator_name ? '&middot; Organized by ' + escapeHtml(m.creator_name) : ''}
-          </span>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard – MeetMe</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-inner">
+        <a href="/dashboard.html" class="nav-brand">
+          <span class="brand-icon">&#x27F3;</span> MeetMe
+        </a>
+        <div class="nav-links" id="nav-auth" style="display: none">
+          <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
+          <span class="nav-user" id="nav-username"></span>
+          <a href="#" class="nav-link" id="logout-link">Log out</a>
         </div>
-        ${m.is_finalized
-          ? '<span class="badge badge-green">Finalized</span>'
-          : isOwner ? '<span class="badge badge-blue">Open</span>' : '<span class="badge badge-orange">Needs your input</span>'}
       </div>
-      ${m.description ? `<p class="meeting-desc">${escapeHtml(m.description)}</p>` : ''}
-      <div class="meeting-dates">${datesHtml}${moreHtml}</div>
-      ${m.is_finalized ? `<div class="finalized-info">&#x1F4C5; <strong>${escapeHtml(m.finalized_date || '')}</strong> at <strong>${escapeHtml(m.finalized_slot || '')}</strong> (${m.duration_minutes} min)</div>` : ''}
-      <div class="meeting-actions">
-        <a href="/meeting.html?id=${m.id}" class="btn btn-sm btn-primary">${m.is_finalized ? 'View' : isOwner ? 'View' : 'Add Availability'}</a>
-        ${isOwner ? `<button class="btn btn-sm btn-danger" onclick="deleteMeeting('${m.id}')">Delete</button>` : `<button class="btn btn-sm btn-danger" onclick="removeMeeting('${m.id}')">Remove</button>`}
+    </nav>
+
+    <div id="flash-container" class="flash-container"></div>
+
+    <main class="main-content">
+      <div class="page-header">
+        <div>
+          <h1>Dashboard</h1>
+          <p class="text-muted" id="greeting"></p>
+        </div>
+        <a href="/create-meeting.html" class="btn btn-primary">+ New Meeting</a>
       </div>
-    </div>`;
-  }
-  html += '</div>';
-  container.innerHTML = html;
-}
 
-async function deleteMeeting(id) {
-  if (!confirm('Delete this meeting?')) return;
-  const { ok, status, data } = await apiFetch(`/api/meetings/${id}/delete`, { method: 'POST' });
-  if (ok) {
-    window.location.reload();
-  } else {
-    showFlash(data.error || `Failed to delete meeting (HTTP ${status}).`, 'danger');
-  }
-}
+      <section class="section">
+        <h2 class="section-title">Meetings I Created</h2>
+        <div id="my-meetings"></div>
+      </section>
 
-async function removeMeeting(id) {
-  if (!confirm('Remove this meeting from your dashboard?')) return;
-  const { ok, status, data } = await apiFetch(`/api/meetings/${id}/leave`, { method: 'POST' });
-  if (ok) {
-    window.location.reload();
-  } else {
-    showFlash(data.error || `Failed to remove meeting (HTTP ${status}).`, 'danger');
-  }
-}
-</script>
-</body>
+      <section class="section">
+        <h2 class="section-title">Meetings I'm Invited To</h2>
+        <div id="invited-meetings"></div>
+      </section>
+    </main>
+
+    <footer class="footer" data-shared-footer></footer>
+
+    <script src="/static/layout.js"></script>
+    <script src="/static/common.js"></script>
+    <script src="/static/dashboard.js" defer></script>
+  </body>
 </html>

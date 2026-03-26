@@ -24,15 +24,32 @@
  *   - All auth endpoints have per-IP and per-email rate limiting
  */
 import {
-  getDb, getEnv, createToken, verifyToken, verifyTokenVerbose,
-  getUserFromRequest, jsonResponse, errorResponse,
-  setCookie, clearCookie, generateId,
-  log, logRequest, safeJson, validateEmail, persistEvent,
-  isAdmin, checkRateLimit, encryptSecret, decryptSecret,
-  sendEmail, asArray, escapeHtml,
+  getDb,
+  getEnv,
+  createToken,
+  verifyTokenVerbose,
+  getUserFromRequest,
+  jsonResponse,
+  errorResponse,
+  setCookie,
+  clearCookie,
+  generateId,
+  log,
+  logRequest,
+  safeJson,
+  validateEmail,
+  persistEvent,
+  isAdmin,
+  checkRateLimit,
+  decryptSecret,
+  sendEmail,
+  asArray,
+  escapeHtml,
 } from "./utils.mjs";
+import { handleGoogleAuthRoute } from "./auth-google.mjs";
 
 const FN = "auth";
+const MAX_NAME_LENGTH = 100;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -97,8 +114,10 @@ async function linkPendingInvites(emailKey, user) {
   if (!pendingList || !Array.isArray(pendingList) || pendingList.length === 0) return;
 
   for (const meetingId of pendingList) {
-    const meetingInvites = asArray(await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
-    const updated = meetingInvites.map(inv =>
+    const meetingInvites = asArray(
+      await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => [])
+    );
+    const updated = meetingInvites.map((inv) =>
       inv.email === emailKey ? { ...inv, user_id: user.id, name: inv.name || user.name } : inv
     );
     await invites.setJSON(`meeting:${meetingId}`, updated);
@@ -173,7 +192,8 @@ async function sendMagicLinkEmail(email, link) {
     let hint = "";
     if (result.error?.includes("HTTP 403")) hint = " (Check sender domain verification in Resend.)";
     if (result.error?.includes("HTTP 401")) hint = " (RESEND_API_KEY may be invalid or expired.)";
-    if (result.error?.includes("HTTP 422")) hint = " (AUTH_FROM_EMAIL may not be a verified sender.)";
+    if (result.error?.includes("HTTP 422"))
+      hint = " (AUTH_FROM_EMAIL may not be a verified sender.)";
     log("error", FN, "magic link email failed", { to: email, error: result.error });
     return { ok: false, error: (result.error || "Unknown error") + hint };
   }
@@ -258,11 +278,17 @@ async function handleAuth(req, context) {
       return redirectResponse("/?error=invalid-link");
     }
 
-    await loginTokens.setJSON(payload.jti, { ...tokenRecord, used: true, used_at: new Date().toISOString() });
+    await loginTokens.setJSON(payload.jti, {
+      ...tokenRecord,
+      used: true,
+      used_at: new Date().toISOString(),
+    });
 
     const { user, isNew } = await getOrCreateUser(payload.email, payload.name || "");
     if (!user) {
-      log("error", FN, "getOrCreateUser returned null during magic link verify", { email: payload.email });
+      log("error", FN, "getOrCreateUser returned null during magic link verify", {
+        email: payload.email,
+      });
       return redirectResponse("/?error=invalid-link");
     }
 
@@ -278,272 +304,22 @@ async function handleAuth(req, context) {
       name: user.name || user.email,
       is_new_user: !!isNew,
     });
-    const dest = (isNew || !user.profile_complete) ? "/profile.html?setup=1" : "/dashboard.html";
+    const dest = isNew || !user.profile_complete ? "/profile.html?setup=1" : "/dashboard.html";
     return redirectResponse(dest, { "Set-Cookie": setCookie("token", appToken) });
   }
 
-  if (req.method === "GET" && path === "google/start") {
-    if (!isLocalDevRequest(req)) {
-      const ip = getClientIp(req);
-      const ipRate = await checkRateLimit({
-        bucket: "auth_google_start_ip",
-        key: ip,
-        limit: 20,
-        windowMs: 15 * 60 * 1000,
-      });
-      if (!ipRate.ok) {
-        return redirectResponse(`/?error=rate-limited&retry=${ipRate.retryAfterSec}`);
-      }
-    }
-
-    const googleClientId = getEnv("GOOGLE_CLIENT_ID");
-    if (!googleClientId) {
-      log("error", FN, "GOOGLE_CLIENT_ID is not set");
-      return redirectResponse("/?error=google-not-configured");
-    }
-
-    const redirectUri = getGoogleRedirectUri(req);
-    const stateToken = createToken({
-      id: "oauth-state",
-      email: "oauth-state@meetme.local",
-      name: "oauth",
-      purpose: "google_oauth_state",
-      return_to: "/dashboard.html",
-      jti: generateId(),
-    }, "10m");
-
-    const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-    authUrl.searchParams.set("client_id", googleClientId);
-    authUrl.searchParams.set("redirect_uri", redirectUri);
-    authUrl.searchParams.set("response_type", "code");
-    authUrl.searchParams.set("scope", "openid email profile");
-    authUrl.searchParams.set("prompt", "select_account");
-    authUrl.searchParams.set("state", stateToken);
-
-    log("info", FN, "google oauth start", { redirect_uri: redirectUri });
-    return redirectResponse(authUrl.toString(), { "Set-Cookie": setCookie("oauth_state", stateToken, 10 * 60) });
-  }
-
-  if (req.method === "GET" && path === "google/callback") {
-    const googleClientId = getEnv("GOOGLE_CLIENT_ID");
-    const googleClientSecret = getEnv("GOOGLE_CLIENT_SECRET");
-    if (!googleClientId || !googleClientSecret) {
-      log("error", FN, "Google env vars missing in callback");
-      return redirectResponse("/?error=google-not-configured");
-    }
-
-    const url = new URL(req.url);
-    const code = url.searchParams.get("code") || "";
-    const state = url.searchParams.get("state") || "";
-    const googleError = url.searchParams.get("error") || "";
-
-    if (googleError) {
-      log("warn", FN, "Google returned error param", { google_error: googleError });
-      return redirectResponse("/?error=google-denied");
-    }
-    if (!code) {
-      log("warn", FN, "Google callback missing code");
-      return redirectResponse("/?error=google-auth-failed");
-    }
-
-    const cookie = req.headers.get("cookie") || "";
-    const stateMatch = cookie.match(/(?:^|;\s*)oauth_state=([^;]+)/);
-    const stateFromCookie = stateMatch ? stateMatch[1] : "";
-
-    if (!stateFromCookie) {
-      log("warn", FN, "oauth_state cookie missing — possible CSRF or cookie blocked by browser");
-      return redirectResponse("/?error=google-state-missing");
-    }
-    if (state !== stateFromCookie) {
-      log("warn", FN, "oauth state mismatch — possible CSRF");
-      return redirectResponse("/?error=google-auth-failed");
-    }
-
-    const statePayload = verifyToken(state);
-    if (!statePayload || statePayload.purpose !== "google_oauth_state") {
-      log("warn", FN, "oauth state JWT invalid or expired");
-      return redirectResponse("/?error=google-state-expired");
-    }
-
-    const redirectUri = getGoogleRedirectUri(req);
-    let tokenRes;
-    try {
-      tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ code, client_id: googleClientId, client_secret: googleClientSecret, redirect_uri: redirectUri, grant_type: "authorization_code" }),
-      });
-    } catch (err) {
-      log("error", FN, "google token exchange fetch threw", { error: err.message });
-      return redirectResponse("/?error=google-auth-failed");
-    }
-
-    if (!tokenRes.ok) {
-      const body = await tokenRes.text().catch(() => "");
-      log("error", FN, "google token exchange failed", { status: tokenRes.status, body });
-      return redirectResponse("/?error=google-auth-failed");
-    }
-
-    const tokenData = await tokenRes.json().catch(() => ({}));
-    const accessToken = tokenData.access_token;
-    if (!accessToken) {
-      log("error", FN, "google token exchange returned no access_token", { keys: Object.keys(tokenData) });
-      return redirectResponse("/?error=google-auth-failed");
-    }
-
-    let userInfoRes;
-    try {
-      userInfoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-    } catch (err) {
-      log("error", FN, "google userinfo fetch threw", { error: err.message });
-      return redirectResponse("/?error=google-auth-failed");
-    }
-
-    if (!userInfoRes.ok) {
-      log("error", FN, "google userinfo failed", { status: userInfoRes.status });
-      return redirectResponse("/?error=google-auth-failed");
-    }
-
-    const googleUser = await userInfoRes.json().catch(() => ({}));
-    const email = validateEmail(googleUser.email || "");
-    const isVerified = !!googleUser.email_verified;
-
-    if (!email) {
-      log("warn", FN, "google user has no valid email", { sub: googleUser.sub });
-      return redirectResponse("/?error=google-email-missing");
-    }
-    if (!isVerified) {
-      log("warn", FN, "google user email not verified", { email });
-      return redirectResponse("/?error=google-email-not-verified");
-    }
-
-    const { user, isNew } = await getOrCreateUser(email, googleUser.name || "");
-    if (!user) {
-      log("error", FN, "getOrCreateUser returned null during google callback", { email });
-      return redirectResponse("/?error=google-auth-failed");
-    }
-
-    const appToken = createToken(user);
-    log("info", FN, "google sign-in successful", { email: user.email, isNew });
-    await persistEvent("info", FN, "sign-in", {
-      sign_in_method: "google",
-      email: user.email,
-      name: user.name || user.email,
-      is_new_user: !!isNew,
-    });
-    const dest = (isNew || !user.profile_complete) ? "/profile.html?setup=1" : (statePayload.return_to || "/dashboard.html");
-    return redirectResponse(dest, { "Set-Cookie": setCookie("token", appToken) });
-  }
-
-  // ─── GET /api/auth/google/calendar-start ─────────────────────────────────
-  if (req.method === "GET" && path === "google/calendar-start") {
-    const calUser = getUserFromRequest(req);
-    if (!calUser) return redirectResponse("/?error=not-authenticated");
-
-    if (!isLocalDevRequest(req)) {
-      const userRate = await checkRateLimit({
-        bucket: "auth_calendar_start_user",
-        key: calUser.email,
-        limit: 8,
-        windowMs: 15 * 60 * 1000,
-      });
-      if (!userRate.ok) {
-        return redirectResponse(`/profile.html?error=calendar-rate-limited&retry=${userRate.retryAfterSec}`);
-      }
-    }
-
-    const googleClientId = getEnv("GOOGLE_CLIENT_ID");
-    if (!googleClientId) return redirectResponse("/profile.html?error=google-not-configured");
-
-    const redirectUri = `${getAppUrl(req)}/api/auth/google/calendar-callback`;
-    const stateToken = createToken({
-      id: "oauth-state",
-      email: calUser.email,
-      name: "calendar-connect",
-      purpose: "google_calendar_state",
-      return_to: "/profile.html?calendar=connected",
-      jti: generateId(),
-    }, "10m");
-
-    const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-    authUrl.searchParams.set("client_id", googleClientId);
-    authUrl.searchParams.set("redirect_uri", redirectUri);
-    authUrl.searchParams.set("response_type", "code");
-    authUrl.searchParams.set("scope", "https://www.googleapis.com/auth/calendar.readonly");
-    authUrl.searchParams.set("access_type", "offline");
-    authUrl.searchParams.set("prompt", "consent");
-    authUrl.searchParams.set("state", stateToken);
-    authUrl.searchParams.set("login_hint", calUser.email);
-
-    log("info", FN, "google calendar connect start", { email: calUser.email, redirect_uri: redirectUri });
-    return redirectResponse(authUrl.toString(), { "Set-Cookie": setCookie("gcal_state", stateToken, 10 * 60) });
-  }
-
-  // ─── GET /api/auth/google/calendar-callback ───────────────────────────────
-  if (req.method === "GET" && path === "google/calendar-callback") {
-    const googleClientId = getEnv("GOOGLE_CLIENT_ID");
-    const googleClientSecret = getEnv("GOOGLE_CLIENT_SECRET");
-    if (!googleClientId || !googleClientSecret) return redirectResponse("/profile.html?error=google-not-configured");
-
-    const calUser = getUserFromRequest(req);
-    if (!calUser) return redirectResponse("/?error=not-authenticated");
-
-    const url = new URL(req.url);
-    const code = url.searchParams.get("code") || "";
-    const state = url.searchParams.get("state") || "";
-    const googleError = url.searchParams.get("error") || "";
-
-    if (googleError) return redirectResponse("/profile.html?error=calendar-denied");
-    if (!code) return redirectResponse("/profile.html?error=calendar-auth-failed");
-
-    const cookie = req.headers.get("cookie") || "";
-    const stateMatch = cookie.match(/(?:^|;\s*)gcal_state=([^;]+)/);
-    const stateFromCookie = stateMatch ? stateMatch[1] : "";
-    if (!stateFromCookie || state !== stateFromCookie) {
-      return redirectResponse("/profile.html?error=calendar-state-mismatch");
-    }
-
-    const statePayload = verifyToken(state);
-    if (!statePayload || statePayload.purpose !== "google_calendar_state") {
-      return redirectResponse("/profile.html?error=calendar-state-expired");
-    }
-
-    const redirectUri = `${getAppUrl(req)}/api/auth/google/calendar-callback`;
-    let tokenRes;
-    try {
-      tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ code, client_id: googleClientId, client_secret: googleClientSecret, redirect_uri: redirectUri, grant_type: "authorization_code" }),
-      });
-    } catch (err) {
-      log("error", FN, "calendar token exchange threw", { error: err.message });
-      return redirectResponse("/profile.html?error=calendar-auth-failed");
-    }
-
-    if (!tokenRes.ok) {
-      log("error", FN, "calendar token exchange failed", { status: tokenRes.status });
-      return redirectResponse("/profile.html?error=calendar-auth-failed");
-    }
-
-    const tokenData = await tokenRes.json().catch(() => ({}));
-    const usersDb = getDb("users");
-    const dbUser = await usersDb.get(calUser.email, { type: "json" }).catch(() => null);
-    if (!dbUser) return redirectResponse("/profile.html?error=user-not-found");
-
-    dbUser.google_access_token  = encryptSecret(tokenData.access_token || "");
-    const refreshPlain = tokenData.refresh_token || decryptSecret(dbUser.google_refresh_token) || "";
-    dbUser.google_refresh_token = encryptSecret(refreshPlain);
-    dbUser.google_token_expiry  = Date.now() + (tokenData.expires_in || 3600) * 1000;
-    dbUser.calendar_connected   = true;
-    await usersDb.setJSON(calUser.email, dbUser);
-
-    await persistEvent("info", FN, "calendar connected", { email: calUser.email });
-    log("info", FN, "google calendar connected", { email: calUser.email });
-    return redirectResponse("/profile.html?calendar=connected");
-  }
+  const googleRouteResponse = await handleGoogleAuthRoute({
+    req,
+    path,
+    fnName: FN,
+    getAppUrl,
+    getGoogleRedirectUri,
+    isLocalDevRequest,
+    getClientIp,
+    checkRateLimit,
+    getOrCreateUser,
+  });
+  if (googleRouteResponse) return googleRouteResponse;
 
   if (req.method === "GET" && path === "profile") {
     const tokenUser = getUserFromRequest(req);
@@ -622,7 +398,9 @@ async function handleAuth(req, context) {
     }
 
     const usersDb = getDb("users");
-    const adminUser = await usersDb.get(tokenUser.impersonator_email, { type: "json" }).catch(() => null);
+    const adminUser = await usersDb
+      .get(tokenUser.impersonator_email, { type: "json" })
+      .catch(() => null);
     if (!adminUser || !isAdmin(adminUser)) {
       return errorResponse(403, "Cannot restore admin session. Please sign in again.");
     }
@@ -635,9 +413,13 @@ async function handleAuth(req, context) {
       previous_user_name: tokenUser.name || tokenUser.email,
     });
 
-    return jsonResponse(200, { success: true, message: "Returned to admin session." }, {
-      "Set-Cookie": setCookie("token", adminToken),
-    });
+    return jsonResponse(
+      200,
+      { success: true, message: "Returned to admin session." },
+      {
+        "Set-Cookie": setCookie("token", adminToken),
+      }
+    );
   }
 
   const body = await safeJson(req);
@@ -653,6 +435,9 @@ async function handleAuth(req, context) {
     const lastName = (body.last_name || "").trim();
     const timezone = (body.timezone || "").trim();
     if (!firstName) return errorResponse(400, "First name is required.");
+    if (firstName.length > MAX_NAME_LENGTH || lastName.length > MAX_NAME_LENGTH) {
+      return errorResponse(400, `Names must be ${MAX_NAME_LENGTH} characters or fewer.`);
+    }
 
     const users = getDb("users");
     const user = await users.get(tokenUser.email, { type: "json" }).catch(() => null);
@@ -667,7 +452,11 @@ async function handleAuth(req, context) {
 
     const newToken = createToken(user);
     log("info", FN, "profile updated", { email: user.email, name: user.name });
-    return jsonResponse(200, { success: true, name: user.name }, { "Set-Cookie": setCookie("token", newToken) });
+    return jsonResponse(
+      200,
+      { success: true, name: user.name },
+      { "Set-Cookie": setCookie("token", newToken) }
+    );
   }
 
   if (path === "magic-link/request") {
@@ -676,6 +465,9 @@ async function handleAuth(req, context) {
 
     if (!emailKey) {
       return errorResponse(400, "A valid email address is required.");
+    }
+    if (name.length > MAX_NAME_LENGTH) {
+      return errorResponse(400, `Name must be ${MAX_NAME_LENGTH} characters or fewer.`);
     }
 
     if (!isLocalDevRequest(req)) {
@@ -701,7 +493,8 @@ async function handleAuth(req, context) {
       });
       if (!emailRate.ok) {
         return jsonResponse(429, {
-          error: "Too many sign-in links requested for this email. Please wait before requesting another.",
+          error:
+            "Too many sign-in links requested for this email. Please wait before requesting another.",
           retry_after_seconds: emailRate.retryAfterSec,
         });
       }
@@ -711,9 +504,16 @@ async function handleAuth(req, context) {
 
     const jti = generateId();
     const loginTokens = getDb("login_tokens");
-    await loginTokens.setJSON(jti, { email: emailKey, used: false, created_at: new Date().toISOString() });
+    await loginTokens.setJSON(jti, {
+      email: emailKey,
+      used: false,
+      created_at: new Date().toISOString(),
+    });
 
-    const token = createToken({ id: "magic-link", email: emailKey, name, purpose: "magic_link", jti }, "15m");
+    const token = createToken(
+      { id: "magic-link", email: emailKey, name, purpose: "magic_link", jti },
+      "15m"
+    );
     const link = `${getAppUrl(req)}/api/auth/magic-link/verify?token=${encodeURIComponent(token)}`;
 
     log("info", FN, "magic link generated", { email: emailKey });
@@ -727,7 +527,10 @@ async function handleAuth(req, context) {
   }
 
   if (path === "login" || path === "register") {
-    return errorResponse(410, "Email/password auth is disabled. Use the email sign-in link or Google.");
+    return errorResponse(
+      410,
+      "Email/password auth is disabled. Use the email sign-in link or Google."
+    );
   }
 
   if (path === "logout") {
@@ -736,10 +539,10 @@ async function handleAuth(req, context) {
   }
 
   if (path === "feedback") {
-    const senderName    = (body.name    || "").trim();
-    const senderEmail   = (body.email   || "").trim();
-    const feedbackType  = (body.type    || "other").trim();
-    const message       = (body.message || "").trim();
+    const senderName = (body.name || "").trim();
+    const senderEmail = (body.email || "").trim();
+    const feedbackType = (body.type || "other").trim();
+    const message = (body.message || "").trim();
 
     if (!senderEmail || !senderEmail.includes("@")) {
       return errorResponse(400, "A valid email address is required.");
@@ -748,15 +551,23 @@ async function handleAuth(req, context) {
       return errorResponse(400, "Message is required.");
     }
 
-    const adminEmails = getEnv("ADMIN_EMAILS", "").split(",").map(e => e.trim()).filter(Boolean);
+    const adminEmails = getEnv("ADMIN_EMAILS", "")
+      .split(",")
+      .map((e) => e.trim())
+      .filter(Boolean);
     if (adminEmails.length === 0) {
       log("warn", FN, "feedback not sent: ADMIN_EMAILS is not configured");
       return errorResponse(500, "Feedback email delivery is not configured on this server.");
     }
 
-    const typeLabels = { bug: "Bug Report", feature: "Feature Request", question: "Question", other: "General Feedback" };
-    const typeLabel  = typeLabels[feedbackType] || "Feedback";
-    const subject    = `[MeetMe Feedback] ${typeLabel} from ${senderName || senderEmail}`;
+    const typeLabels = {
+      bug: "Bug Report",
+      feature: "Feature Request",
+      question: "Question",
+      other: "General Feedback",
+    };
+    const typeLabel = typeLabels[feedbackType] || "Feedback";
+    const subject = `[MeetMe Feedback] ${typeLabel} from ${senderName || senderEmail}`;
 
     // escapeHtml() prevents XSS if message content were ever rendered in HTML.
     const escapedMessage = escapeHtml(message);

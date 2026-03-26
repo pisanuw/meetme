@@ -13,8 +13,17 @@
  * refreshed automatically when they expire.
  */
 import {
-  getDb, getEnv, getUserFromRequest, jsonResponse, errorResponse,
-  log, logRequest, decryptSecret, encryptSecret, asArray,
+  getDb,
+  getEnv,
+  getUserFromRequest,
+  jsonResponse,
+  errorResponse,
+  log,
+  logRequest,
+  decryptSecret,
+  encryptSecret,
+  asArray,
+  buildTimeSlots,
 } from "./utils.mjs";
 
 const FN = "calendar";
@@ -48,12 +57,18 @@ function localToUTC(dateStr, timeStr, timezone) {
 
   const fmt = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
     hour12: false,
   });
   const parts = {};
-  fmt.formatToParts(utcCandidate).forEach(({ type, value }) => { parts[type] = value; });
+  fmt.formatToParts(utcCandidate).forEach(({ type, value }) => {
+    parts[type] = value;
+  });
 
   const hour = parts.hour === "24" ? "00" : parts.hour;
   const tzStr = `${parts.year}-${parts.month}-${parts.day}T${hour}:${parts.minute}:${parts.second}Z`;
@@ -77,7 +92,7 @@ async function refreshAccessToken(dbUser) {
   const refreshToken = decryptSecret(dbUser.google_refresh_token);
   if (!refreshToken) return null;
 
-  const clientId     = getEnv("GOOGLE_CLIENT_ID");
+  const clientId = getEnv("GOOGLE_CLIENT_ID");
   const clientSecret = getEnv("GOOGLE_CLIENT_SECRET");
   if (!clientId || !clientSecret) return null;
 
@@ -129,7 +144,10 @@ async function handleCalendar(req, context) {
     if (!meeting) return errorResponse(404, `Meeting '${meetingId}' not found.`);
 
     if (meeting.meeting_type === "day_of_week" || meeting.meeting_type === "days_of_week") {
-      return errorResponse(400, "Calendar busy check is only available for meetings with specific dates.");
+      return errorResponse(
+        400,
+        "Calendar busy check is only available for meetings with specific dates."
+      );
     }
 
     // Load user's Google tokens
@@ -138,7 +156,10 @@ async function handleCalendar(req, context) {
     if (!dbUser) return errorResponse(404, "User record not found.");
     let accessToken = decryptSecret(dbUser.google_access_token);
     if (!dbUser.calendar_connected || !accessToken) {
-      return errorResponse(403, "Google Calendar is not connected. Connect it from your profile page.");
+      return errorResponse(
+        403,
+        "Google Calendar is not connected. Connect it from your profile page."
+      );
     }
 
     // Refresh token if expired (with 60s buffer)
@@ -157,7 +178,10 @@ async function handleCalendar(req, context) {
         dbUser.google_refresh_token = "";
         dbUser.google_token_expiry = 0;
         await usersDb.setJSON(user.email, dbUser);
-        return errorResponse(403, "Google Calendar session expired. Please reconnect from your profile page.");
+        return errorResponse(
+          403,
+          "Google Calendar session expired. Please reconnect from your profile page."
+        );
       }
     }
 
@@ -170,12 +194,12 @@ async function handleCalendar(req, context) {
     // Determine UTC range for the FreeBusy query
     const startUTC = localToUTC(dates[0], meeting.start_time || "00:00", meetingTz);
     const lastDate = dates[dates.length - 1];
-    const endUTC   = localToUTC(lastDate, meeting.end_time || "24:00", meetingTz);
+    let endUTC = localToUTC(lastDate, meeting.end_time || "24:00", meetingTz);
     // Clamp "24:00" edge case
     if (isNaN(endUTC.getTime())) {
       // end_time "20:00" on last date + 1 day
-      const fallback = localToUTC(lastDate, "20:00", meetingTz);
-      fallback.setDate(fallback.getDate() + 1);
+      endUTC = localToUTC(lastDate, "20:00", meetingTz);
+      endUTC.setDate(endUTC.getDate() + 1);
     }
 
     log("info", FN, "querying freeBusy", {
@@ -213,47 +237,45 @@ async function handleCalendar(req, context) {
         dbUser.google_refresh_token = "";
         dbUser.google_token_expiry = 0;
         await usersDb.setJSON(user.email, dbUser);
-        return errorResponse(403, "Google Calendar access was revoked. Please reconnect from your profile page.");
+        return errorResponse(
+          403,
+          "Google Calendar access was revoked. Please reconnect from your profile page."
+        );
       }
       return errorResponse(502, `Google Calendar API error (HTTP ${freeBusyRes.status}).`);
     }
 
     const freeBusyData = await freeBusyRes.json().catch(() => ({}));
-    const busyPeriods  = (freeBusyData.calendars?.primary?.busy || []).map(p => ({
+    const busyPeriods = (freeBusyData.calendars?.primary?.busy || []).map((p) => ({
       start: new Date(p.start),
-      end:   new Date(p.end),
+      end: new Date(p.end),
     }));
 
-    // Build time slots from the meeting definition (same logic as meetings.mjs)
-    const [sh, sm] = (meeting.start_time || "08:00").split(":").map(Number);
-    const [eh, em] = (meeting.end_time   || "20:00").split(":").map(Number);
-
     const busySlots = [];
+    const timeSlots = buildTimeSlots(meeting.start_time, meeting.end_time);
 
     for (const dateStr of dates) {
-      let cur = sh * 60 + sm;
-      const end = eh * 60 + em;
-
-      while (cur < end) {
-        const hh = String(Math.floor(cur / 60)).padStart(2, "0");
-        const mm = String(cur % 60).padStart(2, "0");
-        const slotKey = `${dateStr}_${hh}:${mm}`;
+      for (const timeStr of timeSlots) {
+        const slotKey = `${dateStr}_${timeStr}`;
 
         // Convert slot start and end to UTC
-        const slotStartUTC = localToUTC(dateStr, `${hh}:${mm}`, meetingTz);
+        const slotStartUTC = localToUTC(dateStr, timeStr, meetingTz);
         const slotEndMs = slotStartUTC.getTime() + 15 * 60 * 1000;
 
         // Check overlap with any busy period
-        const isBusy = busyPeriods.some(p =>
-          slotStartUTC.getTime() < p.end.getTime() && slotEndMs > p.start.getTime()
+        const isBusy = busyPeriods.some(
+          (p) => slotStartUTC.getTime() < p.end.getTime() && slotEndMs > p.start.getTime()
         );
 
         if (isBusy) busySlots.push(slotKey);
-        cur += 15;
       }
     }
 
-    log("info", FN, "freeBusy result", { email: user.email, meetingId, busyCount: busySlots.length });
+    log("info", FN, "freeBusy result", {
+      email: user.email,
+      meetingId,
+      busyCount: busySlots.length,
+    });
     return jsonResponse(200, {
       busy_slots: busySlots,
       meeting_timezone: meetingTz,

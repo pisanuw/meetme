@@ -14,12 +14,31 @@
  *   POST /api/admin/meetings/:id/delete        — force-delete any meeting
  */
 import {
-  getDb, getUserFromRequest, jsonResponse, errorResponse, isAdmin, persistEvent,
-  log, logRequest, safeJson, validateEmail, generateId, asArray,
-  createToken, setCookie,
+  getDb,
+  getUserFromRequest,
+  jsonResponse,
+  errorResponse,
+  isAdmin,
+  persistEvent,
+  log,
+  logRequest,
+  safeJson,
+  validateEmail,
+  generateId,
+  asArray,
+  createToken,
+  setCookie,
 } from "./utils.mjs";
 
 const FN = "admin";
+
+async function listMeetingIds(meetingsDb) {
+  const listing = await meetingsDb.list().catch(() => ({ blobs: [] }));
+  return asArray(listing?.blobs)
+    .map((b) => b?.key)
+    .filter(Boolean)
+    .filter((key) => key !== "index" && !key.includes(":"));
+}
 
 export default async (req, context) => {
   try {
@@ -44,12 +63,12 @@ async function handleAdmin(req, context) {
   if (req.method === "GET" && path === "stats") {
     const meetings = getDb("meetings");
     const usersDb = getDb("users");
-    const index = asArray(await meetings.get("index", { type: "json" }).catch(() => []));
+    const meetingIds = await listMeetingIds(meetings);
     const userList = await usersDb.list().catch(() => ({ blobs: [] }));
     const eventsDb = getDb("events");
     const eventList = await eventsDb.list().catch(() => ({ blobs: [] }));
     return jsonResponse(200, {
-      total_meetings: index.length,
+      total_meetings: meetingIds.length,
       total_users: asArray(userList?.blobs).length,
       total_events: asArray(eventList?.blobs).length,
     });
@@ -59,19 +78,22 @@ async function handleAdmin(req, context) {
   if (req.method === "GET" && path === "users") {
     const usersDb = getDb("users");
     const list = await usersDb.list().catch(() => ({ blobs: [] }));
-    const users = [];
-    for (const { key: email } of asArray(list?.blobs)) {
-      const u = await usersDb.get(email, { type: "json" }).catch(() => null);
-      if (u) users.push(u);
-    }
+    const users = (
+      await Promise.all(
+        asArray(list?.blobs).map(({ key: email }) =>
+          usersDb.get(email, { type: "json" }).catch(() => null)
+        )
+      )
+    ).filter(Boolean);
     users.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
     return jsonResponse(200, { users });
   }
 
-  // ─── GET /api/admin/user?email=X ─────────────────────────────────────────
-  if (req.method === "GET" && path === "user") {
-    const email = (url.searchParams.get("email") || "").toLowerCase();
-    if (!email) return errorResponse(400, "email query param required.");
+  // ─── GET /api/admin/users/:email ────────────────────────────────────────
+  const userPathMatch = path.match(/^users\/([^/]+)$/);
+  if (req.method === "GET" && userPathMatch) {
+    const email = decodeURIComponent(userPathMatch[1]).toLowerCase();
+    if (!email) return errorResponse(400, "email is required.");
 
     const usersDb = getDb("users");
     const invites = getDb("invites");
@@ -81,7 +103,7 @@ async function handleAdmin(req, context) {
     const u = await usersDb.get(email, { type: "json" }).catch(() => null);
     if (!u) return errorResponse(404, `User '${email}' not found.`);
 
-    const index = asArray(await meetings.get("index", { type: "json" }).catch(() => []));
+    const index = await listMeetingIds(meetings);
     const createdMeetings = [];
     const invitedMeetings = [];
 
@@ -89,24 +111,30 @@ async function handleAdmin(req, context) {
       const m = await meetings.get(mid, { type: "json" }).catch(() => null);
       if (!m) continue;
 
-      const meetingInvites = asArray(await invites.get(`meeting:${mid}`, { type: "json" }).catch(() => []));
-      const inv = meetingInvites.find(i => i.email === email);
+      const meetingInvites = asArray(
+        await invites.get(`meeting:${mid}`, { type: "json" }).catch(() => [])
+      );
+      const inv = meetingInvites.find((i) => i.email === email);
 
       if (m.creator_id === u.id) {
-        const avList = asArray(await availability.get(`meeting:${mid}`, { type: "json" }).catch(() => []));
-        const myAvail = avList.filter(a => a.user_id === u.id);
+        const avList = asArray(
+          await availability.get(`meeting:${mid}`, { type: "json" }).catch(() => [])
+        );
+        const myAvail = avList.filter((a) => a.user_id === u.id);
         createdMeetings.push({
           id: m.id,
           title: m.title,
           created_at: m.created_at,
           invite_count: meetingInvites.length,
-          respond_count: meetingInvites.filter(i => i.responded).length,
+          respond_count: meetingInvites.filter((i) => i.responded).length,
           is_finalized: m.is_finalized,
           my_slot_count: myAvail.length,
         });
       } else if (inv) {
-        const avList = asArray(await availability.get(`meeting:${mid}`, { type: "json" }).catch(() => []));
-        const myAvail = avList.filter(a => a.user_id === u.id);
+        const avList = asArray(
+          await availability.get(`meeting:${mid}`, { type: "json" }).catch(() => [])
+        );
+        const myAvail = avList.filter((a) => a.user_id === u.id);
         invitedMeetings.push({
           id: m.id,
           title: m.title,
@@ -131,8 +159,8 @@ async function handleAdmin(req, context) {
     });
   }
 
-  // ─── POST /api/admin/user — create or update user ─────────────────────────
-  if (req.method === "POST" && path === "user") {
+  // ─── POST /api/admin/users — create or update user ──────────────────────
+  if (req.method === "POST" && path === "users") {
     const body = await safeJson(req);
     if (!body) return errorResponse(400, "Request body must be valid JSON.");
 
@@ -143,21 +171,33 @@ async function handleAdmin(req, context) {
     let u = await usersDb.get(email, { type: "json" }).catch(() => null);
 
     if (u) {
-      const firstName = body.first_name !== undefined ? (body.first_name || "").trim() : u.first_name;
-      const lastName  = body.last_name  !== undefined ? (body.last_name  || "").trim() : u.last_name;
-      const name = body.name !== undefined
-        ? (body.name || "").trim() || u.name
-        : ([firstName, lastName].filter(Boolean).join(" ") || u.name);
+      const firstName =
+        body.first_name !== undefined ? (body.first_name || "").trim() : u.first_name;
+      const lastName = body.last_name !== undefined ? (body.last_name || "").trim() : u.last_name;
+      const name =
+        body.name !== undefined
+          ? (body.name || "").trim() || u.name
+          : [firstName, lastName].filter(Boolean).join(" ") || u.name;
 
-      u = { ...u, first_name: firstName || "", last_name: lastName || "", name, profile_complete: true };
+      u = {
+        ...u,
+        first_name: firstName || "",
+        last_name: lastName || "",
+        name,
+        profile_complete: true,
+      };
       await usersDb.setJSON(email, u);
       await persistEvent("info", FN, "admin updated user", { admin: user.email, target: email });
       log("info", FN, "admin updated user", { admin: user.email, target: email });
       return jsonResponse(200, { success: true, user: u });
     } else {
       const firstName = (body.first_name || "").trim();
-      const lastName  = (body.last_name  || "").trim();
-      const name = (body.name || [firstName, lastName].filter(Boolean).join(" ") || email.split("@")[0]).trim();
+      const lastName = (body.last_name || "").trim();
+      const name = (
+        body.name ||
+        [firstName, lastName].filter(Boolean).join(" ") ||
+        email.split("@")[0]
+      ).trim();
       u = {
         id: generateId(),
         email,
@@ -175,8 +215,8 @@ async function handleAdmin(req, context) {
     }
   }
 
-  // ─── POST /api/admin/user/delete ─────────────────────────────────────────
-  if (req.method === "POST" && path === "user/delete") {
+  // ─── POST /api/admin/users/delete ────────────────────────────────────────
+  if (req.method === "POST" && path === "users/delete") {
     const body = await safeJson(req);
     if (!body) return errorResponse(400, "Request body must be valid JSON.");
     const email = (body.email || "").trim().toLowerCase();
@@ -232,46 +272,59 @@ async function handleAdmin(req, context) {
       target_name: targetUser.name || targetUser.email,
     });
 
-    return jsonResponse(200, {
-      success: true,
-      impersonating: {
-        email: targetUser.email,
-        name: targetUser.name || targetUser.email,
+    return jsonResponse(
+      200,
+      {
+        success: true,
+        impersonating: {
+          email: targetUser.email,
+          name: targetUser.name || targetUser.email,
+        },
       },
-    }, {
-      "Set-Cookie": setCookie("token", token),
-    });
+      {
+        "Set-Cookie": setCookie("token", token),
+      }
+    );
   }
 
   // ─── GET /api/admin/meetings ──────────────────────────────────────────────
   if (req.method === "GET" && path === "meetings") {
     const meetings = getDb("meetings");
     const invites = getDb("invites");
-    const index = asArray(await meetings.get("index", { type: "json" }).catch(() => []));
-    const result = [];
-    for (const mid of index) {
-      const m = await meetings.get(mid, { type: "json" }).catch(() => null);
-      if (!m) continue;
-      const meetingInvites = asArray(await invites.get(`meeting:${mid}`, { type: "json" }).catch(() => []));
-      result.push({
-        id: m.id,
-        title: m.title,
-        creator_id: m.creator_id,
-        creator_name: m.creator_name,
-        meeting_type: m.meeting_type,
-        dates_or_days: m.dates_or_days,
-        start_time: m.start_time,
-        end_time: m.end_time,
-        timezone: m.timezone || "UTC",
-        is_finalized: m.is_finalized,
-        finalized_date: m.finalized_date,
-        finalized_slot: m.finalized_slot,
-        created_at: m.created_at,
-        invite_count: meetingInvites.length,
-        respond_count: meetingInvites.filter(i => i.responded).length,
-        invitees: meetingInvites.map(i => ({ email: i.email, name: i.name, responded: i.responded })),
-      });
-    }
+    const index = await listMeetingIds(meetings);
+    const loaded = await Promise.all(
+      index.map(async (mid) => {
+        const [m, inv] = await Promise.all([
+          meetings.get(mid, { type: "json" }).catch(() => null),
+          invites.get(`meeting:${mid}`, { type: "json" }).catch(() => []),
+        ]);
+        if (!m) return null;
+        const meetingInvites = asArray(inv);
+        return {
+          id: m.id,
+          title: m.title,
+          creator_id: m.creator_id,
+          creator_name: m.creator_name,
+          meeting_type: m.meeting_type,
+          dates_or_days: m.dates_or_days,
+          start_time: m.start_time,
+          end_time: m.end_time,
+          timezone: m.timezone || "UTC",
+          is_finalized: m.is_finalized,
+          finalized_date: m.finalized_date,
+          finalized_slot: m.finalized_slot,
+          created_at: m.created_at,
+          invite_count: meetingInvites.length,
+          respond_count: meetingInvites.filter((i) => i.responded).length,
+          invitees: meetingInvites.map((i) => ({
+            email: i.email,
+            name: i.name,
+            responded: i.responded,
+          })),
+        };
+      })
+    );
+    const result = loaded.filter(Boolean);
     result.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
     return jsonResponse(200, { meetings: result });
   }
@@ -282,7 +335,9 @@ async function handleAdmin(req, context) {
     const limit = Math.min(parseInt(url.searchParams.get("limit") || "200"), 500);
     const list = await eventsDb.list().catch(() => ({ blobs: [] }));
     // Keys are timestamp-prefixed so lexicographic desc = newest first
-    const sorted = [...asArray(list?.blobs)].sort((a, b) => b.key.localeCompare(a.key)).slice(0, limit);
+    const sorted = [...asArray(list?.blobs)]
+      .sort((a, b) => b.key.localeCompare(a.key))
+      .slice(0, limit);
     const events = [];
     for (const { key } of sorted) {
       const ev = await eventsDb.get(key, { type: "json" }).catch(() => null);

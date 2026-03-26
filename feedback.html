@@ -1,134 +1,99 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Feedback – MeetMe</title>
-  <link rel="stylesheet" href="/static/style.css"/>
-</head>
-<body>
-
-<nav class="navbar">
-  <div class="nav-inner">
-    <a href="/dashboard.html" class="nav-brand">
-      <span class="brand-icon">&#x27F3;</span> MeetMe
-    </a>
-    <div class="nav-links" id="nav-auth" style="display:none;">
-      <span class="nav-user" id="nav-username"></span>
-      <a href="#" class="nav-link" id="logout-link" onclick="logout()">Log out</a>
-    </div>
-  </div>
-</nav>
-
-<div id="flash-container" class="flash-container"></div>
-
-<main class="main-content">
-  <div class="auth-wrapper">
-    <div class="auth-card">
-
-      <div class="auth-header" style="margin-bottom:20px;">
-        <h1 style="font-size:1.5rem;">Send Feedback</h1>
-        <p style="color:var(--text-muted); font-size:0.9rem;">
-          Bug report, feature request, or general question? We'd love to hear from you.
-          Your message will be sent directly to the team.
-        </p>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Feedback – MeetMe</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-inner">
+        <a href="/dashboard.html" class="nav-brand">
+          <span class="brand-icon">&#x27F3;</span> MeetMe
+        </a>
+        <div class="nav-links" id="nav-auth" style="display: none">
+          <span class="nav-user" id="nav-username"></span>
+          <a href="#" class="nav-link" id="logout-link">Log out</a>
+        </div>
       </div>
+    </nav>
 
-      <form id="feedback-form" class="auth-form">
-        <div class="form-row">
-          <div class="form-group">
-            <label for="fb-name">Your name</label>
-            <input type="text" id="fb-name" class="form-control" placeholder="Jane Smith"/>
+    <div id="flash-container" class="flash-container"></div>
+
+    <main class="main-content">
+      <div class="auth-wrapper">
+        <div class="auth-card">
+          <div class="auth-header" style="margin-bottom: 20px">
+            <h1 style="font-size: 1.5rem">Send Feedback</h1>
+            <p style="color: var(--text-muted); font-size: 0.9rem">
+              Bug report, feature request, or general question? We'd love to hear from you. Your
+              message will be sent directly to the team.
+            </p>
           </div>
-          <div class="form-group">
-            <label for="fb-email">Email address <span style="color:#c62828">*</span></label>
-            <input type="email" id="fb-email" class="form-control" placeholder="you@example.com" required/>
+
+          <form id="feedback-form" class="auth-form">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="fb-name">Your name</label>
+                <input type="text" id="fb-name" class="form-control" placeholder="Jane Smith" />
+              </div>
+              <div class="form-group">
+                <label for="fb-email">Email address <span style="color: #c62828">*</span></label>
+                <input
+                  type="email"
+                  id="fb-email"
+                  class="form-control"
+                  placeholder="you@example.com"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="fb-type">Type of feedback</label>
+              <select id="fb-type" class="form-control">
+                <option value="bug">&#x1F41B; Bug report</option>
+                <option value="feature">&#x1F4A1; Feature request</option>
+                <option value="question">&#x2753; Question</option>
+                <option value="other">&#x1F4AC; General feedback</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="fb-message">Message <span style="color: #c62828">*</span></label>
+              <textarea
+                id="fb-message"
+                class="form-control"
+                rows="6"
+                placeholder="Describe your feedback in as much detail as possible..."
+                required
+              ></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-full" id="fb-submit">
+              &#x2709; Send Feedback
+            </button>
+          </form>
+
+          <div id="feedback-sent" style="display: none; text-align: center; padding: 24px 0">
+            <div style="font-size: 2.5rem; margin-bottom: 12px">&#x2705;</div>
+            <h2 style="margin: 0 0 8px; font-size: 1.2rem">Feedback sent!</h2>
+            <p style="color: var(--text-muted); font-size: 0.875rem">
+              Thank you — the team will review your message shortly.
+            </p>
+            <a href="/dashboard.html" class="btn btn-ghost" style="margin-top: 16px"
+              >Back to dashboard</a
+            >
           </div>
         </div>
-
-        <div class="form-group">
-          <label for="fb-type">Type of feedback</label>
-          <select id="fb-type" class="form-control">
-            <option value="bug">&#x1F41B; Bug report</option>
-            <option value="feature">&#x1F4A1; Feature request</option>
-            <option value="question">&#x2753; Question</option>
-            <option value="other">&#x1F4AC; General feedback</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label for="fb-message">Message <span style="color:#c62828">*</span></label>
-          <textarea id="fb-message" class="form-control" rows="6"
-                    placeholder="Describe your feedback in as much detail as possible..." required></textarea>
-        </div>
-
-        <button type="submit" class="btn btn-primary btn-full" id="fb-submit">
-          &#x2709; Send Feedback
-        </button>
-      </form>
-
-      <div id="feedback-sent" style="display:none; text-align:center; padding:24px 0;">
-        <div style="font-size:2.5rem; margin-bottom:12px;">&#x2705;</div>
-        <h2 style="margin:0 0 8px; font-size:1.2rem;">Feedback sent!</h2>
-        <p style="color:var(--text-muted); font-size:0.875rem;">
-          Thank you — the team will review your message shortly.
-        </p>
-        <a href="/dashboard.html" class="btn btn-ghost" style="margin-top:16px;">Back to dashboard</a>
       </div>
+    </main>
 
-    </div>
-  </div>
-</main>
+    <footer class="footer" data-shared-footer></footer>
 
-<footer class="footer">
-  <p>MeetMe &ndash; Find the perfect time together &mdash; <a href="/feedback.html" style="color:inherit;">Send feedback</a></p>
-  <p><a href="https://buymeacoffee.com/yusufpisanh" target="_blank" rel="noopener noreferrer" style="color:inherit;">&#x2615; Buy me a coffee</a></p>
-</footer>
-
-<script src="/static/common.js"></script>
-<script>
-  checkAuth().then(user => {
-    if (user) {
-      if (!document.getElementById('fb-name').value) document.getElementById('fb-name').value = user.name || '';
-      if (!document.getElementById('fb-email').value) document.getElementById('fb-email').value = user.email || '';
-    }
-  });
-
-  document.getElementById('feedback-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const btn = document.getElementById('fb-submit');
-    btn.disabled = true;
-    btn.textContent = 'Sending\u2026';
-
-    const payload = {
-      name:    document.getElementById('fb-name').value.trim(),
-      email:   document.getElementById('fb-email').value.trim(),
-      type:    document.getElementById('fb-type').value,
-      message: document.getElementById('fb-message').value.trim(),
-    };
-
-    const { ok, data } = await apiFetch('/api/auth/feedback', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    btn.disabled = false;
-    btn.textContent = '\u2709 Send Feedback';
-
-    if (ok) {
-      document.getElementById('feedback-form').style.display = 'none';
-      document.getElementById('feedback-sent').style.display = '';
-    } else {
-      showFlash(data.error || 'Could not send feedback. Please try again.', 'danger');
-    }
-  });
-
-  function logout() {
-    apiFetch('/api/auth/logout', { method: 'POST' }).then(() => {
-      window.location.href = '/';
-    });
-  }
-</script>
-</body>
+    <script src="/static/layout.js"></script>
+    <script src="/static/common.js"></script>
+    <script src="/static/feedback.js" defer></script>
+  </body>
 </html>

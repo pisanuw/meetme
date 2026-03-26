@@ -1,360 +1,199 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>New Meeting – MeetMe</title>
-  <link rel="stylesheet" href="/static/style.css"/>
-</head>
-<body>
-
-<nav class="navbar">
-  <div class="nav-inner">
-    <a href="/dashboard.html" class="nav-brand">
-      <span class="brand-icon">&#x27F3;</span> MeetMe
-    </a>
-    <div class="nav-links" id="nav-auth" style="display:none;">
-      <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
-      <span class="nav-user" id="nav-username"></span>
-      <a href="#" class="nav-link" id="logout-link">Log out</a>
-    </div>
-  </div>
-</nav>
-
-<div id="flash-container" class="flash-container"></div>
-
-<main class="main-content">
-<div class="form-page">
-  <div class="form-card">
-    <h1>New Meeting</h1>
-    <p class="text-muted">Set up a meeting and invite others to share their availability.</p>
-
-    <form id="create-form">
-      <div class="form-group">
-        <label for="title">Meeting title <span class="required">*</span></label>
-        <input type="text" id="title" name="title" class="form-control"
-               placeholder="e.g. Q3 Planning, Team Lunch..." required autofocus/>
-      </div>
-
-      <div class="form-group">
-        <label for="description">Description (optional)</label>
-        <textarea id="description" name="description" class="form-control" rows="2"
-                  placeholder="Any context for invitees..."></textarea>
-      </div>
-
-      <div class="form-group">
-        <label>Meeting type <span class="required">*</span></label>
-        <div class="type-toggle">
-          <label class="type-option" id="tab-dates">
-            <input type="radio" name="meeting_type" value="specific_dates"
-                   onchange="switchType('specific_dates')"/>
-            &#x1F4C5; Specific dates
-          </label>
-          <label class="type-option active" id="tab-days">
-            <input type="radio" name="meeting_type" value="days_of_week" checked
-                   onchange="switchType('days_of_week')"/>
-            &#x1F5D3; Days of week
-          </label>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>New Meeting – MeetMe</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-inner">
+        <a href="/dashboard.html" class="nav-brand">
+          <span class="brand-icon">&#x27F3;</span> MeetMe
+        </a>
+        <div class="nav-links" id="nav-auth" style="display: none">
+          <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
+          <span class="nav-user" id="nav-username"></span>
+          <a href="#" class="nav-link" id="logout-link">Log out</a>
         </div>
       </div>
+    </nav>
 
-      <div id="panel-specific-dates" class="form-group" style="display:none;">
-        <label>Select dates</label>
-        <div class="date-picker-wrapper">
-          <input type="text" id="date-input" class="form-control"
-                 placeholder="Click to add dates..." readonly/>
-          <div class="mini-calendar" id="mini-calendar"></div>
+    <div id="flash-container" class="flash-container"></div>
+
+    <main class="main-content">
+      <div class="form-page">
+        <div class="form-card">
+          <h1>New Meeting</h1>
+          <p class="text-muted">Set up a meeting and invite others to share their availability.</p>
+
+          <form id="create-form">
+            <div class="form-group">
+              <label for="title">Meeting title <span class="required">*</span></label>
+              <input
+                type="text"
+                id="title"
+                name="title"
+                class="form-control"
+                placeholder="e.g. Q3 Planning, Team Lunch..."
+                required
+                autofocus
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="description">Description (optional)</label>
+              <textarea
+                id="description"
+                name="description"
+                class="form-control"
+                rows="2"
+                placeholder="Any context for invitees..."
+              ></textarea>
+            </div>
+
+            <div class="form-group">
+              <label>Meeting type <span class="required">*</span></label>
+              <div class="type-toggle">
+                <label class="type-option" id="tab-dates">
+                  <input type="radio" name="meeting_type" value="specific_dates" />
+                  &#x1F4C5; Specific dates
+                </label>
+                <label class="type-option active" id="tab-days">
+                  <input type="radio" name="meeting_type" value="days_of_week" checked />
+                  &#x1F5D3; Days of week
+                </label>
+              </div>
+            </div>
+
+            <div id="panel-specific-dates" class="form-group" style="display: none">
+              <label>Select dates</label>
+              <div class="date-picker-wrapper">
+                <input
+                  type="text"
+                  id="date-input"
+                  class="form-control"
+                  placeholder="Click to add dates..."
+                  readonly
+                />
+                <div class="mini-calendar" id="mini-calendar"></div>
+              </div>
+              <div id="selected-dates-chips" class="chips-row"></div>
+            </div>
+
+            <div id="panel-days-of-week" class="form-group" style="display: none">
+              <label>Select days</label>
+              <div class="day-checkboxes" id="day-checkboxes"></div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="start_time">Earliest time</label>
+                <select id="start_time" name="start_time" class="form-control"></select>
+              </div>
+              <div class="form-group">
+                <label for="end_time">Latest time</label>
+                <select id="end_time" name="end_time" class="form-control"></select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="timezone">Meeting time zone</label>
+              <select id="timezone" name="timezone" class="form-control">
+                <option value="">&#x2014; Detect automatically &#x2014;</option>
+                <optgroup label="Americas">
+                  <option value="America/New_York">Eastern Time (New York)</option>
+                  <option value="America/Chicago">Central Time (Chicago)</option>
+                  <option value="America/Denver">Mountain Time (Denver)</option>
+                  <option value="America/Los_Angeles">Pacific Time (Los Angeles)</option>
+                  <option value="America/Anchorage">Alaska (Anchorage)</option>
+                  <option value="Pacific/Honolulu">Hawaii (Honolulu)</option>
+                  <option value="America/Toronto">Eastern Time (Toronto)</option>
+                  <option value="America/Vancouver">Pacific Time (Vancouver)</option>
+                  <option value="America/Mexico_City">Central Time (Mexico City)</option>
+                  <option value="America/Sao_Paulo">Bras&#237;lia (S&#227;o Paulo)</option>
+                  <option value="America/Argentina/Buenos_Aires">Argentina (Buenos Aires)</option>
+                  <option value="America/Bogota">Colombia (Bogot&#225;)</option>
+                  <option value="America/Lima">Peru (Lima)</option>
+                </optgroup>
+                <optgroup label="Europe">
+                  <option value="Europe/London">London (GMT/BST)</option>
+                  <option value="Europe/Dublin">Dublin</option>
+                  <option value="Europe/Lisbon">Lisbon</option>
+                  <option value="Europe/Paris">Paris / Madrid / Berlin (CET)</option>
+                  <option value="Europe/Amsterdam">Amsterdam / Brussels</option>
+                  <option value="Europe/Rome">Rome</option>
+                  <option value="Europe/Helsinki">Helsinki / Tallinn (EET)</option>
+                  <option value="Europe/Athens">Athens</option>
+                  <option value="Europe/Kiev">Kyiv</option>
+                  <option value="Europe/Moscow">Moscow</option>
+                  <option value="Europe/Istanbul">Istanbul</option>
+                </optgroup>
+                <optgroup label="Africa">
+                  <option value="Africa/Cairo">Cairo (EET)</option>
+                  <option value="Africa/Johannesburg">Johannesburg (SAST)</option>
+                  <option value="Africa/Lagos">Lagos (WAT)</option>
+                  <option value="Africa/Nairobi">Nairobi (EAT)</option>
+                </optgroup>
+                <optgroup label="Asia">
+                  <option value="Asia/Dubai">Dubai (GST)</option>
+                  <option value="Asia/Karachi">Karachi (PKT)</option>
+                  <option value="Asia/Kolkata">India (IST)</option>
+                  <option value="Asia/Dhaka">Bangladesh (BST)</option>
+                  <option value="Asia/Bangkok">Bangkok / Jakarta (ICT)</option>
+                  <option value="Asia/Singapore">Singapore / Kuala Lumpur</option>
+                  <option value="Asia/Shanghai">China (CST)</option>
+                  <option value="Asia/Hong_Kong">Hong Kong</option>
+                  <option value="Asia/Taipei">Taipei</option>
+                  <option value="Asia/Tokyo">Japan (JST)</option>
+                  <option value="Asia/Seoul">South Korea (KST)</option>
+                  <option value="Asia/Jerusalem">Israel</option>
+                  <option value="Asia/Riyadh">Riyadh (AST)</option>
+                  <option value="Asia/Colombo">Sri Lanka</option>
+                </optgroup>
+                <optgroup label="Pacific / Oceania">
+                  <option value="Australia/Sydney">Sydney (AEST/AEDT)</option>
+                  <option value="Australia/Melbourne">Melbourne</option>
+                  <option value="Australia/Brisbane">Brisbane</option>
+                  <option value="Australia/Perth">Perth (AWST)</option>
+                  <option value="Pacific/Auckland">New Zealand (NZST)</option>
+                  <option value="Pacific/Fiji">Fiji</option>
+                </optgroup>
+                <optgroup label="Other">
+                  <option value="UTC">UTC</option>
+                </optgroup>
+              </select>
+              <small class="form-hint"
+                >All time slots use this zone. Invitees see times in their own zone.</small
+              >
+            </div>
+
+            <div class="form-group">
+              <label for="invite_emails">Invite people</label>
+              <textarea
+                id="invite_emails"
+                name="invite_emails"
+                class="form-control"
+                rows="3"
+                placeholder="One email per line&#10;alice@example.com&#10;bob@example.com"
+              ></textarea>
+              <small class="form-hint">Each person will be asked to mark their availability.</small>
+            </div>
+
+            <div class="form-actions">
+              <a href="/dashboard.html" class="btn btn-ghost">Cancel</a>
+              <button type="submit" class="btn btn-primary">Create Meeting &rarr;</button>
+            </div>
+          </form>
         </div>
-        <div id="selected-dates-chips" class="chips-row"></div>
       </div>
+    </main>
 
-      <div id="panel-days-of-week" class="form-group" style="display:none;">
-        <label>Select days</label>
-        <div class="day-checkboxes" id="day-checkboxes"></div>
-      </div>
+    <footer class="footer" data-shared-footer></footer>
 
-      <div class="form-row">
-        <div class="form-group">
-          <label for="start_time">Earliest time</label>
-          <select id="start_time" name="start_time" class="form-control"></select>
-        </div>
-        <div class="form-group">
-          <label for="end_time">Latest time</label>
-          <select id="end_time" name="end_time" class="form-control"></select>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label for="timezone">Meeting time zone</label>
-        <select id="timezone" name="timezone" class="form-control">
-          <option value="">&#x2014; Detect automatically &#x2014;</option>
-          <optgroup label="Americas">
-            <option value="America/New_York">Eastern Time (New York)</option>
-            <option value="America/Chicago">Central Time (Chicago)</option>
-            <option value="America/Denver">Mountain Time (Denver)</option>
-            <option value="America/Los_Angeles">Pacific Time (Los Angeles)</option>
-            <option value="America/Anchorage">Alaska (Anchorage)</option>
-            <option value="Pacific/Honolulu">Hawaii (Honolulu)</option>
-            <option value="America/Toronto">Eastern Time (Toronto)</option>
-            <option value="America/Vancouver">Pacific Time (Vancouver)</option>
-            <option value="America/Mexico_City">Central Time (Mexico City)</option>
-            <option value="America/Sao_Paulo">Bras&#237;lia (S&#227;o Paulo)</option>
-            <option value="America/Argentina/Buenos_Aires">Argentina (Buenos Aires)</option>
-            <option value="America/Bogota">Colombia (Bogot&#225;)</option>
-            <option value="America/Lima">Peru (Lima)</option>
-          </optgroup>
-          <optgroup label="Europe">
-            <option value="Europe/London">London (GMT/BST)</option>
-            <option value="Europe/Dublin">Dublin</option>
-            <option value="Europe/Lisbon">Lisbon</option>
-            <option value="Europe/Paris">Paris / Madrid / Berlin (CET)</option>
-            <option value="Europe/Amsterdam">Amsterdam / Brussels</option>
-            <option value="Europe/Rome">Rome</option>
-            <option value="Europe/Helsinki">Helsinki / Tallinn (EET)</option>
-            <option value="Europe/Athens">Athens</option>
-            <option value="Europe/Kiev">Kyiv</option>
-            <option value="Europe/Moscow">Moscow</option>
-            <option value="Europe/Istanbul">Istanbul</option>
-          </optgroup>
-          <optgroup label="Africa">
-            <option value="Africa/Cairo">Cairo (EET)</option>
-            <option value="Africa/Johannesburg">Johannesburg (SAST)</option>
-            <option value="Africa/Lagos">Lagos (WAT)</option>
-            <option value="Africa/Nairobi">Nairobi (EAT)</option>
-          </optgroup>
-          <optgroup label="Asia">
-            <option value="Asia/Dubai">Dubai (GST)</option>
-            <option value="Asia/Karachi">Karachi (PKT)</option>
-            <option value="Asia/Kolkata">India (IST)</option>
-            <option value="Asia/Dhaka">Bangladesh (BST)</option>
-            <option value="Asia/Bangkok">Bangkok / Jakarta (ICT)</option>
-            <option value="Asia/Singapore">Singapore / Kuala Lumpur</option>
-            <option value="Asia/Shanghai">China (CST)</option>
-            <option value="Asia/Hong_Kong">Hong Kong</option>
-            <option value="Asia/Taipei">Taipei</option>
-            <option value="Asia/Tokyo">Japan (JST)</option>
-            <option value="Asia/Seoul">South Korea (KST)</option>
-            <option value="Asia/Jerusalem">Israel</option>
-            <option value="Asia/Riyadh">Riyadh (AST)</option>
-            <option value="Asia/Colombo">Sri Lanka</option>
-          </optgroup>
-          <optgroup label="Pacific / Oceania">
-            <option value="Australia/Sydney">Sydney (AEST/AEDT)</option>
-            <option value="Australia/Melbourne">Melbourne</option>
-            <option value="Australia/Brisbane">Brisbane</option>
-            <option value="Australia/Perth">Perth (AWST)</option>
-            <option value="Pacific/Auckland">New Zealand (NZST)</option>
-            <option value="Pacific/Fiji">Fiji</option>
-          </optgroup>
-          <optgroup label="Other">
-            <option value="UTC">UTC</option>
-          </optgroup>
-        </select>
-        <small class="form-hint">All time slots use this zone. Invitees see times in their own zone.</small>
-      </div>
-
-      <div class="form-group">
-        <label for="invite_emails">Invite people</label>
-        <textarea id="invite_emails" name="invite_emails" class="form-control" rows="3"
-                  placeholder="One email per line&#10;alice@example.com&#10;bob@example.com"></textarea>
-        <small class="form-hint">Each person will be asked to mark their availability.</small>
-      </div>
-
-      <div class="form-actions">
-        <a href="/dashboard.html" class="btn btn-ghost">Cancel</a>
-        <button type="submit" class="btn btn-primary">Create Meeting &rarr;</button>
-      </div>
-    </form>
-  </div>
-</div>
-</main>
-
-<footer class="footer">
-  <p>MeetMe &ndash; Find the perfect time together &mdash; <a href="/feedback.html" style="color:inherit;">Send feedback</a></p>
-  <p><a href="https://buymeacoffee.com/yusufpisanh" target="_blank" rel="noopener noreferrer" style="color:inherit;">&#x2615; Buy me a coffee</a></p>
-</footer>
-
-<script src="/static/common.js"></script>
-<script>
-(async () => {
-  const user = await requireAuth();
-  if (!user) return;
-
-  // Pre-select user's profile timezone (fall back to browser TZ)
-  const tzSel = document.getElementById('timezone');
-  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-  const { ok, data } = await apiFetch('/api/auth/profile');
-  const profileTz = (ok && data.timezone) ? data.timezone : '';
-  const tzToSet = profileTz || browserTz;
-  if (tzToSet) {
-    const already = [...tzSel.options].some(o => o.value === tzToSet);
-    if (!already) tzSel.prepend(new Option(tzToSet, tzToSet));
-    tzSel.value = tzToSet;
-  }
-})();
-
-// Build time selectors
-const startSel = document.getElementById('start_time');
-const endSel = document.getElementById('end_time');
-for (let h = 6; h < 24; h++) {
-  for (const m of [0, 15, 30, 45]) {
-    const t = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-    startSel.innerHTML += `<option value="${t}" ${t==='08:00'?'selected':''}>${t}</option>`;
-  }
-}
-for (let h = 6; h <= 24; h++) {
-  for (const m of [0, 15, 30, 45]) {
-    if (h === 24 && m !== 0) continue;
-    const t = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-    endSel.innerHTML += `<option value="${t}" ${t==='20:00'?'selected':''}>${t}</option>`;
-  }
-}
-
-// Day checkboxes
-const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-const defaultDays = new Set(['Monday','Tuesday','Wednesday','Thursday','Friday']);
-const dayContainer = document.getElementById('day-checkboxes');
-days.forEach(day => {
-  const checked = defaultDays.has(day) ? ' checked' : '';
-  dayContainer.innerHTML += `<label class="day-chip"><input type="checkbox" name="days_of_week" value="${day}"${checked}/>${day.slice(0,3)}</label>`;
-});
-
-// Initialize the correct panel visibility on load
-switchType('days_of_week');
-
-// Type switch
-function switchType(type) {
-  document.getElementById('panel-specific-dates').style.display = type === 'specific_dates' ? '' : 'none';
-  document.getElementById('panel-days-of-week').style.display = type === 'days_of_week' ? '' : 'none';
-  document.getElementById('tab-dates').classList.toggle('active', type === 'specific_dates');
-  document.getElementById('tab-days').classList.toggle('active', type === 'days_of_week');
-}
-
-// Mini Calendar
-const selectedDates = new Set();
-let calYear, calMonth;
-
-function initCalendar() {
-  const now = new Date();
-  calYear = now.getFullYear();
-  calMonth = now.getMonth();
-  renderCalendar();
-}
-
-function renderCalendar() {
-  const cal = document.getElementById('mini-calendar');
-  const first = new Date(calYear, calMonth, 1);
-  const last = new Date(calYear, calMonth + 1, 0);
-  const today = new Date(); today.setHours(0,0,0,0);
-  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-
-  let html = `<div class="cal-nav"><button type="button" onclick="shiftMonth(-1)">&lsaquo;</button><span>${months[calMonth]} ${calYear}</span><button type="button" onclick="shiftMonth(1)">&rsaquo;</button></div><div class="cal-grid"><div class="cal-dow">Mo</div><div class="cal-dow">Tu</div><div class="cal-dow">We</div><div class="cal-dow">Th</div><div class="cal-dow">Fr</div><div class="cal-dow">Sa</div><div class="cal-dow">Su</div>`;
-
-  let startDow = (first.getDay() + 6) % 7;
-  for (let i = 0; i < startDow; i++) html += '<div></div>';
-
-  for (let d = 1; d <= last.getDate(); d++) {
-    const dt = new Date(calYear, calMonth, d);
-    const key = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const isPast = dt < today;
-    const isSel = selectedDates.has(key);
-    html += `<div class="cal-day ${isPast?'past':''} ${isSel?'selected':''}" onclick="${isPast?'':`toggleDate('${key}')`}">${d}</div>`;
-  }
-  html += '</div>';
-  cal.innerHTML = html;
-}
-
-function shiftMonth(delta) {
-  calMonth += delta;
-  if (calMonth < 0) { calMonth = 11; calYear--; }
-  if (calMonth > 11) { calMonth = 0; calYear++; }
-  renderCalendar();
-}
-
-function toggleDate(key) {
-  if (selectedDates.has(key)) selectedDates.delete(key);
-  else selectedDates.add(key);
-  renderCalendar();
-  updateChips();
-}
-
-function updateChips() {
-  const container = document.getElementById('selected-dates-chips');
-  const sorted = Array.from(selectedDates).sort();
-  container.innerHTML = sorted.map(d => {
-    const [y,m,day] = d.split('-').map(Number);
-    const label = new Date(y, m-1, day).toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
-    return `<span class="date-chip removable" onclick="toggleDate('${d}')">${label} &#x2715;</span>`;
-  }).join('');
-  document.getElementById('date-input').value = sorted.length ? `${sorted.length} date${sorted.length>1?'s':''} selected` : '';
-}
-
-document.getElementById('date-input').addEventListener('click', () => {
-  document.getElementById('mini-calendar').classList.toggle('visible');
-});
-document.addEventListener('click', e => {
-  if (!e.target.closest('.date-picker-wrapper'))
-    document.getElementById('mini-calendar').classList.remove('visible');
-});
-
-initCalendar();
-
-// Form submission
-document.getElementById('create-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-
-  const title = document.getElementById('title').value.trim();
-  const description = document.getElementById('description').value.trim();
-  const meetingType = document.querySelector('input[name="meeting_type"]:checked').value;
-  const startTime = document.getElementById('start_time').value;
-  const endTime = document.getElementById('end_time').value;
-  const inviteEmails = document.getElementById('invite_emails').value;
-
-  let datesOrDays;
-  if (meetingType === 'specific_dates') {
-    datesOrDays = Array.from(selectedDates).sort();
-    if (datesOrDays.length === 0) {
-      showFlash('Select at least one date.', 'danger');
-      return;
-    }
-  } else {
-    datesOrDays = Array.from(document.querySelectorAll('input[name="days_of_week"]:checked')).map(el => el.value);
-    const dayOrder = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-    datesOrDays.sort((a,b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
-    if (datesOrDays.length === 0) {
-      showFlash('Select at least one day.', 'danger');
-      return;
-    }
-  }
-
-  const tzSel = document.getElementById('timezone');
-  const timezone = tzSel.value || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-
-  const { ok, status, data } = await apiFetch('/api/meetings', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      title, description, meeting_type: meetingType,
-      dates_or_days: datesOrDays, start_time: startTime, end_time: endTime,
-      invite_emails: inviteEmails, timezone,
-    }),
-  });
-  if (ok && data.success) {
-    const failures = data.email_failures || [];
-    if (failures.length) {
-      showFlash(
-        `Meeting created! However, invitation emails could not be sent to: ${failures.join(', ')}. ` +
-        `These participants can still join via the sharing link.`,
-        'warning'
-      );
-      setTimeout(() => { window.location.href = `/meeting.html?id=${data.meeting_id}`; }, 3500);
-    } else {
-      window.location.href = `/meeting.html?id=${data.meeting_id}`;
-    }
-  } else {
-    showFlash(data.error || `Server error (${status}) — check Netlify function logs.`, 'danger');
-  }
-});
-</script>
-</body>
+    <script src="/static/layout.js"></script>
+    <script src="/static/common.js"></script>
+    <script src="/static/create-meeting.js" defer></script>
+  </body>
 </html>

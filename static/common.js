@@ -27,17 +27,19 @@ async function apiFetch(url, options = {}) {
 
   // Treat 401 as a session expiry — redirect to the sign-in page automatically.
   if (res.status === 401) {
-    window.location.href = '/';
-    return { ok: false, status: 401, data: { error: 'Session expired. Redirecting to sign in…' } };
+    window.location.href = "/";
+    return { ok: false, status: 401, data: { error: "Session expired. Redirecting to sign in…" } };
   }
 
   let data;
-  const text = await res.text().catch(() => '');
+  const text = await res.text().catch(() => "");
   try {
     data = text ? JSON.parse(text) : {};
   } catch {
     // Server returned something that is not JSON (e.g. an HTML error page).
-    data = { error: `Server returned non-JSON response (HTTP ${res.status}): ${text.slice(0, 200)}` };
+    data = {
+      error: `Server returned non-JSON response (HTTP ${res.status}): ${text.slice(0, 200)}`,
+    };
   }
 
   return { ok: res.ok, status: res.status, data };
@@ -52,66 +54,66 @@ async function apiFetch(url, options = {}) {
  */
 async function checkAuth() {
   try {
-    const res = await fetch('/api/auth/me');
-    if (!res.ok) return null;
-
-    const user = await res.json();
+    const { ok, data: user } = await apiFetch("/api/auth/me");
+    if (!ok || !user) return null;
 
     // Show the authenticated nav section and display the user's name.
-    const navAuth = document.getElementById('nav-auth');
-    const navUser = document.getElementById('nav-username');
-    if (navAuth) navAuth.style.display = '';
+    const navAuth = document.getElementById("nav-auth");
+    const navUser = document.getElementById("nav-username");
+    if (navAuth) navAuth.style.display = "";
     if (navUser) {
-      navUser.textContent = user.is_impersonated
-        ? `${user.name} (impersonated)`
-        : user.name;
+      navUser.textContent = user.is_impersonated ? `${user.name} (impersonated)` : user.name;
     }
 
-    const logoutLink = document.getElementById('logout-link');
+    const logoutLink = document.getElementById("logout-link");
 
     // Inject the "Edit Profile" link once, immediately before the logout link.
-    if (!document.getElementById('profile-link') && logoutLink?.parentNode) {
-      const profileLink = document.createElement('a');
-      profileLink.id = 'profile-link';
-      profileLink.href = '/profile.html';
-      profileLink.className = 'nav-link';
-      profileLink.textContent = 'Edit Profile';
+    if (!document.getElementById("profile-link") && logoutLink?.parentNode) {
+      const profileLink = document.createElement("a");
+      profileLink.id = "profile-link";
+      profileLink.href = "/profile.html";
+      profileLink.className = "nav-link";
+      profileLink.textContent = "Edit Profile";
       logoutLink.parentNode.insertBefore(profileLink, logoutLink);
     }
 
     // Inject the "Admin" link once for admin users. This check is separate from
     // the profile link check so both links are always injected regardless of order.
-    if (user.is_admin && !document.getElementById('admin-nav-link') && logoutLink?.parentNode) {
-      const adminLink = document.createElement('a');
-      adminLink.id = 'admin-nav-link';
-      adminLink.href = '/admin.html';
-      adminLink.className = 'nav-link';
-      adminLink.textContent = 'Admin';
-      adminLink.style.color = '#c084fc';
+    if (user.is_admin && !document.getElementById("admin-nav-link") && logoutLink?.parentNode) {
+      const adminLink = document.createElement("a");
+      adminLink.id = "admin-nav-link";
+      adminLink.href = "/admin.html";
+      adminLink.className = "nav-link";
+      adminLink.textContent = "Admin";
+      adminLink.style.color = "#c084fc";
       logoutLink.parentNode.insertBefore(adminLink, logoutLink);
     }
 
     // When an admin is impersonating another user, provide an easy way to
     // restore the original admin session from any page.
-    if (user.is_impersonated && !document.getElementById('stop-impersonation-link') && logoutLink?.parentNode) {
-      const stopLink = document.createElement('a');
-      stopLink.id = 'stop-impersonation-link';
-      stopLink.href = '#';
-      stopLink.className = 'nav-link';
-      stopLink.textContent = 'Return to Admin';
-      stopLink.style.color = '#f59e0b';
-      stopLink.addEventListener('click', async (e) => {
+    if (
+      user.is_impersonated &&
+      !document.getElementById("stop-impersonation-link") &&
+      logoutLink?.parentNode
+    ) {
+      const stopLink = document.createElement("a");
+      stopLink.id = "stop-impersonation-link";
+      stopLink.href = "#";
+      stopLink.className = "nav-link";
+      stopLink.textContent = "Return to Admin";
+      stopLink.style.color = "#f59e0b";
+      stopLink.addEventListener("click", async (e) => {
         e.preventDefault();
-        const { ok, data } = await apiFetch('/api/auth/impersonation/stop', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: '{}',
+        const { ok, data } = await apiFetch("/api/auth/impersonation/stop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
         });
         if (!ok) {
-          showFlash(data.error || 'Could not restore admin session.', 'error');
+          showFlash(data.error || "Could not restore admin session.", "error");
           return;
         }
-        window.location.href = '/admin.html';
+        window.location.href = "/admin.html";
       });
       logoutLink.parentNode.insertBefore(stopLink, logoutLink);
     }
@@ -130,7 +132,7 @@ async function checkAuth() {
 async function requireAuth() {
   const user = await checkAuth();
   if (!user) {
-    window.location.href = '/';
+    window.location.href = "/";
     return null;
   }
   return user;
@@ -141,14 +143,23 @@ async function requireAuth() {
  * The banner automatically disappears after 5 seconds.
  *
  * @param {string} message
- * @param {'info'|'success'|'warn'|'error'} [category='info']
+ * @param {'info'|'success'|'warning'|'danger'|'warn'|'error'} [category='info']
  */
-function showFlash(message, category = 'info') {
-  const container = document.getElementById('flash-container');
+function showFlash(message, category = "info") {
+  const container = document.getElementById("flash-container");
   if (!container) return;
-  const div = document.createElement('div');
-  div.className = `flash flash-${category}`;
-  div.innerHTML = `${escapeHtml(message)} <button class="flash-close" onclick="this.parentElement.remove()">&#x2715;</button>`;
+  const normalizedCategory = { warn: "warning", error: "danger" }[category] || category || "info";
+  const div = document.createElement("div");
+  div.className = `flash flash-${normalizedCategory}`;
+
+  const textNode = document.createTextNode(`${message} `);
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "flash-close";
+  closeBtn.type = "button";
+  closeBtn.innerHTML = "&#x2715;";
+  closeBtn.addEventListener("click", () => div.remove());
+
+  div.append(textNode, closeBtn);
   container.appendChild(div);
   setTimeout(() => div.remove(), 5000);
 }
@@ -162,19 +173,29 @@ function showFlash(message, category = 'info') {
  * @returns {string}
  */
 function escapeHtml(str) {
-  const d = document.createElement('div');
+  const d = document.createElement("div");
   d.textContent = str;
   return d.innerHTML;
 }
 
+window.apiFetch = apiFetch;
+window.checkAuth = checkAuth;
+window.requireAuth = requireAuth;
+window.showFlash = showFlash;
+window.escapeHtml = escapeHtml;
+
 // Logout handler
-document.addEventListener('DOMContentLoaded', () => {
-  const logoutLink = document.getElementById('logout-link');
+document.addEventListener("DOMContentLoaded", () => {
+  const logoutLink = document.getElementById("logout-link");
   if (logoutLink) {
-    logoutLink.addEventListener('click', async (e) => {
+    logoutLink.addEventListener("click", async (e) => {
       e.preventDefault();
-      await fetch('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-      window.location.href = '/';
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      window.location.href = "/";
     });
   }
 });

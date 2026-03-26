@@ -17,12 +17,45 @@
  *   email_records:<resend_id> — tracking record used by the bounce webhook
  */
 import {
-  getDb, getEnv, getUserFromRequest, jsonResponse, errorResponse,
-  log, logRequest, safeJson, validateEmail, generateId,
-  persistEvent, sendEmail, asArray, escapeHtml,
+  getDb,
+  getEnv,
+  getUserFromRequest,
+  jsonResponse,
+  errorResponse,
+  log,
+  logRequest,
+  safeJson,
+  validateEmail,
+  generateId,
+  persistEvent,
+  sendEmail,
+  asArray,
+  escapeHtml,
+  buildTimeSlots,
 } from "./utils.mjs";
 
 const FN = "meetings";
+const MAX_TITLE_LENGTH = 200;
+const MAX_DESCRIPTION_LENGTH = 2000;
+const MAX_INVITEES = 50;
+const ALLOWED_MEETING_TYPES = new Set(["specific_dates", "days_of_week"]);
+const ALLOWED_DAY_NAMES = new Set([
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+]);
+
+async function listMeetingIds(meetingsDb) {
+  const listing = await meetingsDb.list().catch(() => ({ blobs: [] }));
+  return asArray(listing?.blobs)
+    .map((b) => b?.key)
+    .filter(Boolean)
+    .filter((key) => key !== "index" && !key.includes(":"));
+}
 
 // Top-level Netlify Function entry point. Wraps everything in a try/catch so
 // an unexpected exception always returns a clean JSON error instead of a
@@ -36,7 +69,7 @@ export default async (req, context) => {
   }
 };
 
-async function handleRequest(req, context) {
+async function handleRequest(req, _context) {
   logRequest(FN, req);
 
   // Require a valid session cookie for every endpoint in this function.
@@ -52,23 +85,27 @@ async function handleRequest(req, context) {
 
   // GET /api/meetings - list dashboard data
   if (req.method === "GET" && pathParts.length === 0) {
-    // Defensively read the index: if the blob is absent or malformed,
-    // treat it as an empty list. asArray() handles both cases cleanly.
-    const rawIndexData = await meetings.get("index", { type: "json" }).catch(() => []);
-    if (!Array.isArray(rawIndexData)) {
-      log("warn", FN, "meetings index is malformed; expected array", { type: typeof rawIndexData });
-    }
-    const indexData = asArray(rawIndexData);
+    const meetingIds = await listMeetingIds(meetings);
+    const userEmail = (user.email || "").toLowerCase();
+
+    const records = await Promise.all(
+      meetingIds.map(async (meetingId) => {
+        const [meeting, meetingInvites] = await Promise.all([
+          meetings.get(meetingId, { type: "json" }).catch(() => null),
+          invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []),
+        ]);
+        if (!meeting) return null;
+        return { meeting, meetingInvites: asArray(meetingInvites) };
+      })
+    );
 
     const myMeetings = [];
     const invitedMeetings = [];
 
-    for (const meetingId of indexData) {
-      const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
-      if (!meeting) continue;
-
-      const meetingInvites = asArray(await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
-      const respondCount = meetingInvites.filter(i => i.responded).length;
+    for (const record of records) {
+      if (!record) continue;
+      const { meeting, meetingInvites } = record;
+      const respondCount = meetingInvites.filter((i) => i.responded).length;
       const inviteCount = meetingInvites.length;
 
       const summary = {
@@ -79,7 +116,7 @@ async function handleRequest(req, context) {
 
       if (meeting.creator_id === user.id) {
         myMeetings.push(summary);
-      } else if (meetingInvites.some(i => (i.email || '').toLowerCase() === user.email.toLowerCase())) {
+      } else if (meetingInvites.some((i) => (i.email || "").toLowerCase() === userEmail)) {
         invitedMeetings.push(summary);
       }
     }
@@ -94,27 +131,72 @@ async function handleRequest(req, context) {
   if (req.method === "POST" && pathParts.length === 0) {
     const body = await safeJson(req);
     if (body === null) return errorResponse(400, "Request body must be valid JSON.");
-    const { title, description, meeting_type, dates_or_days, start_time, end_time, invite_emails, timezone } = body;
+    const {
+      title,
+      description,
+      meeting_type,
+      dates_or_days,
+      start_time,
+      end_time,
+      invite_emails,
+      timezone,
+    } = body;
 
-    if (!title || !title.trim()) return errorResponse(400, "Meeting title is required.");
-    if (!dates_or_days || dates_or_days.length === 0) return errorResponse(400, "Select at least one date or day.");
+    const normalizedTitle = String(title || "").trim();
+    const normalizedDescription = String(description || "").trim();
+    const normalizedMeetingType = String(meeting_type || "specific_dates").trim();
+    const normalizedDatesOrDays = [
+      ...new Set(
+        asArray(dates_or_days)
+          .map((v) => String(v || "").trim())
+          .filter(Boolean)
+      ),
+    ];
+    const creatorEmail = (user.email || "").toLowerCase();
+
+    if (!normalizedTitle) return errorResponse(400, "Meeting title is required.");
+    if (normalizedTitle.length > MAX_TITLE_LENGTH) {
+      return errorResponse(400, `Meeting title must be ${MAX_TITLE_LENGTH} characters or fewer.`);
+    }
+    if (normalizedDescription.length > MAX_DESCRIPTION_LENGTH) {
+      return errorResponse(
+        400,
+        `Description must be ${MAX_DESCRIPTION_LENGTH} characters or fewer.`
+      );
+    }
+    if (!ALLOWED_MEETING_TYPES.has(normalizedMeetingType)) {
+      return errorResponse(400, "meeting_type must be either 'specific_dates' or 'days_of_week'.");
+    }
+    if (normalizedDatesOrDays.length === 0)
+      return errorResponse(400, "Select at least one date or day.");
+    if (normalizedMeetingType === "specific_dates") {
+      const invalidDate = normalizedDatesOrDays.find((d) => !/^\d{4}-\d{2}-\d{2}$/.test(d));
+      if (invalidDate)
+        return errorResponse(400, `Invalid date value '${invalidDate}'. Expected YYYY-MM-DD.`);
+    } else {
+      const invalidDay = normalizedDatesOrDays.find((d) => !ALLOWED_DAY_NAMES.has(d));
+      if (invalidDay) return errorResponse(400, `Invalid day value '${invalidDay}'.`);
+    }
 
     const timeRe = /^\d{2}:\d{2}$/;
-    if (start_time && !timeRe.test(start_time)) return errorResponse(400, "start_time must be in HH:MM format.");
-    if (end_time && !timeRe.test(end_time)) return errorResponse(400, "end_time must be in HH:MM format.");
-    if (start_time && end_time && start_time >= end_time) return errorResponse(400, "end_time must be after start_time.");
+    if (start_time && !timeRe.test(start_time))
+      return errorResponse(400, "start_time must be in HH:MM format.");
+    if (end_time && !timeRe.test(end_time))
+      return errorResponse(400, "end_time must be in HH:MM format.");
+    if (start_time && end_time && start_time >= end_time)
+      return errorResponse(400, "end_time must be after start_time.");
 
-    log("info", FN, "creating meeting", { title, creator: user.email });
+    log("info", FN, "creating meeting", { title: normalizedTitle, creator: user.email });
 
     const meetingId = generateId();
     const meeting = {
       id: meetingId,
-      title,
-      description: description || "",
+      title: normalizedTitle,
+      description: normalizedDescription,
       creator_id: user.id,
       creator_name: user.name,
-      meeting_type: meeting_type || "specific_dates",
-      dates_or_days,
+      meeting_type: normalizedMeetingType,
+      dates_or_days: normalizedDatesOrDays,
       start_time: start_time || "08:00",
       end_time: end_time || "20:00",
       timezone: timezone || "UTC",
@@ -132,18 +214,25 @@ async function handleRequest(req, context) {
     indexData.push(meetingId);
     await meetings.setJSON("index", indexData);
 
-    const meetingInvites = [{
-      id: generateId(),
-      meeting_id: meetingId,
-      user_id: user.id,
-      email: user.email,
-      name: user.name,
-      responded: false,
-    }];
+    const meetingInvites = [
+      {
+        id: generateId(),
+        meeting_id: meetingId,
+        user_id: user.id,
+        email: user.email,
+        name: user.name,
+        responded: false,
+      },
+    ];
 
     if (invite_emails) {
       const rawEmails = invite_emails.split(/[\n,]+/);
-      const emails = rawEmails.map(e => validateEmail(e)).filter(e => e && e !== user.email);
+      const emails = [
+        ...new Set(rawEmails.map((e) => validateEmail(e)).filter((e) => e && e !== creatorEmail)),
+      ];
+      if (emails.length > MAX_INVITEES) {
+        return errorResponse(400, `You can invite at most ${MAX_INVITEES} people to one meeting.`);
+      }
       const users = getDb("users");
       for (const email of emails) {
         const existingUser = await users.get(email, { type: "json" }).catch(() => null);
@@ -157,9 +246,11 @@ async function handleRequest(req, context) {
         });
 
         if (!existingUser) {
-          const pending = asArray(await invites.get(`pending:${email}`, { type: "json" }).catch(() => []));
-          pending.push(meetingId);
-          await invites.setJSON(`pending:${email}`, pending);
+          const pending = asArray(
+            await invites.get(`pending:${email}`, { type: "json" }).catch(() => [])
+          );
+          const nextPending = pending.includes(meetingId) ? pending : [...pending, meetingId];
+          await invites.setJSON(`pending:${email}`, nextPending);
         }
       }
     }
@@ -175,7 +266,9 @@ async function handleRequest(req, context) {
     const meetingUrl = `${appUrl}/meeting.html?id=${encodeURIComponent(meetingId)}`;
     const emailTracker = getDb("email_records");
 
-    const typeLabel = (meeting.meeting_type || "").replace("_", " ").replace(/\b\w/g, c => c.toUpperCase());
+    const typeLabel = (meeting.meeting_type || "")
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
     const datesText = Array.isArray(meeting.dates_or_days) ? meeting.dates_or_days.join(", ") : "";
     const timeRange = `${meeting.start_time || "08:00"} – ${meeting.end_time || "20:00"}${meeting.timezone ? ` (${meeting.timezone})` : ""}`;
 
@@ -223,14 +316,16 @@ async function handleRequest(req, context) {
 
       if (result.ok && result.emailId) {
         // Store tracking record keyed by Resend email ID for bounce correlation
-        await emailTracker.setJSON(result.emailId, {
-          meeting_id: meetingId,
-          meeting_title: meeting.title,
-          creator_email: user.email,
-          creator_name: user.name,
-          invitee_email: inv.email,
-          sent_at: new Date().toISOString(),
-        }).catch(() => null);
+        await emailTracker
+          .setJSON(result.emailId, {
+            meeting_id: meetingId,
+            meeting_title: meeting.title,
+            creator_email: user.email,
+            creator_name: user.name,
+            invitee_email: inv.email,
+            sent_at: new Date().toISOString(),
+          })
+          .catch(() => null);
       }
 
       if (!result.ok) {
@@ -238,19 +333,23 @@ async function handleRequest(req, context) {
       }
     }
 
-    const failedInvites = invite_results.filter(r => !r.ok);
-    log("info", FN, "meeting created", { meetingId, inviteCount: meetingInvites.length - 1, emailsFailed: failedInvites.length });
+    const failedInvites = invite_results.filter((r) => !r.ok);
+    log("info", FN, "meeting created", {
+      meetingId,
+      inviteCount: meetingInvites.length - 1,
+      emailsFailed: failedInvites.length,
+    });
     await persistEvent("info", FN, "meeting created", {
       creator_email: user.email,
       creator_name: user.name || user.email,
       meeting_id: meetingId,
-      meeting_name: title,
+      meeting_name: normalizedTitle,
     });
     return jsonResponse(200, {
       success: true,
       meeting_id: meetingId,
       invite_results,
-      email_failures: failedInvites.map(r => r.email),
+      email_failures: failedInvites.map((r) => r.email),
     });
   }
 
@@ -265,9 +364,11 @@ async function handleRequest(req, context) {
       return errorResponse(404, `Meeting '${meetingId}' not found.`);
     }
 
-    let meetingInvites = asArray(await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
+    let meetingInvites = asArray(
+      await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => [])
+    );
     const isCreator = meeting.creator_id === user.id;
-    let invite = meetingInvites.find(i => i.email === user.email);
+    let invite = meetingInvites.find((i) => i.email === user.email);
 
     if (!isCreator && !invite) {
       const newInvite = {
@@ -295,11 +396,13 @@ async function handleRequest(req, context) {
       });
     }
 
-    const allAvail = asArray(await availability.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
+    const allAvail = asArray(
+      await availability.get(`meeting:${meetingId}`, { type: "json" }).catch(() => [])
+    );
 
     // Pull out only this user's selected slots for pre-populating the editor.
-    const myAvail = allAvail.filter(a => a.user_id === user.id);
-    const mySlots = myAvail.map(a => `${a.date_or_day}_${a.time_slot}`);
+    const myAvail = allAvail.filter((a) => a.user_id === user.id);
+    const mySlots = myAvail.map((a) => `${a.date_or_day}_${a.time_slot}`);
 
     // Aggregate slot counts across all participants to power the heatmap grid.
     const slotCounts = {};
@@ -310,15 +413,7 @@ async function handleRequest(req, context) {
 
     // Build the ordered list of 15-minute time slots between the meeting's
     // start and end times. The front-end uses this to render column headers.
-    const timeSlots = [];
-    const [sh, sm] = meeting.start_time.split(":").map(Number);
-    const [eh, em] = meeting.end_time.split(":").map(Number);
-    let cur = sh * 60 + sm;
-    const end = eh * 60 + em;
-    while (cur < end) {
-      timeSlots.push(`${String(Math.floor(cur / 60)).padStart(2, "0")}:${String(cur % 60).padStart(2, "0")}`);
-      cur += 15;
-    }
+    const timeSlots = buildTimeSlots(meeting.start_time, meeting.end_time);
 
     // Build the participants list for the "By person" panel.
     // We re-read the user record to pick up any name changes since the invite
@@ -327,7 +422,7 @@ async function handleRequest(req, context) {
     const usersDb = getDb("users");
     const participants = [];
     for (const inv of meetingInvites) {
-      const ua = allAvail.filter(a => a.user_id === inv.user_id);
+      const ua = allAvail.filter((a) => a.user_id === inv.user_id);
       let pName = inv.name || inv.email;
       if (inv.user_id) {
         const u = await usersDb.get(inv.email, { type: "json" }).catch(() => null);
@@ -337,7 +432,7 @@ async function handleRequest(req, context) {
         name: pName,
         slot_count: ua.length,
         responded: inv.responded,
-        slots: ua.map(a => `${a.date_or_day}_${a.time_slot}`),
+        slots: ua.map((a) => `${a.date_or_day}_${a.time_slot}`),
       };
       if (isCreator) entry.email = inv.email;
       participants.push(entry);
@@ -352,7 +447,7 @@ async function handleRequest(req, context) {
       participants,
       time_slots: timeSlots,
       all_invites: meetingInvites,
-      respond_count: meetingInvites.filter(i => i.responded).length,
+      respond_count: meetingInvites.filter((i) => i.responded).length,
       invite_count: meetingInvites.length,
     });
   }
@@ -364,14 +459,27 @@ async function handleRequest(req, context) {
 
     const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
     if (!meeting) return errorResponse(404, `Meeting '${meetingId}' not found.`);
-    if (meeting.creator_id !== user.id) return errorResponse(403, "Only the meeting creator can delete it.");
+    if (meeting.creator_id !== user.id)
+      return errorResponse(403, "Only the meeting creator can delete it.");
+
+    const meetingInvites = asArray(
+      await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => [])
+    );
+    for (const inv of meetingInvites) {
+      if (!inv?.email || inv.user_id) continue;
+      const pendingKey = `pending:${String(inv.email).toLowerCase()}`;
+      const pending = asArray(await invites.get(pendingKey, { type: "json" }).catch(() => []));
+      const nextPending = pending.filter((id) => id !== meetingId);
+      if (nextPending.length > 0) await invites.setJSON(pendingKey, nextPending);
+      else await invites.delete(pendingKey).catch(() => null);
+    }
 
     await meetings.delete(meetingId);
     await invites.delete(`meeting:${meetingId}`);
     await availability.delete(`meeting:${meetingId}`);
 
     const indexData = asArray(await meetings.get("index", { type: "json" }).catch(() => []));
-    const newIndex = indexData.filter(id => id !== meetingId);
+    const newIndex = indexData.filter((id) => id !== meetingId);
     await meetings.setJSON("index", newIndex);
 
     log("info", FN, "meeting deleted", { meetingId });
@@ -386,20 +494,30 @@ async function handleRequest(req, context) {
 
     const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
     if (!meeting) return errorResponse(404, `Meeting '${meetingId}' not found.`);
-    if (meeting.creator_id === user.id) return errorResponse(403, "Meeting creators cannot leave their own meeting. Use delete instead.");
+    if (meeting.creator_id === user.id)
+      return errorResponse(
+        403,
+        "Meeting creators cannot leave their own meeting. Use delete instead."
+      );
 
-    const meetingInvites = asArray(await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
+    const meetingInvites = asArray(
+      await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => [])
+    );
     const userEmail = user.email.toLowerCase();
-    const isInvited = meetingInvites.some(i => (i.email || '').toLowerCase() === userEmail);
+    const isInvited = meetingInvites.some((i) => (i.email || "").toLowerCase() === userEmail);
     if (!isInvited) return errorResponse(403, "You are not an invitee of this meeting.");
 
     // Remove the user's invite entry
-    const updatedInvites = meetingInvites.filter(i => (i.email || '').toLowerCase() !== userEmail);
+    const updatedInvites = meetingInvites.filter(
+      (i) => (i.email || "").toLowerCase() !== userEmail
+    );
     await invites.setJSON(`meeting:${meetingId}`, updatedInvites);
 
     // Also remove the user's availability entries for this meeting
-    const allAvail = asArray(await availability.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []));
-    const updatedAvail = allAvail.filter(a => a.user_id !== user.id);
+    const allAvail = asArray(
+      await availability.get(`meeting:${meetingId}`, { type: "json" }).catch(() => [])
+    );
+    const updatedAvail = allAvail.filter((a) => a.user_id !== user.id);
     await availability.setJSON(`meeting:${meetingId}`, updatedAvail);
 
     log("info", FN, "user left meeting", { meetingId, userId: user.id });

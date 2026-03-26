@@ -1,104 +1,68 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Log In – MeetMe</title>
-  <link rel="stylesheet" href="/static/style.css"/>
-</head>
-<body>
-
-<nav class="navbar">
-  <div class="nav-inner">
-    <a href="/dashboard.html" class="nav-brand">
-      <span class="brand-icon">&#x27F3;</span> MeetMe
-    </a>
-    <div class="nav-links" id="nav-auth" style="display:none;">
-      <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
-      <span class="nav-user" id="nav-username"></span>
-      <a href="#" class="nav-link" id="logout-link">Log out</a>
-    </div>
-  </div>
-</nav>
-
-<div id="flash-container" class="flash-container"></div>
-
-<main class="main-content">
-  <div class="auth-wrapper">
-    <div class="auth-card">
-      <div class="auth-header">
-        <div class="auth-logo">&#x27F3;</div>
-        <h1>Welcome to MeetMe</h1>
-        <p>Sign in to MeetMe without a password</p>
-      </div>
-
-      <form id="magic-link-form" class="auth-form">
-        <div class="form-group">
-          <label for="email">Email address</label>
-          <input type="email" id="email" name="email" class="form-control"
-                 placeholder="you@example.com" required autofocus/>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Log In – MeetMe</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-inner">
+        <a href="/dashboard.html" class="nav-brand">
+          <span class="brand-icon">&#x27F3;</span> MeetMe
+        </a>
+        <div class="nav-links" id="nav-auth" style="display: none">
+          <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
+          <span class="nav-user" id="nav-username"></span>
+          <a href="#" class="nav-link" id="logout-link">Log out</a>
         </div>
-        <button type="submit" class="btn btn-primary btn-full">Email me a sign-in link</button>
-      </form>
+      </div>
+    </nav>
 
-      <div class="auth-divider"><span>or</span></div>
+    <div id="flash-container" class="flash-container"></div>
 
-      <a href="/api/auth/google/start" class="btn btn-ghost btn-full">Continue with Google</a>
+    <main class="main-content">
+      <div class="auth-wrapper">
+        <div class="auth-card">
+          <div class="auth-header">
+            <div class="auth-logo">&#x27F3;</div>
+            <h1>Welcome to MeetMe</h1>
+            <p>Sign in to MeetMe without a password</p>
+          </div>
 
-      <p class="auth-footer">
-        New here?
-        <a href="/register.html">Set your name and get a sign-in link</a>
-      </p>
-    </div>
-  </div>
-</main>
+          <form id="magic-link-form" class="auth-form">
+            <div class="form-group">
+              <label for="email">Email address</label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                class="form-control"
+                placeholder="you@example.com"
+                required
+                autofocus
+              />
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">Email me a sign-in link</button>
+          </form>
 
-<footer class="footer">
-  <p>MeetMe &ndash; Find the perfect time together &mdash; <a href="/feedback.html" style="color:inherit;">Send feedback</a></p>
-  <p><a href="https://buymeacoffee.com/yusufpisanh" target="_blank" rel="noopener noreferrer" style="color:inherit;">&#x2615; Buy me a coffee</a></p>
-</footer>
+          <div class="auth-divider"><span>or</span></div>
 
-<script src="/static/common.js"></script>
-<script>
-  // Redirect if already logged in
-  checkAuth().then(user => {
-    if (user) window.location.href = '/dashboard.html';
+          <a href="/api/auth/google/start" class="btn btn-ghost btn-full">Continue with Google</a>
 
-    const params = new URLSearchParams(window.location.search);
-    const error = params.get('error');
-    const errorMap = {
-      'invalid-link': 'That sign-in link is invalid. Please request a new one.',
-      'link-expired': 'That sign-in link has expired. Please request a new one.',
-      'link-already-used': 'That sign-in link has already been used. Please request a new one.',
-      'google-not-configured': 'Google sign-in is not configured yet.',
-      'google-auth-failed': 'Google sign-in failed. Please try again.',
-      'google-denied': 'Google sign-in was cancelled.',
-      'google-state-missing': 'Sign-in session missing — please try again (ensure cookies are enabled).',
-      'google-state-expired': 'Sign-in session expired — please try again.',
-      'google-email-missing': 'Your Google account did not share an email address.',
-      'google-email-not-verified': 'Your Google account email must be verified.',
-    };
-    if (error && errorMap[error]) {
-      showFlash(errorMap[error], 'danger');
-      window.history.replaceState({}, document.title, '/');
-    }
-  });
+          <p class="auth-footer">
+            New here?
+            <a href="/register.html">Set your name and get a sign-in link</a>
+          </p>
+        </div>
+      </div>
+    </main>
 
-  document.getElementById('magic-link-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('email').value.trim();
+    <footer class="footer" data-shared-footer></footer>
 
-    const { ok, data } = await apiFetch('/api/auth/magic-link/request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
-    });
-    if (ok) {
-      window.location.href = '/email-sent.html?email=' + encodeURIComponent(email);
-    } else {
-      showFlash(data.error || 'Could not send sign-in link. Please try again.', 'danger');
-    }
-  });
-</script>
-</body>
+    <script src="/static/layout.js"></script>
+    <script src="/static/common.js"></script>
+    <script src="/static/index.js" defer></script>
+  </body>
 </html>

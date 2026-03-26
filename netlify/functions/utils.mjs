@@ -30,9 +30,8 @@ import crypto from "node:crypto";
  * @returns {string}
  */
 export function getEnv(name, fallback = "") {
-  const fromNetlify = typeof Netlify !== "undefined" && Netlify?.env?.get
-    ? Netlify.env.get(name)
-    : undefined;
+  const fromNetlify =
+    typeof Netlify !== "undefined" && Netlify?.env?.get ? Netlify.env.get(name) : undefined;
   if (fromNetlify !== undefined && fromNetlify !== null && fromNetlify !== "") {
     return fromNetlify;
   }
@@ -62,7 +61,9 @@ function getEncryptionKey() {
       try {
         const decoded = Buffer.from(raw, "base64");
         if (decoded.length >= 32) return decoded.subarray(0, 32);
-      } catch {}
+      } catch {
+        // Ignore invalid base64 and fall back to hashing raw input.
+      }
     }
     return crypto.createHash("sha256").update(raw).digest();
   }
@@ -333,9 +334,9 @@ export function clearCookie(name) {
  */
 export function isAdmin(user) {
   if (!user || !user.email) return false;
-  const adminEmails = getEnv("ADMIN_EMAILS", "yusuf.pisan@gmail.com")
+  const adminEmails = getEnv("ADMIN_EMAILS", "")
     .split(",")
-    .map(e => e.trim().toLowerCase())
+    .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
   return adminEmails.includes((user.email || "").toLowerCase());
 }
@@ -397,11 +398,10 @@ export async function checkRateLimit({ bucket, key, limit, windowMs }) {
     const now = Date.now();
     const existing = await db.get(recordKey, { type: "json" }).catch(() => null);
 
-    let record = existing && typeof existing === "object"
-      ? existing
-      : { window_start: now, count: 0 };
+    let record =
+      existing && typeof existing === "object" ? existing : { window_start: now, count: 0 };
 
-    if ((now - (record.window_start || now)) >= windowSize) {
+    if (now - (record.window_start || now) >= windowSize) {
       record = { window_start: now, count: 0 };
     }
 
@@ -441,6 +441,44 @@ export async function checkRateLimit({ bucket, key, limit, windowMs }) {
 // ─── Utilities ───────────────────────────────────────────────────────────────
 
 /**
+ * @typedef {object} Meeting
+ * @property {string} id
+ * @property {string} title
+ * @property {string} description
+ * @property {string} creator_id
+ * @property {string} creator_name
+ * @property {"specific_dates"|"days_of_week"} meeting_type
+ * @property {string[]} dates_or_days
+ * @property {string} start_time
+ * @property {string} end_time
+ * @property {string} timezone
+ * @property {number} duration_minutes
+ * @property {string|null} finalized_date
+ * @property {string|null} finalized_slot
+ * @property {string} note
+ * @property {boolean} is_finalized
+ * @property {string} created_at
+ */
+
+/**
+ * @typedef {object} Invite
+ * @property {string} id
+ * @property {string} meeting_id
+ * @property {string|null} user_id
+ * @property {string} email
+ * @property {string} name
+ * @property {boolean} responded
+ */
+
+/**
+ * @typedef {object} AvailabilitySlot
+ * @property {string} meeting_id
+ * @property {string} user_id
+ * @property {string} date_or_day
+ * @property {string} time_slot
+ */
+
+/**
  * Generate a short, URL-safe, roughly time-sortable unique ID.
  * Combines a base-36 timestamp with random characters — not guaranteed to be
  * globally unique but collision probability is negligible for this scale.
@@ -463,6 +501,45 @@ export function generateId() {
  */
 export function asArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+/**
+ * Build an ordered list of "HH:MM" time-slot strings between startTime and
+ * endTime at fixed-minute intervals. The end time itself is excluded.
+ *
+ * @param {string} startTime - "HH:MM"
+ * @param {string} endTime   - "HH:MM"
+ * @param {number} [stepMin=15]
+ * @returns {string[]}
+ */
+export function buildTimeSlots(startTime, endTime, stepMin = 15) {
+  const [sh, sm] = (startTime || "08:00").split(":").map(Number);
+  const [eh, em] = (endTime || "20:00").split(":").map(Number);
+  const slots = [];
+  let cur = sh * 60 + sm;
+  const end = eh * 60 + em;
+  while (cur < end) {
+    slots.push(
+      `${String(Math.floor(cur / 60)).padStart(2, "0")}:${String(cur % 60).padStart(2, "0")}`
+    );
+    cur += stepMin;
+  }
+  return slots;
+}
+
+/**
+ * Compare two secrets in constant time when lengths match.
+ *
+ * @param {string} a
+ * @param {string} b
+ * @returns {boolean}
+ */
+export function secretsEqual(a, b) {
+  if (!a || !b) return false;
+  const bufA = Buffer.from(String(a));
+  const bufB = Buffer.from(String(b));
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
 }
 
 /**
@@ -508,7 +585,10 @@ export async function sendEmail({ to, subject, html, text, replyTo, tags } = {})
   const apiKey = getEnv("RESEND_API_KEY");
   const fromEmail = getEnv("AUTH_FROM_EMAIL");
   if (!apiKey || !fromEmail) {
-    return { ok: false, error: "Email delivery is not configured (RESEND_API_KEY / AUTH_FROM_EMAIL missing)." };
+    return {
+      ok: false,
+      error: "Email delivery is not configured (RESEND_API_KEY / AUTH_FROM_EMAIL missing).",
+    };
   }
   try {
     const payload = {

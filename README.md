@@ -87,7 +87,7 @@ meetme/
         ├── utils.mjs          # Shared helpers: env, JWT, crypto, logging, email, DB
         ├── auth.mjs           # /api/auth/* — sign-in, OAuth, profile, logout, feedback
         ├── meetings.mjs       # /api/meetings/* — create, list, detail, delete, leave
-        ├── meeting-actions.mjs # /api/meeting/* — availability, finalize, remind
+        ├── meeting-actions.mjs # /api/meetings/* — availability, finalize, remind
         ├── calendar.mjs       # /api/calendar/* — Google Calendar free/busy
         ├── admin.mjs          # /api/admin/* — admin panel data
         └── webhooks.mjs       # /api/webhooks/* — Resend bounce/complaint handler
@@ -100,19 +100,20 @@ meetme/
 Set these environment variables in Netlify (Site configuration → Environment variables)
 and in your local `.env` file for development:
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `JWT_SECRET` | _(required)_ | Secret used to sign session JWTs — use a long random string |
-| `TOKEN_ENCRYPTION_KEY` | _(required)_ | Key for AES-256-GCM encryption of stored OAuth tokens — use a different long random string |
-| `APP_URL` | inferred from request | Public base URL, e.g. `https://your-site.netlify.app` |
-| `RESEND_API_KEY` | _(required for email)_ | API key from [resend.com](https://resend.com) |
-| `AUTH_FROM_EMAIL` | _(required for email)_ | Verified sender address, e.g. `MeetMe <noreply@yourdomain.com>` |
-| `RESEND_WEBHOOK_SECRET` | _(optional)_ | Shared secret for the Resend bounce/complaint webhook |
-| `ADMIN_EMAILS` | _(optional)_ | Comma-separated admin addresses, e.g. `alice@example.com,bob@example.com` |
-| `GOOGLE_CLIENT_ID` | _(optional)_ | OAuth 2.0 client ID (required for Google sign-in and Calendar) |
-| `GOOGLE_CLIENT_SECRET` | _(optional)_ | OAuth 2.0 client secret |
+| Variable                | Default                | Purpose                                                                                    |
+| ----------------------- | ---------------------- | ------------------------------------------------------------------------------------------ |
+| `JWT_SECRET`            | _(required)_           | Secret used to sign session JWTs — use a long random string                                |
+| `TOKEN_ENCRYPTION_KEY`  | _(required)_           | Key for AES-256-GCM encryption of stored OAuth tokens — use a different long random string |
+| `APP_URL`               | inferred from request  | Public base URL, e.g. `https://your-site.netlify.app`                                      |
+| `RESEND_API_KEY`        | _(required for email)_ | API key from [resend.com](https://resend.com)                                              |
+| `AUTH_FROM_EMAIL`       | _(required for email)_ | Verified sender address, e.g. `MeetMe <noreply@yourdomain.com>`                            |
+| `RESEND_WEBHOOK_SECRET` | _(optional)_           | Shared secret for the Resend bounce/complaint webhook                                      |
+| `ADMIN_EMAILS`          | _(optional)_           | Comma-separated admin addresses, e.g. `alice@example.com,bob@example.com`                  |
+| `GOOGLE_CLIENT_ID`      | _(optional)_           | OAuth 2.0 client ID (required for Google sign-in and Calendar)                             |
+| `GOOGLE_CLIENT_SECRET`  | _(optional)_           | OAuth 2.0 client secret                                                                    |
 
 Generate strong secrets with:
+
 ```bash
 openssl rand -hex 32
 ```
@@ -127,8 +128,11 @@ Use `.env.example` as the template for local development values.
    - `https://<your-netlify-domain>/api/auth/google/calendar-callback`
 3. In Resend, verify your sending domain and set `AUTH_FROM_EMAIL` to that verified sender.
 4. _(Optional)_ In Resend → Webhooks, add endpoint:
-   - URL: `https://<your-netlify-domain>/api/webhooks/resend?secret=<RESEND_WEBHOOK_SECRET>`
-   - Subscribe to: `email.bounced`, `email.complained`
+
+- URL: `https://<your-netlify-domain>/api/webhooks/resend`
+- Header: `x-webhook-secret: <RESEND_WEBHOOK_SECRET>`
+- Subscribe to: `email.bounced`, `email.complained`
+
 5. Deploy and test:
    - Request a magic link from `/`
    - Open `/api/auth/health` to verify all env vars are detected
@@ -138,18 +142,21 @@ Use `.env.example` as the template for local development values.
 These are strongly recommended hardening steps before opening the app to real users:
 
 1. **Add and verify a custom 404 page**
-  - `404.html` should exist at the site root (included in this repo)
-  - After deploy, open a non-existent URL like `/does-not-exist` and verify the custom page renders
+
+- `404.html` should exist at the site root (included in this repo)
+- After deploy, open a non-existent URL like `/does-not-exist` and verify the custom page renders
 
 2. **Verify bounce/complaint webhook behavior end-to-end**
-  - In Resend → Webhooks, ensure your endpoint is configured with `RESEND_WEBHOOK_SECRET`
-  - Confirm subscriptions include `email.bounced` and `email.complained`
-  - Trigger a test event and verify creator notification + event log entry in `/admin.html`
+
+- In Resend → Webhooks, ensure your endpoint is configured with `RESEND_WEBHOOK_SECRET`
+- Confirm subscriptions include `email.bounced` and `email.complained`
+- Trigger a test event and verify creator notification + event log entry in `/admin.html`
 
 3. **Enable production observability**
-  - Enable Netlify Function logs monitoring (or a log drain/third-party monitor)
-  - Set alerting for repeated `error` events from `/api/auth/*`, `/api/meetings/*`, and `/api/webhooks/*`
-  - Review `/admin.html` event logs regularly during the first week after launch
+
+- Enable Netlify Function logs monitoring (or a log drain/third-party monitor)
+- Set alerting for repeated `error` events from `/api/auth/*`, `/api/meetings/*`, and `/api/webhooks/*`
+- Review `/admin.html` event logs regularly during the first week after launch
 
 ### Troubleshooting Auth
 
@@ -196,6 +203,14 @@ Recommended approach:
 
 If you must run inside Docker, use deployed Netlify preview/production for
 auth/function validation and limit container-local checks to static/UI behavior.
+
+### Quality checks
+
+```bash
+npm test
+npm run lint
+npm run format:check
+```
 
 ---
 

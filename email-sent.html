@@ -1,70 +1,75 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Check Your Email – MeetMe</title>
-  <link rel="stylesheet" href="/static/style.css"/>
-</head>
-<body>
-
-<nav class="navbar">
-  <div class="nav-inner">
-    <a href="/" class="nav-brand">
-      <span class="brand-icon">&#x27F3;</span> MeetMe
-    </a>
-  </div>
-</nav>
-
-<main class="main-content">
-  <div class="auth-wrapper">
-    <div class="auth-card" style="text-align:center;">
-      <div class="auth-header">
-        <div class="auth-logo" style="font-size:2.8rem; margin-bottom:8px;">&#x2709;&#xFE0F;</div>
-        <h1>Check your email</h1>
-        <p id="email-msg">We've sent a sign-in link to your email address.</p>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Check Your Email – MeetMe</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-inner">
+        <a href="/" class="nav-brand"> <span class="brand-icon">&#x27F3;</span> MeetMe </a>
       </div>
+    </nav>
 
-      <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:16px 20px; margin:16px 0; text-align:left;">
-        <p style="margin:0 0 8px; font-size:0.9rem; font-weight:600; color:#166534;">What to do next</p>
-        <ol style="margin:0; padding-left:18px; font-size:0.875rem; color:#14532d; line-height:1.8;">
-          <li>Open your email inbox</li>
-          <li>Find the email from MeetMe</li>
-          <li>Click the <strong>Sign in to MeetMe</strong> link</li>
-        </ol>
+    <main class="main-content">
+      <div class="auth-wrapper">
+        <div class="auth-card" style="text-align: center">
+          <div class="auth-header">
+            <div class="auth-logo" style="font-size: 2.8rem; margin-bottom: 8px">
+              &#x2709;&#xFE0F;
+            </div>
+            <h1>Check your email</h1>
+            <p id="email-msg">We've sent a sign-in link to your email address.</p>
+          </div>
+
+          <div
+            style="
+              background: #f0fdf4;
+              border: 1px solid #bbf7d0;
+              border-radius: 10px;
+              padding: 16px 20px;
+              margin: 16px 0;
+              text-align: left;
+            "
+          >
+            <p style="margin: 0 0 8px; font-size: 0.9rem; font-weight: 600; color: #166534">
+              What to do next
+            </p>
+            <ol
+              style="
+                margin: 0;
+                padding-left: 18px;
+                font-size: 0.875rem;
+                color: #14532d;
+                line-height: 1.8;
+              "
+            >
+              <li>Open your email inbox</li>
+              <li>Find the email from MeetMe</li>
+              <li>Click the <strong>Sign in to MeetMe</strong> link</li>
+            </ol>
+          </div>
+
+          <p
+            style="color: var(--text-muted); font-size: 0.82rem; line-height: 1.6; margin-top: 16px"
+          >
+            The link expires in <strong>15 minutes</strong> and can only be used once. If you don't
+            see it, check your spam or junk folder.
+          </p>
+
+          <div style="margin-top: 24px; display: flex; flex-direction: column; gap: 10px">
+            <a href="/" class="btn btn-ghost btn-full">&#x21BA; Request a new sign-in link</a>
+          </div>
+        </div>
       </div>
+    </main>
 
-      <p style="color:var(--text-muted); font-size:0.82rem; line-height:1.6; margin-top:16px;">
-        The link expires in <strong>15 minutes</strong> and can only be used once.
-        If you don't see it, check your spam or junk folder.
-      </p>
+    <footer class="footer" data-shared-footer></footer>
 
-      <div style="margin-top:24px; display:flex; flex-direction:column; gap:10px;">
-        <a href="/" class="btn btn-ghost btn-full">&#x21BA; Request a new sign-in link</a>
-      </div>
-    </div>
-  </div>
-</main>
-
-<footer class="footer">
-  <p>MeetMe &ndash; Find the perfect time together &mdash; <a href="/feedback.html" style="color:inherit;">Send feedback</a></p>
-  <p><a href="https://buymeacoffee.com/yusufpisanh" target="_blank" rel="noopener noreferrer" style="color:inherit;">&#x2615; Buy me a coffee</a></p>
-</footer>
-
-<script src="/static/common.js"></script>
-<script>
-  // Redirect to dashboard if already logged in
-  checkAuth().then(user => {
-    if (user) window.location.href = '/dashboard.html';
-  });
-
-  // Show the destination email if provided
-  const params = new URLSearchParams(window.location.search);
-  const email = params.get('email');
-  if (email) {
-    document.getElementById('email-msg').textContent =
-      `We've sent a sign-in link to ${decodeURIComponent(email)}.`;
-  }
-</script>
-</body>
+    <script src="/static/layout.js"></script>
+    <script src="/static/common.js"></script>
+    <script src="/static/email-sent.js" defer></script>
+  </body>
 </html>
