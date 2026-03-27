@@ -86,8 +86,6 @@ function getClientIp(req) {
   return forwarded.split(",")[0]?.trim() || "unknown";
 }
 
-
-
 /**
  * When a user is invited before registering, their invite is stored under
  * `invites:"pending:<email>"`. As soon as they verify a magic link or sign in

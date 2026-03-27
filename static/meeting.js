@@ -108,7 +108,7 @@ let busySlots = new Set();
       `&#x1F4C5; ${escapeHtml(M.finalizedDate)} at ${fmtTime(M.finalizedSlot, M.finalizedDate)} (${M.meeting.duration_minutes} min)`;
     if (meetingTz && meetingTz !== "UTC") {
       document.getElementById("finalized-time").innerHTML +=
-        ` <span style="font-size:0.75rem;color:var(--text-muted);">(${meetingTz})</span>`;
+        ` <span style="font-size:0.75rem;color:var(--text-muted);">(${escapeHtml(meetingTz)})</span>`;
     }
     if (M.meeting.note) {
       document.getElementById("finalized-note").textContent = M.meeting.note;
@@ -132,8 +132,9 @@ let busySlots = new Set();
 
   if (M.isCreator && M.participants.length) {
     const sel = document.getElementById("person-select");
-    const optParts = M.participants.map((p, i) =>
-      `<option value="${i}">${escapeHtml(p.name)} (${p.slot_count} slot${p.slot_count !== 1 ? "s" : ""})${!p.responded ? " \u2013 no response" : ""}</option>`
+    const optParts = M.participants.map(
+      (p, i) =>
+        `<option value="${i}">${escapeHtml(p.name)} (${p.slot_count} slot${p.slot_count !== 1 ? "s" : ""})${!p.responded ? " \u2013 no response" : ""}</option>`
     );
     sel.innerHTML += optParts.join("");
     sel.addEventListener("change", (e) => filterPerson(e.target.value));

@@ -14,28 +14,28 @@ See `CodebaseReview.md` for architectural documentation.
 The following items were reviewed and acted on. Each entry records whether the change
 was **implemented** or **deferred** and the reason.
 
-| # | Item | Decision |
-|---|------|----------|
-| 1 | Rate-limiting bypass via Host header | ✅ Implemented |
-| 2 | Health endpoint information disclosure | ✅ Implemented |
-| 3 | Webhook secret as URL query parameter | ✅ Implemented |
-| 4 | auth.mjs too large | ⏭ Deferred — see note below |
-| 5 | listMeetingIds duplicated | ✅ Implemented |
-| 6 | Sensitive Google token fields | ✅ Implemented |
-| 7 | Admin flash message bug | ✅ Implemented |
-| 8 | Expand test coverage | ⏭ Deferred — see note below |
-| 9 | Duplicated navigation HTML | ⏭ Deferred — see note below |
-| 10 | Race condition on meeting index | ⏭ Deferred — see note below |
-| 11 | calendar.mjs "24:00" end-time edge case | ✅ Implemented |
-| 12 | Input validation constants consolidation | ⏭ Deferred — see note below |
-| 13 | HTML string concatenation XSS risk | ⏭ Deferred — see note below |
-| 14 | innerHTML += in loops | ✅ Implemented |
-| 15 | getDb called repeatedly in meeting-actions | ✅ Implemented |
-| 16 | getAppUrl() inconsistency | ✅ Implemented |
-| 17 | Feedback route non-standard email validation | ✅ Implemented |
-| 18 | auth-google.mjs missing JSDoc header | ✅ Implemented |
-| 19 | Secure flag missing from cookies | ✅ Implemented |
-| 20 | Missing JSDoc types for User and EventRecord | ✅ Implemented |
+| #   | Item                                         | Decision                     |
+| --- | -------------------------------------------- | ---------------------------- |
+| 1   | Rate-limiting bypass via Host header         | ✅ Implemented               |
+| 2   | Health endpoint information disclosure       | ✅ Implemented               |
+| 3   | Webhook secret as URL query parameter        | ✅ Implemented               |
+| 4   | auth.mjs too large                           | ⏭ Deferred — see note below |
+| 5   | listMeetingIds duplicated                    | ✅ Implemented               |
+| 6   | Sensitive Google token fields                | ✅ Implemented               |
+| 7   | Admin flash message bug                      | ✅ Implemented               |
+| 8   | Expand test coverage                         | ⏭ Deferred — see note below |
+| 9   | Duplicated navigation HTML                   | ⏭ Deferred — see note below |
+| 10  | Race condition on meeting index              | ⏭ Deferred — see note below |
+| 11  | calendar.mjs "24:00" end-time edge case      | ✅ Implemented               |
+| 12  | Input validation constants consolidation     | ⏭ Deferred — see note below |
+| 13  | HTML string concatenation XSS risk           | ⏭ Deferred — see note below |
+| 14  | innerHTML += in loops                        | ✅ Implemented               |
+| 15  | getDb called repeatedly in meeting-actions   | ✅ Implemented               |
+| 16  | getAppUrl() inconsistency                    | ✅ Implemented               |
+| 17  | Feedback route non-standard email validation | ✅ Implemented               |
+| 18  | auth-google.mjs missing JSDoc header         | ✅ Implemented               |
+| 19  | Secure flag missing from cookies             | ✅ Implemented               |
+| 20  | Missing JSDoc types for User and EventRecord | ✅ Implemented               |
 
 ### Deferred — reasons
 
@@ -81,11 +81,11 @@ regression coverage.
 **The codebase is conditionally ready for a first deployment**, but three issues carry
 enough risk that they should be resolved beforehand:
 
-| # | Issue | Risk if shipped as-is |
-|---|-------|-----------------------|
-| 6 | Rate-limit bypass via `Host` header | Auth brute-force protection can be disabled by any proxy forwarding `Host: localhost` |
-| 7 | Health endpoint information disclosure | Any anonymous caller learns which third-party services are wired up |
-| 12 | Webhook secret documented as a URL query parameter | The secret can leak into proxy/CDN/server access logs |
+| #   | Issue                                              | Risk if shipped as-is                                                                 |
+| --- | -------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| 6   | Rate-limit bypass via `Host` header                | Auth brute-force protection can be disabled by any proxy forwarding `Host: localhost` |
+| 7   | Health endpoint information disclosure             | Any anonymous caller learns which third-party services are wired up                   |
+| 12  | Webhook secret documented as a URL query parameter | The secret can leak into proxy/CDN/server access logs                                 |
 
 All other items are maintenance debt or minor improvements that do not block a launch.
 The highest-value post-launch improvements are items **4** (nav deduplication), **11**
@@ -96,32 +96,16 @@ The highest-value post-launch improvements are items **4** (nav deduplication), 
 ## Table of Contents
 
 **Pre-launch (address before going live)**
+
 1. [Rate-Limiting Is Bypassed via Host Header](#1-rate-limiting-is-bypassed-via-host-header)
 2. [Unauthenticated /api/auth/health Endpoint Discloses Integration Map](#2-unauthenticated-apiauthhealth-endpoint-discloses-integration-map)
 3. [Webhook Secret Documented as a URL Query Parameter](#3-webhook-secret-documented-as-a-url-query-parameter)
 
-**High-value maintenance (plan for first month post-launch)**
-4. [auth.mjs Is Too Large — Seven Concerns in One File](#4-authmjs-is-too-large--seven-concerns-in-one-file)
-5. [listMeetingIds Is Duplicated Across Two Files](#5-listmeetingids-is-duplicated-across-two-files)
-6. [Sensitive Google Token Fields Exposed by Convention, Not Construction](#6-sensitive-google-token-fields-exposed-by-convention-not-construction)
-7. [Admin Flash Message Bug — "User updated." Always Shown on Create](#7-admin-flash-message-bug--user-updated-always-shown-on-create)
+**High-value maintenance (plan for first month post-launch)** 4. [auth.mjs Is Too Large — Seven Concerns in One File](#4-authmjs-is-too-large--seven-concerns-in-one-file) 5. [listMeetingIds Is Duplicated Across Two Files](#5-listmeetingids-is-duplicated-across-two-files) 6. [Sensitive Google Token Fields Exposed by Convention, Not Construction](#6-sensitive-google-token-fields-exposed-by-convention-not-construction) 7. [Admin Flash Message Bug — "User updated." Always Shown on Create](#7-admin-flash-message-bug--user-updated-always-shown-on-create)
 
-**Important improvements (plan within first quarter)**
-8. [Expand Test Coverage](#8-expand-test-coverage)
-9. [Duplicated Navigation HTML Across All Pages](#9-duplicated-navigation-html-across-all-pages)
-10. [Single-Blob Meeting Index — Race Condition on Concurrent Writes](#10-single-blob-meeting-index--race-condition-on-concurrent-writes)
-11. [calendar.mjs "24:00" End-Time Edge Case Uses Wrong Fallback](#11-calendarmjs-2400-end-time-edge-case-uses-wrong-fallback)
+**Important improvements (plan within first quarter)** 8. [Expand Test Coverage](#8-expand-test-coverage) 9. [Duplicated Navigation HTML Across All Pages](#9-duplicated-navigation-html-across-all-pages) 10. [Single-Blob Meeting Index — Race Condition on Concurrent Writes](#10-single-blob-meeting-index--race-condition-on-concurrent-writes) 11. [calendar.mjs "24:00" End-Time Edge Case Uses Wrong Fallback](#11-calendarmjs-2400-end-time-edge-case-uses-wrong-fallback)
 
-**Code quality and style**
-12. [Broader Input Validation Cleanup and Centralisation](#12-broader-input-validation-cleanup-and-centralisation)
-13. [HTML String Concatenation for Rendering (XSS Risk by Convention)](#13-html-string-concatenation-for-rendering-xss-risk-by-convention)
-14. [innerHTML += in Loops (create-meeting.js / meeting.js)](#14-innerhtml--in-loops-create-meetingjs--meetingjs)
-15. [getDb Called Repeatedly Inside Route Handlers](#15-getdb-called-repeatedly-inside-route-handlers)
-16. [getAppUrl() Defined Inconsistently Across Files](#16-getappurl-defined-inconsistently-across-files)
-17. [Feedback Route Uses Non-Standard Email Validation](#17-feedback-route-uses-non-standard-email-validation)
-18. [auth-google.mjs Has No Module-Level JSDoc Header](#18-auth-googlemjs-has-no-module-level-jsdoc-header)
-19. [Secure Flag Missing from Session Cookies](#19-secure-flag-missing-from-session-cookies)
-20. [Missing JSDoc Types for Remaining Core Data Shapes](#20-missing-jsdoc-types-for-remaining-core-data-shapes)
+**Code quality and style** 12. [Broader Input Validation Cleanup and Centralisation](#12-broader-input-validation-cleanup-and-centralisation) 13. [HTML String Concatenation for Rendering (XSS Risk by Convention)](#13-html-string-concatenation-for-rendering-xss-risk-by-convention) 14. [innerHTML += in Loops (create-meeting.js / meeting.js)](#14-innerhtml--in-loops-create-meetingjs--meetingjs) 15. [getDb Called Repeatedly Inside Route Handlers](#15-getdb-called-repeatedly-inside-route-handlers) 16. [getAppUrl() Defined Inconsistently Across Files](#16-getappurl-defined-inconsistently-across-files) 17. [Feedback Route Uses Non-Standard Email Validation](#17-feedback-route-uses-non-standard-email-validation) 18. [auth-google.mjs Has No Module-Level JSDoc Header](#18-auth-googlemjs-has-no-module-level-jsdoc-header) 19. [Secure Flag Missing from Session Cookies](#19-secure-flag-missing-from-session-cookies) 20. [Missing JSDoc Types for Remaining Core Data Shapes](#20-missing-jsdoc-types-for-remaining-core-data-shapes)
 
 ---
 
@@ -224,11 +208,11 @@ make it hard to audit individual flows and to onboard new contributors.
 **Recommendation:** Split into three files, with shared helpers moved to a new
 `auth-helpers.mjs`:
 
-| File              | Routes                                          |
-| ----------------- | ----------------------------------------------- |
-| `auth.mjs`        | `/me`, `/profile`, `/logout`, `/health`         |
-| `magic-link.mjs`  | `/magic-link/request`, `/magic-link/verify`     |
-| `google-auth.mjs` | `/google/*`, `/google/calendar-*`               |
+| File              | Routes                                      |
+| ----------------- | ------------------------------------------- |
+| `auth.mjs`        | `/me`, `/profile`, `/logout`, `/health`     |
+| `magic-link.mjs`  | `/magic-link/request`, `/magic-link/verify` |
+| `google-auth.mjs` | `/google/*`, `/google/calendar-*`           |
 
 `getOrCreateUser` and `linkPendingInvites` move to `auth-helpers.mjs` so they can be
 imported by both `magic-link.mjs` and `auth-google.mjs` without circular dependencies.
@@ -284,12 +268,7 @@ OAuth tokens. There is no structural guarantee against this mistake.
 
 ```js
 export function sanitizeUser(user) {
-  const {
-    google_access_token,
-    google_refresh_token,
-    google_token_expiry,
-    ...safe
-  } = user;
+  const { google_access_token, google_refresh_token, google_token_expiry, ...safe } = user;
   return safe;
 }
 ```
@@ -502,7 +481,10 @@ interpolations automatically:
 
 ```js
 function html(strings, ...values) {
-  return strings.reduce((acc, s, i) => acc + s + (values[i] !== undefined ? escapeHtml(String(values[i])) : ""), "");
+  return strings.reduce(
+    (acc, s, i) => acc + s + (values[i] !== undefined ? escapeHtml(String(values[i])) : ""),
+    ""
+  );
 }
 // Usage: element.innerHTML = html`<td>${user.name}</td>`;
 ```
@@ -520,7 +502,7 @@ function html(strings, ...values) {
 
 ```js
 for (let h = 6; h < 24; h++) {
-  startSel.innerHTML += `<option ...>`;   // Re-parses the full DOM on every iteration
+  startSel.innerHTML += `<option ...>`; // Re-parses the full DOM on every iteration
 }
 ```
 
@@ -563,8 +545,8 @@ the route-matching logic, following the `meetings.mjs` style:
 
 ```js
 async function handleMeetingActions(req, _context) {
-  const meetings   = getDb("meetings");
-  const invites    = getDb("invites");
+  const meetings = getDb("meetings");
+  const invites = getDb("invites");
   const availability = getDb("availability");
   // ... route matching below
 }
