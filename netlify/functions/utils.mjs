@@ -311,11 +311,44 @@ export function errorResponse(statusCode, message, detail = null) {
 }
 
 /**
+ * Decide whether Set-Cookie should include the Secure attribute.
+ *
+ * Rules:
+ *   1) COOKIE_SECURE=true  -> always Secure
+ *   2) COOKIE_SECURE=false -> never Secure
+ *   3) auto (default):
+ *      - disable Secure on localhost/127.0.0.1 APP_URL
+ *      - disable Secure in Netlify dev
+ *      - otherwise enable Secure
+ *
+ * @returns {boolean}
+ */
+function shouldUseSecureCookies() {
+  const override = getEnv("COOKIE_SECURE", "auto").trim().toLowerCase();
+  if (override === "true") return true;
+  if (override === "false") return false;
+
+  const appUrl = getEnv("APP_URL", "").trim();
+  if (appUrl) {
+    try {
+      const parsed = new URL(appUrl);
+      if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") return false;
+      return parsed.protocol === "https:";
+    } catch {
+      // Ignore malformed APP_URL and continue to fallback checks.
+    }
+  }
+
+  if (getEnv("NETLIFY_DEV", "").trim().toLowerCase() === "true") return false;
+  return true;
+}
+
+/**
  * Build an HTTP `Set-Cookie` header value for the session token.
  * Cookies are HttpOnly (not accessible from JavaScript) and use
  * SameSite=Lax to prevent most CSRF attacks.
- * The Secure attribute is included in production and omitted only when
- * DISABLE_RATE_LIMIT=true (the local-dev opt-out flag).
+ * The Secure attribute is enabled in production and automatically disabled
+ * in local HTTP development (or can be overridden via COOKIE_SECURE).
  *
  * @param {string} name
  * @param {string} value
@@ -323,7 +356,7 @@ export function errorResponse(statusCode, message, detail = null) {
  * @returns {string}
  */
 export function setCookie(name, value, maxAge = 7 * 24 * 3600) {
-  const secure = getEnv("DISABLE_RATE_LIMIT") === "true" ? "" : "; Secure";
+  const secure = shouldUseSecureCookies() ? "; Secure" : "";
   return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=${maxAge}`;
 }
 
@@ -334,7 +367,7 @@ export function setCookie(name, value, maxAge = 7 * 24 * 3600) {
  * @returns {string}
  */
 export function clearCookie(name) {
-  const secure = getEnv("DISABLE_RATE_LIMIT") === "true" ? "" : "; Secure";
+  const secure = shouldUseSecureCookies() ? "; Secure" : "";
   return `${name}=; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=0`;
 }
 

@@ -354,5 +354,10 @@ async function handleMeetingActions(req, _context) {
 }
 
 export const config = {
-  path: "/api/meetings/*",
+  path: [
+    "/api/meetings/*/availability",
+    "/api/meetings/*/finalize",
+    "/api/meetings/*/unfinalize",
+    "/api/meetings/*/remind-pending",
+  ],
 };
