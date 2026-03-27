@@ -4,6 +4,18 @@ on:
   push:
     branches: ["**"]
   pull_request:
+  schedule:
+    - cron: "0 12 * * *"
+  workflow_dispatch:
+    inputs:
+      run_staging_smoke:
+        description: "Run staging smoke checks"
+        required: false
+        default: "false"
+      staging_base_url:
+        description: "Base URL for staging smoke (e.g. https://preview.netlify.app)"
+        required: false
+        default: ""
 
 jobs:
   test-default:
@@ -45,3 +57,76 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  test-e2e-smoke:
+    name: Test (e2e smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E smoke tests
+        run: npm run test:e2e:smoke
+
+  staging-smoke:
+    name: Staging Smoke (manual)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_staging_smoke == 'true' && inputs.staging_base_url != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run staging smoke checks
+        env:
+          BASE_URL: ${{ inputs.staging_base_url }}
+          ADMIN_TOKEN: ${{ secrets.STAGING_ADMIN_TOKEN }}
+        run: npm run smoke:staging
+
+  staging-smoke-auto:
+    name: Staging Smoke (auto)
+    if: github.event_name != 'workflow_dispatch' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run staging smoke checks
+        env:
+          BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          ADMIN_TOKEN: ${{ secrets.STAGING_ADMIN_TOKEN }}
+        run: |
+          if [ -z "$BASE_URL" ]; then
+            echo "STAGING_BASE_URL not set; skipping automated staging smoke."
+            exit 0
+          fi
+          npm run smoke:staging

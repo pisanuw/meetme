@@ -211,6 +211,27 @@ npm run predeploy-check
 npm run format:check
 ```
 
+Additional smoke layers:
+
+```bash
+# Browser smoke (Playwright, local static server + mocked API routes)
+npm run test:e2e:smoke
+
+# Full local predeploy gate
+npm run predeploy:full
+
+# Staging/API smoke against a deployed URL
+BASE_URL=https://your-preview.netlify.app npm run smoke:staging
+```
+
+CI automation for staging smoke:
+
+- `Staging Smoke (auto)` runs on push and on a daily schedule **when** repository
+  secret `STAGING_BASE_URL` is set.
+- Optional `STAGING_ADMIN_TOKEN` enables the admin stats check in that smoke run.
+- `Staging Smoke (manual)` can still be triggered via **Run workflow** using
+  `workflow_dispatch` inputs.
+
 ### Required Branch Protection (must enable)
 
 To prevent broken deploys, protect your default branch (for example `main`) and
@@ -239,12 +260,13 @@ Use this checklist every time to avoid shipping untested changes:
 2. Run locally:
 
 ```bash
-npm run predeploy-check
+npm run predeploy:full
 ```
 
 3. Open a Pull Request and wait for both required checks to pass:
   - `Test (default mode)`
   - `Test (rate limit enabled)`
+  - `Test (e2e smoke)`
 4. Merge the Pull Request into the protected default branch.
 5. Deploy **only from the protected default branch** (never from an unmerged local branch).
 6. After deploy, smoke test critical flows:

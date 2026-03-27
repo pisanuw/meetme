@@ -6,9 +6,12 @@
     "dev:offline": "netlify dev --internal-disable-edge-functions --offline --no-open -p 8888",
     "dev:oauth": "APP_URL=http://localhost:8888 netlify dev --internal-disable-edge-functions --no-open -p 8888",
     "dev:stop": "pkill -f \"[n]etlify dev\" || true",
-    "test": "node --test",
+    "test": "node --test test/**/*.test.mjs",
+    "test:e2e:smoke": "playwright test -c playwright.smoke.config.mjs",
     "lint": "eslint .",
+    "smoke:staging": "node scripts/staging-smoke.mjs",
     "predeploy-check": "npm test && npm run lint",
+    "predeploy:full": "npm run predeploy-check && npm run test:e2e:smoke",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -18,8 +21,10 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",
+    "@playwright/test": "^1.58.2",
     "eslint": "^9.21.0",
     "globals": "^15.15.0",
+    "http-server": "^14.1.1",
     "netlify-cli": "^24.6.2",
     "prettier": "^3.5.3"
   }
