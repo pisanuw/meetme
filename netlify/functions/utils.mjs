@@ -48,6 +48,17 @@ export function getJwtSecret() {
 }
 
 /**
+ * Returns true when rate limiting should be enforced.
+ * Set DISABLE_RATE_LIMIT=true in your local .env to skip rate checks during
+ * development. This variable must NEVER be set in production.
+ *
+ * @returns {boolean}
+ */
+export function isRateLimitEnabled() {
+  return getEnv("DISABLE_RATE_LIMIT", "") !== "true";
+}
+
+/**
  * Derives a 256-bit AES key from TOKEN_ENCRYPTION_KEY (base-64 encoded).
  * Falls back to a SHA-256 hash of the JWT secret so the app remains
  * functional even without a dedicated encryption key set.
@@ -303,6 +314,8 @@ export function errorResponse(statusCode, message, detail = null) {
  * Build an HTTP `Set-Cookie` header value for the session token.
  * Cookies are HttpOnly (not accessible from JavaScript) and use
  * SameSite=Lax to prevent most CSRF attacks.
+ * The Secure attribute is included in production and omitted only when
+ * DISABLE_RATE_LIMIT=true (the local-dev opt-out flag).
  *
  * @param {string} name
  * @param {string} value
@@ -310,7 +323,8 @@ export function errorResponse(statusCode, message, detail = null) {
  * @returns {string}
  */
 export function setCookie(name, value, maxAge = 7 * 24 * 3600) {
-  return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
+  const secure = getEnv("DISABLE_RATE_LIMIT") === "true" ? "" : "; Secure";
+  return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=${maxAge}`;
 }
 
 /**
@@ -320,7 +334,23 @@ export function setCookie(name, value, maxAge = 7 * 24 * 3600) {
  * @returns {string}
  */
 export function clearCookie(name) {
-  return `${name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  const secure = getEnv("DISABLE_RATE_LIMIT") === "true" ? "" : "; Secure";
+  return `${name}=; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=0`;
+}
+
+// ─── Application URL ─────────────────────────────────────────────────────────
+
+/**
+ * Return the application's public base URL.
+ * Reads APP_URL from the environment, falling back to the origin of the
+ * incoming request. Centralised here so both auth.mjs and meeting-actions.mjs
+ * use the same resolution logic.
+ *
+ * @param {Request} req
+ * @returns {string}
+ */
+export function getAppUrl(req) {
+  return getEnv("APP_URL", new URL(req.url).origin);
 }
 
 // ─── Admin ───────────────────────────────────────────────────────────────────
@@ -339,6 +369,19 @@ export function isAdmin(user) {
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
   return adminEmails.includes((user.email || "").toLowerCase());
+}
+
+/**
+ * Return a copy of a user object with sensitive token fields removed.
+ * Use this at every public-facing response site that returns a user record to
+ * ensure encrypted OAuth tokens are never accidentally serialised to the client.
+ *
+ * @param {object} user
+ * @returns {object}
+ */
+export function sanitizeUser(user) {
+  const { google_access_token, google_refresh_token, google_token_expiry, ...safe } = user;
+  return safe;
 }
 
 // ─── Persistent event log ────────────────────────────────────────────────────
@@ -477,6 +520,42 @@ export async function checkRateLimit({ bucket, key, limit, windowMs }) {
  * @property {string} date_or_day
  * @property {string} time_slot
  */
+
+/**
+ * @typedef {object} User
+ * @property {string}  id
+ * @property {string}  email
+ * @property {string}  name
+ * @property {string}  first_name
+ * @property {string}  last_name
+ * @property {boolean} profile_complete
+ * @property {string}  created_at
+ * @property {string}  [timezone]
+ * @property {boolean} [calendar_connected]
+ */
+
+/**
+ * @typedef {object} EventRecord
+ * @property {string} ts
+ * @property {"info"|"warn"|"error"} level
+ * @property {string} fn
+ * @property {string} message
+ */
+
+/**
+ * List all meeting IDs from the meetings blob store, excluding internal keys
+ * such as "index" and any key containing a colon (reserved for namespaced records).
+ *
+ * @param {import("@netlify/blobs").Store} meetingsDb
+ * @returns {Promise<string[]>}
+ */
+export async function listMeetingIds(meetingsDb) {
+  const listing = await meetingsDb.list().catch(() => ({ blobs: [] }));
+  return asArray(listing?.blobs)
+    .map((b) => b?.key)
+    .filter(Boolean)
+    .filter((key) => key !== "index" && !key.includes(":"));
+}
 
 /**
  * Generate a short, URL-safe, roughly time-sortable unique ID.

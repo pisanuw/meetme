@@ -9,6 +9,73 @@ See `CodebaseReview.md` for architectural documentation.
 
 ---
 
+## Implementation Summary (March 2026)
+
+The following items were reviewed and acted on. Each entry records whether the change
+was **implemented** or **deferred** and the reason.
+
+| # | Item | Decision |
+|---|------|----------|
+| 1 | Rate-limiting bypass via Host header | ✅ Implemented |
+| 2 | Health endpoint information disclosure | ✅ Implemented |
+| 3 | Webhook secret as URL query parameter | ✅ Implemented |
+| 4 | auth.mjs too large | ⏭ Deferred — see note below |
+| 5 | listMeetingIds duplicated | ✅ Implemented |
+| 6 | Sensitive Google token fields | ✅ Implemented |
+| 7 | Admin flash message bug | ✅ Implemented |
+| 8 | Expand test coverage | ⏭ Deferred — see note below |
+| 9 | Duplicated navigation HTML | ⏭ Deferred — see note below |
+| 10 | Race condition on meeting index | ⏭ Deferred — see note below |
+| 11 | calendar.mjs "24:00" end-time edge case | ✅ Implemented |
+| 12 | Input validation constants consolidation | ⏭ Deferred — see note below |
+| 13 | HTML string concatenation XSS risk | ⏭ Deferred — see note below |
+| 14 | innerHTML += in loops | ✅ Implemented |
+| 15 | getDb called repeatedly in meeting-actions | ✅ Implemented |
+| 16 | getAppUrl() inconsistency | ✅ Implemented |
+| 17 | Feedback route non-standard email validation | ✅ Implemented |
+| 18 | auth-google.mjs missing JSDoc header | ✅ Implemented |
+| 19 | Secure flag missing from cookies | ✅ Implemented |
+| 20 | Missing JSDoc types for User and EventRecord | ✅ Implemented |
+
+### Deferred — reasons
+
+**Item 4 (auth.mjs splitting):** Splitting auth.mjs into three files would require moving
+`getOrCreateUser` and `linkPendingInvites` into a shared helper module and updating all
+import sites. This is a valuable architectural improvement but carries a meaningful risk of
+introducing regressions in the auth flows without a broader test suite in place. Deferred
+until item 8 (test coverage) is addressed.
+
+**Item 8 (Expand test coverage):** Building a proper Blobs in-memory stub and writing
+coverage for every exported utility, rate-limit behaviour, and per-route integration test
+is a significant undertaking. It is the right next investment but is tracked separately
+as its own work item.
+
+**Item 9 (Duplicated navigation HTML):** The nav block contains dynamic elements (admin
+link, impersonation banner, logout handler) that are wired up by `common.js` using
+`getElementById` calls that depend on the existing static DOM. Centralising the nav
+without a test suite risks silently breaking user-visible UI flows across all ten pages.
+Deferred until item 8 is in place.
+
+**Item 10 (Race condition on meeting index):** The long-term fix (timestamp-prefixed keys
+and removal of the index blob) requires a one-time data migration and would make the
+codebase incompatible with any existing stored records without a migration script. The
+short-term comment approach was not implemented as it adds noise without reducing risk.
+This is tracked as a future architectural improvement.
+
+**Item 12 (LIMITS consolidation):** The validation limits are subtly different between
+files (e.g. `MAX_DURATION_MINUTES` only exists in `meeting-actions.mjs`), and some
+constants serve as in-file documentation as well as constraints. A mechanical consolidation
+without understanding each file's semantics could silently change a limit. Deferred to a
+dedicated refactoring pass.
+
+**Item 13 (HTML string concatenation XSS):** Refactoring all render functions in
+`dashboard.js`, `meeting.js`, and `admin.js` to use DOM APIs or a tagged template literal
+helper is a large change that touches the most user-visible code paths. The current code
+is safe because `escapeHtml()` is applied consistently. Deferred until item 8 provides
+regression coverage.
+
+---
+
 ## Deployment Readiness Verdict
 
 **The codebase is conditionally ready for a first deployment**, but three issues carry
@@ -60,7 +127,7 @@ The highest-value post-launch improvements are items **4** (nav deduplication), 
 
 ## 1. Rate-Limiting Is Bypassed via Host Header
 
-**Priority:** ⛔ Pre-launch  
+**Priority:** ⛔ Pre-launch
 **File affected:** `netlify/functions/auth.mjs`, `netlify/functions/auth-google.mjs`
 
 **Concern:** Every auth endpoint that performs rate limiting first calls
@@ -88,7 +155,7 @@ function and all its call sites; replace them with `if (isRateLimitEnabled())` g
 
 ## 2. Unauthenticated /api/auth/health Endpoint Discloses Integration Map
 
-**Priority:** ⛔ Pre-launch  
+**Priority:** ⛔ Pre-launch
 **File affected:** `netlify/functions/auth.mjs` (health route, line 222)
 
 **Concern:** The health endpoint is intentionally unauthenticated so it can be polled by
@@ -117,7 +184,7 @@ return jsonResponse(200, { ok: allPresent, checks, missing });
 
 ## 3. Webhook Secret Documented as a URL Query Parameter
 
-**Priority:** ⛔ Pre-launch  
+**Priority:** ⛔ Pre-launch
 **Files affected:** `.env.example` (line 15), `netlify/functions/webhooks.mjs` (line 62)
 
 **Concern:** The `.env.example` comment instructs operators to configure the Resend
@@ -145,7 +212,7 @@ to prevent insecure usage by future operators.
 
 ## 4. auth.mjs Is Too Large — Seven Concerns in One File
 
-**Priority:** 🔶 High-value maintenance  
+**Priority:** 🔶 High-value maintenance
 **File affected:** `netlify/functions/auth.mjs` (612 lines)
 
 **Concern:** `auth.mjs` currently handles magic-link request and verify, user registration
@@ -170,7 +237,7 @@ imported by both `magic-link.mjs` and `auth-google.mjs` without circular depende
 
 ## 5. listMeetingIds Is Duplicated Across Two Files
 
-**Priority:** 🔶 High-value maintenance  
+**Priority:** 🔶 High-value maintenance
 **Files affected:** `netlify/functions/meetings.mjs` (lines 52–58),
 `netlify/functions/admin.mjs` (lines 35–41)
 
@@ -196,7 +263,7 @@ export async function listMeetingIds(meetingsDb) {
 
 ## 6. Sensitive Google Token Fields Exposed by Convention, Not Construction
 
-**Priority:** 🔶 High-value maintenance  
+**Priority:** 🔶 High-value maintenance
 **Files affected:** `netlify/functions/admin.mjs`, `auth.mjs`, `calendar.mjs`
 
 **Concern:** Every endpoint that returns a user object manually deletes token fields
@@ -235,7 +302,7 @@ but document that those paths are the only approved consumers of raw token data.
 
 ## 7. Admin Flash Message Bug — "User updated." Always Shown on Create
 
-**Priority:** 🔶 High-value maintenance  
+**Priority:** 🔶 High-value maintenance
 **Files affected:** `static/admin.js` (line 174), `netlify/functions/admin.mjs`
 
 **Concern:** In `admin.js`, the flash message after saving a user is:
@@ -265,7 +332,7 @@ showFlash(status === 201 ? "User created." : "User updated.", "success");
 
 ## 8. Expand Test Coverage
 
-**Priority:** 🔸 Important improvement  
+**Priority:** 🔸 Important improvement
 **Files affected:** `test/utils.test.mjs` (4 tests), `test/api-routes.test.mjs` (5 tests)
 
 **Concern:** The test suite currently has nine tests total. The following important paths
@@ -290,7 +357,7 @@ route file.
 
 ## 9. Duplicated Navigation HTML Across All Pages
 
-**Priority:** 🔸 Important improvement  
+**Priority:** 🔸 Important improvement
 **Files affected:** All ten HTML pages
 
 **Concern:** The `<nav>` block is copy-pasted verbatim in every HTML file. Adding,
@@ -322,7 +389,7 @@ unchanged.
 
 ## 10. Single-Blob Meeting Index — Race Condition on Concurrent Writes
 
-**Priority:** 🔸 Important improvement  
+**Priority:** 🔸 Important improvement
 **File affected:** `netlify/functions/meetings.mjs` (lines 213–215, 481–483)
 
 **Concern:** Meeting creation and deletion both perform a read-modify-write on the
@@ -351,7 +418,7 @@ All existing stored records would need a one-time migration.
 
 ## 11. calendar.mjs "24:00" End-Time Edge Case Uses Wrong Fallback
 
-**Priority:** 🔸 Important improvement  
+**Priority:** 🔸 Important improvement
 **File affected:** `netlify/functions/calendar.mjs` (lines 197–203)
 
 **Concern:** The create-meeting UI allows `end_time = "24:00"` (midnight). When
@@ -389,7 +456,7 @@ function normalisedEndTime(dateStr, timeStr, timezone) {
 
 ## 12. Broader Input Validation Cleanup and Centralisation
 
-**Priority:** 🔵 Code quality  
+**Priority:** 🔵 Code quality
 **Files affected:** `meetings.mjs`, `meeting-actions.mjs`, `admin.mjs`, `auth.mjs`
 
 **Concern:** Validation constants (`MAX_TITLE_LENGTH`, `MAX_DESCRIPTION_LENGTH`,
@@ -418,7 +485,7 @@ declarations.
 
 ## 13. HTML String Concatenation for Rendering (XSS Risk by Convention)
 
-**Priority:** 🔵 Code quality  
+**Priority:** 🔵 Code quality
 **Files affected:** `static/dashboard.js`, `static/meeting.js`, `static/admin.js`
 
 **Concern:** Dynamic HTML rendering uses `innerHTML` assignment with hand-crafted string
@@ -444,7 +511,7 @@ function html(strings, ...values) {
 
 ## 14. innerHTML += in Loops (create-meeting.js / meeting.js)
 
-**Priority:** 🔵 Code quality  
+**Priority:** 🔵 Code quality
 **Files affected:** `static/create-meeting.js` (lines 22, 29, 38),
 `static/meeting.js` (lines 136, 149–163)
 
@@ -480,7 +547,7 @@ Or use `document.createDocumentFragment()` with `appendChild`.
 
 ## 15. getDb Called Repeatedly Inside Route Handlers
 
-**Priority:** 🔵 Code quality  
+**Priority:** 🔵 Code quality
 **Files affected:** `netlify/functions/meeting-actions.mjs`, `admin.mjs`
 
 **Concern:** In `meeting-actions.mjs`, store handles (`getDb("meetings")`,
@@ -507,7 +574,7 @@ async function handleMeetingActions(req, _context) {
 
 ## 16. getAppUrl() Defined Inconsistently Across Files
 
-**Priority:** 🔵 Code quality  
+**Priority:** 🔵 Code quality
 **Files affected:** `netlify/functions/auth.mjs` (line 57),
 `netlify/functions/meeting-actions.mjs` (lines 57–60)
 
@@ -529,7 +596,7 @@ makes the dependency explicit.
 
 ## 17. Feedback Route Uses Non-Standard Email Validation
 
-**Priority:** 🔵 Code quality  
+**Priority:** 🔵 Code quality
 **File affected:** `netlify/functions/auth.mjs` (line 547)
 
 **Concern:** The feedback endpoint validates the sender email address with an ad-hoc
@@ -560,7 +627,7 @@ if (!senderEmail) {
 
 ## 18. auth-google.mjs Has No Module-Level JSDoc Header
 
-**Priority:** 🔵 Code quality  
+**Priority:** 🔵 Code quality
 **File affected:** `netlify/functions/auth-google.mjs`
 
 **Concern:** Every other function file (`auth.mjs`, `meetings.mjs`, `meeting-actions.mjs`,
@@ -596,7 +663,7 @@ files:
 
 ## 19. Secure Flag Missing from Session Cookies
 
-**Priority:** 🔵 Code quality  
+**Priority:** 🔵 Code quality
 **File affected:** `netlify/functions/utils.mjs` (line 312, `setCookie`)
 
 **Concern:** The `setCookie` helper does not include the `Secure` attribute:
@@ -626,7 +693,7 @@ export function setCookie(name, value, maxAge = 7 * 24 * 3600) {
 
 ## 20. Missing JSDoc Types for Remaining Core Data Shapes
 
-**Priority:** 🔵 Code quality  
+**Priority:** 🔵 Code quality
 **Files affected:** `netlify/functions/utils.mjs`, `meetings.mjs`, `auth.mjs`
 
 **Concern:** `@typedef` blocks for `Meeting`, `Invite`, and `AvailabilitySlot` have been

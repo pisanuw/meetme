@@ -28,17 +28,11 @@ import {
   asArray,
   createToken,
   setCookie,
+  listMeetingIds,
+  sanitizeUser,
 } from "./utils.mjs";
 
 const FN = "admin";
-
-async function listMeetingIds(meetingsDb) {
-  const listing = await meetingsDb.list().catch(() => ({ blobs: [] }));
-  return asArray(listing?.blobs)
-    .map((b) => b?.key)
-    .filter(Boolean)
-    .filter((key) => key !== "index" && !key.includes(":"));
-}
 
 export default async (req, context) => {
   try {
@@ -148,12 +142,8 @@ async function handleAdmin(req, context) {
     }
 
     // Remove sensitive fields like tokens before returning
-    const safeUser = { ...u };
-    delete safeUser.google_access_token;
-    delete safeUser.google_refresh_token;
-
     return jsonResponse(200, {
-      user: safeUser,
+      user: sanitizeUser(u),
       created_meetings: createdMeetings,
       invited_meetings: invitedMeetings,
     });
@@ -211,7 +201,7 @@ async function handleAdmin(req, context) {
       await usersDb.setJSON(email, u);
       await persistEvent("info", FN, "admin created user", { admin: user.email, target: email });
       log("info", FN, "admin created user", { admin: user.email, target: email });
-      return jsonResponse(201, { success: true, user: u });
+      return jsonResponse(201, { success: true, created: true, user: u });
     }
   }
 

@@ -1,3 +1,20 @@
+/**
+ * auth-google.mjs — Google OAuth sign-in and Google Calendar OAuth helpers
+ *
+ * Exported entry point: handleGoogleAuthRoute({ req, path, ... })
+ *
+ * Routes handled (via auth.mjs delegation):
+ *   GET  google/start              — begin Google sign-in OAuth flow
+ *   GET  google/callback           — handle Google sign-in callback
+ *   GET  google/calendar-start     — begin Google Calendar OAuth flow
+ *   GET  google/calendar-callback  — handle Calendar OAuth callback
+ *
+ * Security model:
+ *   - OAuth CSRF protection via signed JWT state parameter + cookie comparison
+ *   - Access and refresh tokens are AES-256-GCM encrypted before storage
+ *   - Rate limiting for google/start and google/calendar-start is enforced
+ *     when isRateLimitEnabled() returns true (controlled by DISABLE_RATE_LIMIT env var)
+ */
 import {
   getDb,
   getEnv,
@@ -11,6 +28,7 @@ import {
   validateEmail,
   encryptSecret,
   decryptSecret,
+  isRateLimitEnabled,
 } from "./utils.mjs";
 
 function redirectResponse(location, extraHeaders = {}) {
@@ -26,13 +44,12 @@ export async function handleGoogleAuthRoute({
   fnName,
   getAppUrl,
   getGoogleRedirectUri,
-  isLocalDevRequest,
   getClientIp,
   checkRateLimit,
   getOrCreateUser,
 }) {
   if (req.method === "GET" && path === "google/start") {
-    if (!isLocalDevRequest(req)) {
+    if (isRateLimitEnabled()) {
       const ip = getClientIp(req);
       const ipRate = await checkRateLimit({
         bucket: "auth_google_start_ip",
@@ -210,7 +227,7 @@ export async function handleGoogleAuthRoute({
     const calUser = getUserFromRequest(req);
     if (!calUser) return redirectResponse("/?error=not-authenticated");
 
-    if (!isLocalDevRequest(req)) {
+    if (isRateLimitEnabled()) {
       const userRate = await checkRateLimit({
         bucket: "auth_calendar_start_user",
         key: calUser.email,

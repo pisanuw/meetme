@@ -16,27 +16,32 @@
 
 const startSel = document.getElementById("start_time");
 const endSel = document.getElementById("end_time");
+const startParts = [];
 for (let h = 6; h < 24; h++) {
   for (const m of [0, 15, 30, 45]) {
     const t = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-    startSel.innerHTML += `<option value="${t}" ${t === "08:00" ? "selected" : ""}>${t}</option>`;
+    startParts.push(`<option value="${t}" ${t === "08:00" ? "selected" : ""}>${t}</option>`);
   }
 }
+startSel.innerHTML = startParts.join("");
+const endParts = [];
 for (let h = 6; h <= 24; h++) {
   for (const m of [0, 15, 30, 45]) {
     if (h === 24 && m !== 0) continue;
     const t = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-    endSel.innerHTML += `<option value="${t}" ${t === "20:00" ? "selected" : ""}>${t}</option>`;
+    endParts.push(`<option value="${t}" ${t === "20:00" ? "selected" : ""}>${t}</option>`);
   }
 }
+endSel.innerHTML = endParts.join("");
 
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const defaultDays = new Set(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]);
 const dayContainer = document.getElementById("day-checkboxes");
-days.forEach((day) => {
+const dayParts = days.map((day) => {
   const checked = defaultDays.has(day) ? " checked" : "";
-  dayContainer.innerHTML += `<label class="day-chip"><input type="checkbox" name="days_of_week" value="${day}"${checked}/>${day.slice(0, 3)}</label>`;
+  return `<label class="day-chip"><input type="checkbox" name="days_of_week" value="${day}"${checked}/>${day.slice(0, 3)}</label>`;
 });
+dayContainer.innerHTML = dayParts.join("");
 
 document.querySelectorAll('input[name="meeting_type"]').forEach((radio) => {
   radio.addEventListener("change", () => switchType(radio.value));

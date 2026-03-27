@@ -53,12 +53,13 @@ async function handleWebhook(req, context) {
   if (req.method === "POST" && path === "resend") {
     // Step 1: Verify the shared secret before processing any payload.
     // Prefer header-based secret transport to avoid leaking via URLs/logs.
+    // Query-parameter delivery is intentionally not supported — secrets in URLs
+    // appear in access logs, CDN logs, and browser history.
     const expectedSecret = getEnv("RESEND_WEBHOOK_SECRET", "");
     const providedSecret =
       req.headers.get("x-webhook-secret") ||
       req.headers.get("x-resend-webhook-secret") ||
       req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
-      url.searchParams.get("secret") ||
       "";
 
     if (!expectedSecret) {

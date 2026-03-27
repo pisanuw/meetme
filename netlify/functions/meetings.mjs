@@ -32,6 +32,7 @@ import {
   asArray,
   escapeHtml,
   buildTimeSlots,
+  listMeetingIds,
 } from "./utils.mjs";
 
 const FN = "meetings";
@@ -48,14 +49,6 @@ const ALLOWED_DAY_NAMES = new Set([
   "Saturday",
   "Sunday",
 ]);
-
-async function listMeetingIds(meetingsDb) {
-  const listing = await meetingsDb.list().catch(() => ({ blobs: [] }));
-  return asArray(listing?.blobs)
-    .map((b) => b?.key)
-    .filter(Boolean)
-    .filter((key) => key !== "index" && !key.includes(":"));
-}
 
 // Top-level Netlify Function entry point. Wraps everything in a try/catch so
 // an unexpected exception always returns a clean JSON error instead of a

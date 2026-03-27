@@ -41,10 +41,12 @@ import {
   persistEvent,
   isAdmin,
   checkRateLimit,
+  isRateLimitEnabled,
   decryptSecret,
   sendEmail,
   asArray,
   escapeHtml,
+  getAppUrl,
 } from "./utils.mjs";
 import { handleGoogleAuthRoute } from "./auth-google.mjs";
 
@@ -52,11 +54,6 @@ const FN = "auth";
 const MAX_NAME_LENGTH = 100;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/** Return the application's public base URL */
-function getAppUrl(req) {
-  return getEnv("APP_URL", new URL(req.url).origin);
-}
 
 /** Build the Google OAuth redirect URI for sign-in (must match Google Console setting). */
 function getGoogleRedirectUri(req) {
@@ -89,15 +86,7 @@ function getClientIp(req) {
   return forwarded.split(",")[0]?.trim() || "unknown";
 }
 
-/**
- * Detect local development requests (localhost / 127.0.0.1).
- * In some container setups, Netlify Blobs sandbox can be flaky and cause
- * connection-refused errors on otherwise successful auth flows.
- */
-function isLocalDevRequest(req) {
-  const host = req.headers.get("host") || "";
-  return host.includes("localhost") || host.includes("127.0.0.1");
-}
+
 
 /**
  * When a user is invited before registering, their invite is stored under
@@ -219,6 +208,9 @@ async function handleAuth(req, context) {
   // Returns a JSON object showing which required environment variables are set.
   // Never returns the secret values — only boolean "is it present?" checks.
   // Useful for diagnosing misconfigured Netlify deployments.
+  // Anonymous callers receive only a binary ok/not-ok status; the per-variable
+  // breakdown is restricted to authenticated admins to avoid disclosing which
+  // third-party integrations are configured.
   if (req.method === "GET" && path === "health") {
     const checks = {
       jwt_secret: !!getEnv("JWT_SECRET"),
@@ -232,6 +224,14 @@ async function handleAuth(req, context) {
     const missing = Object.entries(checks)
       .filter(([, ok]) => !ok)
       .map(([key]) => key);
+
+    const currentUser = getUserFromRequest(req);
+    if (!isAdmin(currentUser)) {
+      return jsonResponse(200, {
+        ok: missing.length === 0,
+        note: "Sign in as an admin to see per-variable details.",
+      });
+    }
 
     return jsonResponse(200, {
       ok: missing.length === 0,
@@ -314,7 +314,6 @@ async function handleAuth(req, context) {
     fnName: FN,
     getAppUrl,
     getGoogleRedirectUri,
-    isLocalDevRequest,
     getClientIp,
     checkRateLimit,
     getOrCreateUser,
@@ -470,7 +469,7 @@ async function handleAuth(req, context) {
       return errorResponse(400, `Name must be ${MAX_NAME_LENGTH} characters or fewer.`);
     }
 
-    if (!isLocalDevRequest(req)) {
+    if (isRateLimitEnabled()) {
       const ip = getClientIp(req);
       const ipRate = await checkRateLimit({
         bucket: "auth_magic_link_ip",
@@ -540,11 +539,11 @@ async function handleAuth(req, context) {
 
   if (path === "feedback") {
     const senderName = (body.name || "").trim();
-    const senderEmail = (body.email || "").trim();
+    const senderEmail = validateEmail(body.email || "");
     const feedbackType = (body.type || "other").trim();
     const message = (body.message || "").trim();
 
-    if (!senderEmail || !senderEmail.includes("@")) {
+    if (!senderEmail) {
       return errorResponse(400, "A valid email address is required.");
     }
     if (!message) {

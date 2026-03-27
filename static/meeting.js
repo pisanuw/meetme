@@ -132,9 +132,10 @@ let busySlots = new Set();
 
   if (M.isCreator && M.participants.length) {
     const sel = document.getElementById("person-select");
-    M.participants.forEach((p, i) => {
-      sel.innerHTML += `<option value="${i}">${escapeHtml(p.name)} (${p.slot_count} slot${p.slot_count !== 1 ? "s" : ""})${!p.responded ? " – no response" : ""}</option>`;
-    });
+    const optParts = M.participants.map((p, i) =>
+      `<option value="${i}">${escapeHtml(p.name)} (${p.slot_count} slot${p.slot_count !== 1 ? "s" : ""})${!p.responded ? " \u2013 no response" : ""}</option>`
+    );
+    sel.innerHTML += optParts.join("");
     sel.addEventListener("change", (e) => filterPerson(e.target.value));
   }
 
@@ -142,11 +143,11 @@ let busySlots = new Set();
     document.getElementById("participants-panel").style.display = "";
     document.getElementById("participant-count").textContent = `(${data.invite_count})`;
     const list = document.getElementById("participants-list");
-    M.participants.forEach((p, i) => {
+    const rowParts = M.participants.map((p, i) => {
       const clickableAttrs = M.isCreator
         ? `data-participant-index="${i}" style="cursor:pointer;"`
         : "";
-      list.innerHTML += `
+      return `
         <div class="participant-row" ${clickableAttrs}>
           <div class="participant-avatar">${escapeHtml((p.name || "?")[0].toUpperCase())}</div>
           <div class="participant-info">
@@ -162,6 +163,7 @@ let busySlots = new Set();
           </div>
         </div>`;
     });
+    list.innerHTML += rowParts.join("");
     list.addEventListener("click", (e) => {
       if (!M.isCreator) return;
       const row = e.target.closest(".participant-row[data-participant-index]");

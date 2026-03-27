@@ -78,6 +78,25 @@ function localToUTC(dateStr, timeStr, timezone) {
   return new Date(utcCandidate.getTime() - offsetMs);
 }
 
+/**
+ * Convert a local date + time string to UTC, handling the "24:00" edge case
+ * by mapping it to midnight (00:00) of the following day before conversion.
+ * This avoids `Invalid Date` from `Date("YYYY-MM-DDT24:00:00Z")`.
+ *
+ * @param {string} dateStr  - "YYYY-MM-DD"
+ * @param {string} timeStr  - "HH:MM", may be "24:00"
+ * @param {string} timezone - IANA timezone
+ * @returns {Date}
+ */
+function normalisedEndUTC(dateStr, timeStr, timezone) {
+  if (timeStr === "24:00") {
+    const d = new Date(dateStr + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + 1);
+    return localToUTC(d.toISOString().slice(0, 10), "00:00", timezone);
+  }
+  return localToUTC(dateStr, timeStr, timezone);
+}
+
 // ─── Google token refresh ─────────────────────────────────────────────────────
 
 /**
@@ -194,13 +213,9 @@ async function handleCalendar(req, context) {
     // Determine UTC range for the FreeBusy query
     const startUTC = localToUTC(dates[0], meeting.start_time || "00:00", meetingTz);
     const lastDate = dates[dates.length - 1];
-    let endUTC = localToUTC(lastDate, meeting.end_time || "24:00", meetingTz);
-    // Clamp "24:00" edge case
-    if (isNaN(endUTC.getTime())) {
-      // end_time "20:00" on last date + 1 day
-      endUTC = localToUTC(lastDate, "20:00", meetingTz);
-      endUTC.setDate(endUTC.getDate() + 1);
-    }
+    // Normalise "24:00" (midnight end of day) to "00:00" on the following day
+    // before calling localToUTC, which cannot parse "T24:00" natively.
+    const endUTC = normalisedEndUTC(lastDate, meeting.end_time || "24:00", meetingTz);
 
     log("info", FN, "querying freeBusy", {
       email: user.email,

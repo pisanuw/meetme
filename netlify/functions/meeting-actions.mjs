@@ -18,12 +18,12 @@ import {
   log,
   logRequest,
   safeJson,
-  getEnv,
   persistEvent,
   sendEmail,
   asArray,
   escapeHtml,
   buildTimeSlots,
+  getAppUrl,
 } from "./utils.mjs";
 
 const FN = "meeting-actions";
@@ -51,13 +51,9 @@ async function handleMeetingActions(req, _context) {
   const url = new URL(req.url);
   const path = url.pathname;
 
+  const meetings = getDb("meetings");
   const invites = getDb("invites");
   const availability = getDb("availability");
-
-  /** Resolve the public app URL for building links in emails. */
-  function getAppUrl() {
-    return getEnv("APP_URL", new URL(req.url).origin);
-  }
 
   // POST /api/meetings/:id/availability ────────────────────────────────────
   // Replace the caller's saved slots for a meeting.  Any slots that reference
@@ -68,7 +64,6 @@ async function handleMeetingActions(req, _context) {
     const meetingId = availMatch[1];
     log("info", FN, "submit availability", { meetingId, userId: user.id });
 
-    const meetings = getDb("meetings");
     const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
     if (!meeting) {
       log("warn", FN, "meeting not found for availability", { meetingId });
@@ -142,7 +137,6 @@ async function handleMeetingActions(req, _context) {
     const meetingId = finalizeMatch[1];
     log("info", FN, "finalize meeting", { meetingId, userId: user.id });
 
-    const meetings = getDb("meetings");
     const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
     if (!meeting) return errorResponse(404, `Meeting '${meetingId}' not found.`);
     if (meeting.creator_id !== user.id)
@@ -178,7 +172,7 @@ async function handleMeetingActions(req, _context) {
     const recipients = [
       ...new Set(meetingInvites.map((i) => (i?.email || "").trim().toLowerCase()).filter(Boolean)),
     ];
-    const meetingUrl = `${getAppUrl()}/meeting.html?id=${encodeURIComponent(meetingId)}`;
+    const meetingUrl = `${getAppUrl(req)}/meeting.html?id=${encodeURIComponent(meetingId)}`;
     const whenText = `${body.date_or_day} at ${body.time_slot} (${meeting.timezone || "UTC"})`;
     const durationText = `${meeting.duration_minutes} minute${meeting.duration_minutes === 1 ? "" : "s"}`;
 
@@ -252,7 +246,6 @@ async function handleMeetingActions(req, _context) {
     const meetingId = unfinalizeMatch[1];
     log("info", FN, "unfinalize meeting", { meetingId, userId: user.id });
 
-    const meetings = getDb("meetings");
     const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
     if (!meeting) return errorResponse(404, `Meeting '${meetingId}' not found.`);
     if (meeting.creator_id !== user.id)
@@ -273,7 +266,6 @@ async function handleMeetingActions(req, _context) {
     const meetingId = remindMatch[1];
     log("info", FN, "send reminder emails", { meetingId, userId: user.id });
 
-    const meetings = getDb("meetings");
     const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
     if (!meeting) return errorResponse(404, `Meeting '${meetingId}' not found.`);
     if (meeting.creator_id !== user.id) {
@@ -294,7 +286,7 @@ async function handleMeetingActions(req, _context) {
       });
     }
 
-    const meetingUrl = `${getAppUrl()}/meeting.html?id=${encodeURIComponent(meetingId)}`;
+    const meetingUrl = `${getAppUrl(req)}/meeting.html?id=${encodeURIComponent(meetingId)}`;
     let sentCount = 0;
     let failedCount = 0;
     const failures = [];
