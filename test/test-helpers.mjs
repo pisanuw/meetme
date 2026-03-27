@@ -57,8 +57,7 @@ export function uninstallInMemoryDb() {
 export function setDefaultTestEnv() {
   process.env.JWT_SECRET = "test-jwt-secret";
   process.env.APP_URL = "http://localhost:8888";
-  process.env.DISABLE_RATE_LIMIT =
-    process.env.TEST_RATE_LIMIT_MODE === "on" ? "" : "true";
+  process.env.DISABLE_RATE_LIMIT = process.env.TEST_RATE_LIMIT_MODE === "on" ? "" : "true";
   process.env.COOKIE_SECURE = "false";
   process.env.ADMIN_EMAILS = "admin@example.com";
   delete process.env.RESEND_API_KEY;

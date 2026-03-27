@@ -244,8 +244,10 @@ Use these settings:
 1. **Require a pull request before merging**: enabled
 2. **Require status checks to pass before merging**: enabled
 3. Add required checks:
-  - `Test (default mode)`
-  - `Test (rate limit enabled)`
+
+- `Test (default mode)`
+- `Test (rate limit enabled)`
+
 4. **Require branches to be up to date before merging**: enabled
 5. **Do not allow bypassing the above settings**: enabled (for admins too)
 
@@ -264,17 +266,20 @@ npm run predeploy:full
 ```
 
 3. Open a Pull Request and wait for both required checks to pass:
-  - `Test (default mode)`
-  - `Test (rate limit enabled)`
-  - `Test (e2e smoke)`
+
+- `Test (default mode)`
+- `Test (rate limit enabled)`
+- `Test (e2e smoke)`
+
 4. Merge the Pull Request into the protected default branch.
 5. Deploy **only from the protected default branch** (never from an unmerged local branch).
 6. After deploy, smoke test critical flows:
-  - Magic-link sign in
-  - Google sign in
-  - Create meeting
-  - Submit availability
-  - Finalize meeting
+
+- Magic-link sign in
+- Google sign in
+- Create meeting
+- Submit availability
+- Finalize meeting
 
 ---
 

@@ -179,6 +179,12 @@ async function handleRequest(req, _context) {
     if (start_time && end_time && start_time >= end_time)
       return errorResponse(400, "end_time must be after start_time.");
 
+    const normalizedTimezone = String(timezone || "UTC").trim();
+    const validTimezones = new Set(Intl.supportedValuesOf("timeZone"));
+    if (normalizedTimezone !== "UTC" && !validTimezones.has(normalizedTimezone)) {
+      return errorResponse(400, "Invalid timezone value.");
+    }
+
     log("info", FN, "creating meeting", { title: normalizedTitle, creator: user.email });
 
     const meetingId = generateId();
@@ -192,7 +198,7 @@ async function handleRequest(req, _context) {
       dates_or_days: normalizedDatesOrDays,
       start_time: start_time || "08:00",
       end_time: end_time || "20:00",
-      timezone: timezone || "UTC",
+      timezone: normalizedTimezone,
       duration_minutes: 60,
       finalized_date: null,
       finalized_slot: null,
