@@ -3,23 +3,80 @@ import assert from "node:assert/strict";
 
 import authHandler from "../netlify/functions/auth.mjs";
 import meetingsHandler from "../netlify/functions/meetings.mjs";
+import meetingActionsHandler from "../netlify/functions/meeting-actions.mjs";
 import adminHandler from "../netlify/functions/admin.mjs";
-import { createToken } from "../netlify/functions/utils.mjs";
+import calendarHandler from "../netlify/functions/calendar.mjs";
+import webhooksHandler from "../netlify/functions/webhooks.mjs";
+import { createToken, encryptSecret } from "../netlify/functions/utils.mjs";
+import {
+  installInMemoryDb,
+  uninstallInMemoryDb,
+  makeJsonRequest,
+  responseJson,
+  setDefaultTestEnv,
+} from "./test-helpers.mjs";
 
-async function asJson(response) {
-  const text = await response.text();
-  return text ? JSON.parse(text) : {};
+let dbBackend;
+
+function authCookie(user) {
+  return `token=${createToken(user)}`;
 }
 
-test("auth health endpoint responds with checks", async () => {
+function store(name) {
+  return dbBackend.createStore(name);
+}
+
+async function createMeetingAs(user) {
+  const req = makeJsonRequest("http://localhost:8888/api/meetings", {
+    method: "POST",
+    headers: { cookie: authCookie(user) },
+    body: {
+      title: "Sprint Planning",
+      description: "Weekly sync",
+      meeting_type: "days_of_week",
+      dates_or_days: ["Monday", "Wednesday"],
+      start_time: "09:00",
+      end_time: "11:00",
+      invite_emails: "friend@example.com",
+      timezone: "UTC",
+    },
+  });
+  const res = await meetingsHandler(req, {});
+  const body = await responseJson(res);
+  assert.equal(res.status, 200);
+  assert.equal(body.success, true);
+  return body.meeting_id;
+}
+
+test.beforeEach(() => {
+  setDefaultTestEnv();
+  dbBackend = installInMemoryDb();
+  global.fetch = async (url) => {
+    const target = String(url);
+    if (target.includes("api.resend.com/emails")) {
+      return new Response(JSON.stringify({ id: `resend-${Date.now()}` }), { status: 200 });
+    }
+    if (target.includes("oauth2.googleapis.com/revoke")) {
+      return new Response("", { status: 200 });
+    }
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+});
+
+test.afterEach(() => {
+  uninstallInMemoryDb();
+  delete global.fetch;
+});
+
+test("auth health hides details from anonymous users", async () => {
   const req = new Request("http://localhost:8888/api/auth/health", { method: "GET" });
   const res = await authHandler(req, { params: { 0: "health" } });
 
   assert.equal(res.status, 200);
-  const body = await asJson(res);
+  const body = await responseJson(res);
   assert.equal(typeof body.ok, "boolean");
-  assert.equal(typeof body.checks, "object");
-  assert.ok(Array.isArray(body.missing));
+  assert.equal(body.checks, undefined);
+  assert.equal(body.missing, undefined);
 });
 
 test("auth me requires authentication", async () => {
@@ -27,21 +84,247 @@ test("auth me requires authentication", async () => {
   const res = await authHandler(req, { params: { 0: "me" } });
 
   assert.equal(res.status, 401);
-  const body = await asJson(res);
+  const body = await responseJson(res);
   assert.match(body.error, /Not authenticated/i);
+});
+
+test("auth magic-link request succeeds and persists login token", async () => {
+  process.env.RESEND_API_KEY = "re_test";
+  process.env.AUTH_FROM_EMAIL = "MeetMe <noreply@example.com>";
+
+  const req = makeJsonRequest("http://localhost:8888/api/auth/magic-link/request", {
+    method: "POST",
+    body: { email: "newuser@example.com", name: "New User" },
+  });
+  const res = await authHandler(req, { params: { 0: "magic-link/request" } });
+
+  assert.equal(res.status, 200);
+  const body = await responseJson(res);
+  assert.equal(body.success, true);
+
+  const users = await store("users").get("newuser@example.com", { type: "json" });
+  assert.equal(users.email, "newuser@example.com");
+
+  const tokens = await store("login_tokens").list();
+  assert.equal(tokens.blobs.length, 1);
+});
+
+test("auth magic-link verify sets session cookie", async () => {
+  const jti = "jti-1";
+  await store("login_tokens").setJSON(jti, {
+    email: "verify@example.com",
+    used: false,
+    created_at: new Date().toISOString(),
+  });
+
+  const magicToken = createToken(
+    {
+      id: "magic-link",
+      email: "verify@example.com",
+      name: "Verify User",
+      purpose: "magic_link",
+      jti,
+    },
+    "15m"
+  );
+
+  const req = new Request(
+    `http://localhost:8888/api/auth/magic-link/verify?token=${encodeURIComponent(magicToken)}`,
+    { method: "GET" }
+  );
+  const res = await authHandler(req, { params: { 0: "magic-link/verify" } });
+
+  assert.equal(res.status, 302);
+  assert.match(res.headers.get("set-cookie") || "", /token=/);
+});
+
+test("auth magic-link request is rate-limited when limits are enabled", async () => {
+  process.env.DISABLE_RATE_LIMIT = "";
+  process.env.RESEND_API_KEY = "re_test";
+  process.env.AUTH_FROM_EMAIL = "MeetMe <noreply@example.com>";
+
+  await store("rate_limits").setJSON("auth_magic_link_email:limited@example.com", {
+    window_start: Date.now(),
+    count: 5,
+  });
+
+  const req = makeJsonRequest("http://localhost:8888/api/auth/magic-link/request", {
+    method: "POST",
+    headers: { "x-forwarded-for": "203.0.113.1" },
+    body: { email: "limited@example.com", name: "Limited" },
+  });
+  const res = await authHandler(req, { params: { 0: "magic-link/request" } });
+  const body = await responseJson(res);
+
+  assert.equal(res.status, 429);
+  assert.match(body.error, /Too many sign-in links requested/i);
+});
+
+test("auth google callback succeeds with valid state and google responses", async () => {
+  process.env.GOOGLE_CLIENT_ID = "google-client-id";
+  process.env.GOOGLE_CLIENT_SECRET = "google-client-secret";
+
+  global.fetch = async (url) => {
+    const target = String(url);
+    if (target.includes("oauth2.googleapis.com/token")) {
+      return new Response(
+        JSON.stringify({ access_token: "google-access-token", expires_in: 3600 }),
+        { status: 200 }
+      );
+    }
+    if (target.includes("www.googleapis.com/oauth2/v3/userinfo")) {
+      return new Response(
+        JSON.stringify({
+          email: "google.user@example.com",
+          name: "Google User",
+          email_verified: true,
+        }),
+        { status: 200 }
+      );
+    }
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+
+  const state = createToken(
+    {
+      id: "oauth-state",
+      email: "oauth-state@meetme.local",
+      name: "oauth",
+      purpose: "google_oauth_state",
+      return_to: "/dashboard.html",
+      jti: "state-jti",
+    },
+    "10m"
+  );
+
+  const req = new Request(
+    `http://localhost:8888/api/auth/google/callback?code=test-code&state=${encodeURIComponent(state)}`,
+    {
+      method: "GET",
+      headers: {
+        cookie: `oauth_state=${state}`,
+      },
+    }
+  );
+
+  const res = await authHandler(req, { params: { 0: "google/callback" } });
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get("location"), "/profile.html?setup=1");
+  assert.match(res.headers.get("set-cookie") || "", /token=/);
+
+  const dbUser = await store("users").get("google.user@example.com", { type: "json" });
+  assert.equal(dbUser.email, "google.user@example.com");
+});
+
+test("meetings create/list/detail/leave lifecycle works", async () => {
+  const creator = { id: "u1", email: "creator@example.com", name: "Creator" };
+  const invitee = { id: "u2", email: "friend@example.com", name: "Friend" };
+
+  const meetingId = await createMeetingAs(creator);
+
+  const listReq = new Request("http://localhost:8888/api/meetings", {
+    method: "GET",
+    headers: { cookie: authCookie(creator) },
+  });
+  const listRes = await meetingsHandler(listReq, {});
+  const listBody = await responseJson(listRes);
+  assert.equal(listRes.status, 200);
+  assert.equal(listBody.my_meetings.length, 1);
+
+  const detailReq = new Request(`http://localhost:8888/api/meetings/${meetingId}`, {
+    method: "GET",
+    headers: { cookie: authCookie(invitee) },
+  });
+  const detailRes = await meetingsHandler(detailReq, {});
+  const detailBody = await responseJson(detailRes);
+  assert.equal(detailRes.status, 200);
+  assert.equal(detailBody.meeting.id, meetingId);
+
+  const leaveReq = makeJsonRequest(`http://localhost:8888/api/meetings/${meetingId}/leave`, {
+    method: "POST",
+    headers: { cookie: authCookie(invitee) },
+    body: {},
+  });
+  const leaveRes = await meetingsHandler(leaveReq, {});
+  const leaveBody = await responseJson(leaveRes);
+  assert.equal(leaveRes.status, 200);
+  assert.equal(leaveBody.success, true);
+});
+
+test("meeting actions availability/finalize/unfinalize/reminder flows", async () => {
+  const creator = { id: "u10", email: "creator10@example.com", name: "Creator 10" };
+  const invitee = { id: "u11", email: "friend@example.com", name: "Friend" };
+  const meetingId = await createMeetingAs(creator);
+
+  const availabilityReq = makeJsonRequest(
+    `http://localhost:8888/api/meetings/${meetingId}/availability`,
+    {
+      method: "POST",
+      headers: { cookie: authCookie(invitee) },
+      body: { slots: ["Monday_09:00", "Wednesday_09:15"] },
+    }
+  );
+  const availabilityRes = await meetingActionsHandler(availabilityReq, {});
+  const availabilityBody = await responseJson(availabilityRes);
+  assert.equal(availabilityRes.status, 200);
+  assert.equal(availabilityBody.success, true);
+
+  const finalizeForbiddenReq = makeJsonRequest(
+    `http://localhost:8888/api/meetings/${meetingId}/finalize`,
+    {
+      method: "POST",
+      headers: { cookie: authCookie(invitee) },
+      body: { date_or_day: "Monday", time_slot: "09:00", duration_minutes: 60 },
+    }
+  );
+  const finalizeForbiddenRes = await meetingActionsHandler(finalizeForbiddenReq, {});
+  assert.equal(finalizeForbiddenRes.status, 403);
+
+  const finalizeReq = makeJsonRequest(`http://localhost:8888/api/meetings/${meetingId}/finalize`, {
+    method: "POST",
+    headers: { cookie: authCookie(creator) },
+    body: { date_or_day: "Monday", time_slot: "09:00", duration_minutes: 60 },
+  });
+  const finalizeRes = await meetingActionsHandler(finalizeReq, {});
+  const finalizeBody = await responseJson(finalizeRes);
+  assert.equal(finalizeRes.status, 200);
+  assert.equal(finalizeBody.success, true);
+
+  const unfinalizeReq = makeJsonRequest(
+    `http://localhost:8888/api/meetings/${meetingId}/unfinalize`,
+    {
+      method: "POST",
+      headers: { cookie: authCookie(creator) },
+      body: {},
+    }
+  );
+  const unfinalizeRes = await meetingActionsHandler(unfinalizeReq, {});
+  assert.equal(unfinalizeRes.status, 200);
+
+  const reminderReq = makeJsonRequest(
+    `http://localhost:8888/api/meetings/${meetingId}/remind-pending`,
+    {
+      method: "POST",
+      headers: { cookie: authCookie(creator) },
+      body: {},
+    }
+  );
+  const reminderRes = await meetingActionsHandler(reminderReq, {});
+  const reminderBody = await responseJson(reminderRes);
+  assert.equal(reminderRes.status, 200);
+  assert.equal(reminderBody.success, true);
 });
 
 test("meetings list requires authentication", async () => {
   const req = new Request("http://localhost:8888/api/meetings", { method: "GET" });
-  const res = await meetingsHandler(req, { params: {} });
+  const res = await meetingsHandler(req, {});
 
   assert.equal(res.status, 401);
-  const body = await asJson(res);
+  const body = await responseJson(res);
   assert.match(body.error, /Not authenticated/i);
 });
 
 test("admin routes reject non-admin users", async () => {
-  process.env.ADMIN_EMAILS = "admin@example.com";
   const token = createToken({ id: "u1", email: "member@example.com", name: "Member" });
   const req = new Request("http://localhost:8888/api/admin/stats", {
     method: "GET",
@@ -50,20 +333,188 @@ test("admin routes reject non-admin users", async () => {
 
   const res = await adminHandler(req, { params: { 0: "stats" } });
   assert.equal(res.status, 403);
-  const body = await asJson(res);
+  const body = await responseJson(res);
   assert.match(body.error, /Admin access required/i);
 });
 
-test("admin singular user route is no longer supported", async () => {
-  process.env.ADMIN_EMAILS = "admin@example.com";
+test("admin user create/update/delete + impersonation", async () => {
   const token = createToken({ id: "a1", email: "admin@example.com", name: "Admin" });
-  const req = new Request("http://localhost:8888/api/admin/user?email=test@example.com", {
+
+  const createReq = makeJsonRequest("http://localhost:8888/api/admin/users", {
+    method: "POST",
+    headers: { cookie: `token=${token}` },
+    body: { email: "member@example.com", first_name: "Member", last_name: "One" },
+  });
+  const createRes = await adminHandler(createReq, { params: { 0: "users" } });
+  const createBody = await responseJson(createRes);
+  assert.equal(createRes.status, 201);
+  assert.equal(createBody.created, true);
+
+  const updateReq = makeJsonRequest("http://localhost:8888/api/admin/users", {
+    method: "POST",
+    headers: { cookie: `token=${token}` },
+    body: { email: "member@example.com", first_name: "Member", last_name: "Updated" },
+  });
+  const updateRes = await adminHandler(updateReq, { params: { 0: "users" } });
+  assert.equal(updateRes.status, 200);
+
+  const impersonateReq = makeJsonRequest("http://localhost:8888/api/admin/impersonate", {
+    method: "POST",
+    headers: { cookie: `token=${token}` },
+    body: { email: "member@example.com" },
+  });
+  const impersonateRes = await adminHandler(impersonateReq, { params: { 0: "impersonate" } });
+  const impersonateBody = await responseJson(impersonateRes);
+  assert.equal(impersonateRes.status, 200);
+  assert.equal(impersonateBody.success, true);
+
+  const deleteReq = makeJsonRequest("http://localhost:8888/api/admin/users/delete", {
+    method: "POST",
+    headers: { cookie: `token=${token}` },
+    body: { email: "member@example.com" },
+  });
+  const deleteRes = await adminHandler(deleteReq, { params: { 0: "users/delete" } });
+  const deleteBody = await responseJson(deleteRes);
+  assert.equal(deleteRes.status, 200);
+  assert.equal(deleteBody.success, true);
+});
+
+test("admin stats and events routes work for admins", async () => {
+  const token = createToken({ id: "a2", email: "admin@example.com", name: "Admin" });
+  const statsReq = new Request("http://localhost:8888/api/admin/stats", {
     method: "GET",
     headers: { cookie: `token=${token}` },
   });
+  const statsRes = await adminHandler(statsReq, { params: { 0: "stats" } });
+  const statsBody = await responseJson(statsRes);
+  assert.equal(statsRes.status, 200);
+  assert.equal(typeof statsBody.total_users, "number");
 
-  const res = await adminHandler(req, { params: { 0: "user" } });
-  assert.equal(res.status, 404);
-  const body = await asJson(res);
-  assert.match(body.error, /not found/i);
+  const eventsReq = new Request("http://localhost:8888/api/admin/events?limit=10", {
+    method: "GET",
+    headers: { cookie: `token=${token}` },
+  });
+  const eventsRes = await adminHandler(eventsReq, { params: { 0: "events" } });
+  const eventsBody = await responseJson(eventsRes);
+  assert.equal(eventsRes.status, 200);
+  assert.ok(Array.isArray(eventsBody.events));
+});
+
+test("calendar busy route enforces auth and calendar connection", async () => {
+  const unauthReq = new Request("http://localhost:8888/api/calendar/busy?meeting_id=m1", {
+    method: "GET",
+  });
+  const unauthRes = await calendarHandler(unauthReq, { params: { 0: "busy" } });
+  assert.equal(unauthRes.status, 401);
+
+  const user = { id: "u20", email: "cal@example.com", name: "Cal User" };
+  await store("meetings").setJSON("m1", {
+    id: "m1",
+    meeting_type: "specific_dates",
+    dates_or_days: ["2026-04-01"],
+    start_time: "09:00",
+    end_time: "10:00",
+    timezone: "UTC",
+  });
+  await store("users").setJSON("cal@example.com", {
+    ...user,
+    calendar_connected: false,
+    google_access_token: "",
+  });
+
+  const req = new Request("http://localhost:8888/api/calendar/busy?meeting_id=m1", {
+    method: "GET",
+    headers: { cookie: authCookie(user) },
+  });
+  const res = await calendarHandler(req, { params: { 0: "busy" } });
+  const body = await responseJson(res);
+  assert.equal(res.status, 403);
+  assert.match(body.error, /not connected/i);
+});
+
+test("calendar status route returns connection state", async () => {
+  const user = { id: "u21", email: "status@example.com", name: "Status User" };
+  await store("users").setJSON("status@example.com", {
+    ...user,
+    calendar_connected: true,
+    google_access_token: encryptSecret("access-token"),
+  });
+
+  const req = new Request("http://localhost:8888/api/calendar/status", {
+    method: "GET",
+    headers: { cookie: authCookie(user) },
+  });
+  const res = await calendarHandler(req, { params: { 0: "status" } });
+  const body = await responseJson(res);
+  assert.equal(res.status, 200);
+  assert.equal(body.connected, true);
+});
+
+test("webhooks resend rejects invalid secret", async () => {
+  process.env.RESEND_WEBHOOK_SECRET = "expected-secret";
+
+  const req = makeJsonRequest("http://localhost:8888/api/webhooks/resend", {
+    method: "POST",
+    headers: { "x-webhook-secret": "wrong-secret" },
+    body: { type: "email.bounced", data: { email_id: "missing" } },
+  });
+  const res = await webhooksHandler(req, { params: { 0: "resend" } });
+  assert.equal(res.status, 403);
+});
+
+test("webhooks resend handles actionable event", async () => {
+  process.env.RESEND_WEBHOOK_SECRET = "expected-secret";
+  process.env.APP_URL = "http://localhost:8888";
+
+  await store("email_records").setJSON("mail-1", {
+    meeting_id: "m-1",
+    meeting_title: "Retro",
+    creator_email: "creator@example.com",
+    creator_name: "Creator",
+    invitee_email: "bounce@example.com",
+  });
+
+  const req = makeJsonRequest("http://localhost:8888/api/webhooks/resend", {
+    method: "POST",
+    headers: { "x-webhook-secret": "expected-secret" },
+    body: {
+      type: "email.bounced",
+      data: {
+        email_id: "mail-1",
+        bounce: { type: "hard", message: "User unknown" },
+      },
+    },
+  });
+  const res = await webhooksHandler(req, { params: { 0: "resend" } });
+  const body = await responseJson(res);
+  assert.equal(res.status, 200);
+  assert.equal(body.ok, true);
+});
+
+test("auth feedback requires configured admin emails", async () => {
+  process.env.ADMIN_EMAILS = "";
+  const user = { id: "u30", email: "user30@example.com", name: "User 30" };
+  const req = makeJsonRequest("http://localhost:8888/api/auth/feedback", {
+    method: "POST",
+    headers: { cookie: authCookie(user) },
+    body: {
+      email: "sender@example.com",
+      type: "bug",
+      message: "Something broke",
+    },
+  });
+  const res = await authHandler(req, { params: { 0: "feedback" } });
+  assert.equal(res.status, 500);
+});
+
+test("auth logout clears session cookie", async () => {
+  const user = { id: "u40", email: "logout@example.com", name: "Logout" };
+  const req = makeJsonRequest("http://localhost:8888/api/auth/logout", {
+    method: "POST",
+    headers: { cookie: authCookie(user) },
+    body: {},
+  });
+  const res = await authHandler(req, { params: { 0: "logout" } });
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("set-cookie") || "", /Max-Age=0/);
 });

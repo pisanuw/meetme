@@ -46,7 +46,6 @@ export default async (req, context) => {
 async function handleWebhook(req, context) {
   logRequest(FN, req);
 
-  const url = new URL(req.url);
   const path = context.params["0"] || "";
 
   // ── POST /api/webhooks/resend ─────────────────────────────────────────────

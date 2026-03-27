@@ -8,6 +8,7 @@
     "dev:stop": "pkill -f \"[n]etlify dev\" || true",
     "test": "node --test",
     "lint": "eslint .",
+    "predeploy-check": "npm test && npm run lint",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

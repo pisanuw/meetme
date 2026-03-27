@@ -207,10 +207,52 @@ auth/function validation and limit container-local checks to static/UI behavior.
 ### Quality checks
 
 ```bash
-npm test
-npm run lint
+npm run predeploy-check
 npm run format:check
 ```
+
+### Required Branch Protection (must enable)
+
+To prevent broken deploys, protect your default branch (for example `main`) and
+require passing CI before merge.
+
+In GitHub: **Settings → Branches → Add branch protection rule**
+
+Use these settings:
+
+1. **Require a pull request before merging**: enabled
+2. **Require status checks to pass before merging**: enabled
+3. Add required checks:
+  - `Test (default mode)`
+  - `Test (rate limit enabled)`
+4. **Require branches to be up to date before merging**: enabled
+5. **Do not allow bypassing the above settings**: enabled (for admins too)
+
+These checks are produced by the workflow in `.github/workflows/ci.yml`.
+If either check fails, merging should be blocked.
+
+### Release Checklist (before every deploy)
+
+Use this checklist every time to avoid shipping untested changes:
+
+1. Pull latest default branch and verify your branch is up to date.
+2. Run locally:
+
+```bash
+npm run predeploy-check
+```
+
+3. Open a Pull Request and wait for both required checks to pass:
+  - `Test (default mode)`
+  - `Test (rate limit enabled)`
+4. Merge the Pull Request into the protected default branch.
+5. Deploy **only from the protected default branch** (never from an unmerged local branch).
+6. After deploy, smoke test critical flows:
+  - Magic-link sign in
+  - Google sign in
+  - Create meeting
+  - Submit availability
+  - Finalize meeting
 
 ---
 
