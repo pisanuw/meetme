@@ -87,8 +87,19 @@ meetme/
 │   └── register.js         ← Page script for register.html
 │
 ├── test/
-│   ├── utils.test.mjs      ← Unit tests for shared utilities
-│   └── api-routes.test.mjs ← Integration tests for auth/meetings/admin routes
+│   ├── utils.test.mjs          ← Unit tests for shared utilities
+│   ├── test-helpers.mjs        ← In-memory DB + request helper utilities for tests
+│   ├── api-routes.test.mjs     ← Integration tests for auth/meetings/admin/calendar/webhooks
+│   └── e2e/
+│       ├── public-pages.smoke.spec.mjs          ← Browser smoke checks for public pages
+│       └── create-meeting-submit.smoke.spec.mjs ← Browser smoke check for create-meeting flow
+│
+├── scripts/
+│   └── staging-smoke.mjs    ← Deployed-environment API smoke checks
+│
+├── .github/
+│   └── workflows/
+│       └── ci.yml           ← CI pipeline (audit, tests, e2e smoke, optional staging smoke)
 │
 ├── netlify/
 │   └── functions/          ← All backend code lives here (Node.js serverless functions)
@@ -102,6 +113,7 @@ meetme/
 │
 ├── netlify.toml            ← Netlify build & function configuration
 ├── package.json            ← Node.js dependencies
+├── playwright.smoke.config.mjs ← Playwright config used by smoke tests
 └── .env.example            ← Template listing every environment variable needed
 ```
 
@@ -990,10 +1002,20 @@ APP_URL=https://your-site.netlify.app
 RESEND_API_KEY=re_xxxxx
 AUTH_FROM_EMAIL=MeetMe <noreply@yourdomain.com>
 RESEND_WEBHOOK_SECRET=...
+# Optional: DISABLE_RATE_LIMIT=true (local dev only)
+# Optional: COOKIE_SECURE=false (local HTTP OAuth testing)
+# Optional: STAGING_BASE_URL=https://staging-meetme.netlify.app
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 ADMIN_EMAILS=admin@example.com
 ```
+
+In this repo, CI runs on GitHub Actions (`.github/workflows/ci.yml`) and currently includes:
+
+- production-dependency audit (`npm audit --omit=dev`)
+- Node test runner integration tests (`npm test`)
+- Playwright smoke tests (`npm run test:e2e:smoke`)
+- optional staging smoke checks (`npm run smoke:staging`)
 
 For local development, you copy this file to `.env` and fill in real values. `.env` is listed
 in `.gitignore` so that secrets are never committed to the repository.
