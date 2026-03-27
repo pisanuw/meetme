@@ -18,6 +18,25 @@ on:
         default: ""
 
 jobs:
+  audit-prod-deps:
+    name: Audit (prod dependencies)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.12.2"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run production dependency audit
+        run: npm audit --omit=dev
+
   test-default:
     name: Test (default mode)
     runs-on: ubuntu-latest
@@ -28,7 +47,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "20.12.2"
           cache: "npm"
 
       - name: Install dependencies
@@ -49,7 +68,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "20.12.2"
           cache: "npm"
 
       - name: Install dependencies
@@ -68,7 +87,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "20.12.2"
           cache: "npm"
 
       - name: Install dependencies
@@ -91,7 +110,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "20.12.2"
           cache: "npm"
 
       - name: Install dependencies
@@ -114,7 +133,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "20.12.2"
           cache: "npm"
 
       - name: Install dependencies
