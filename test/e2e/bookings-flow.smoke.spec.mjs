@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("book flow redirects to confirmation with booking detail", async ({ page }) => {
   let capturedBookingPayload = null;
+  let bookingStatus = "confirmed";
 
   await page.route("**/api/auth/me", async (route) => {
     await route.fulfill({
@@ -69,9 +70,18 @@ test("book flow redirects to confirmation with booking detail", async ({ page })
           timezone: "UTC",
           host_name: "Host Smoke",
           attendee_name: "Booker",
-          status: "confirmed",
+          status: bookingStatus,
         },
       }),
+    });
+  });
+
+  await page.route("**/api/bookings/bk-smoke-1/cancel", async (route) => {
+    bookingStatus = "cancelled";
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ success: true, booking: { id: "bk-smoke-1", status: "cancelled" } }),
     });
   });
 
@@ -84,6 +94,11 @@ test("book flow redirects to confirmation with booking detail", async ({ page })
   await expect(page).toHaveURL(/\/booking-confirmation\.html\?id=bk-smoke-1/);
   await expect(page.getByText("Booking confirmed.")).toBeVisible();
   await expect(page.getByText("Intro Call")).toBeVisible();
+  page.once("dialog", async (dialog) => {
+    await dialog.accept();
+  });
+  await page.getByRole("button", { name: "Cancel Booking" }).click();
+  await expect(page.locator("#confirmation-subtitle")).toHaveText("Booking cancelled.");
 
   expect(capturedBookingPayload).toBeTruthy();
   expect(capturedBookingPayload.event_type_id).toBe("evt-smoke");
