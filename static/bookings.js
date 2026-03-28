@@ -4,10 +4,12 @@ const tabMine = document.getElementById("tab-mine");
 const reminderWindowLabel = document.getElementById("reminder-window-label");
 const reminderWindow = document.getElementById("reminder-window");
 const sendRemindersBtn = document.getElementById("send-reminders-btn");
+const runSchedulerNowBtn = document.getElementById("run-scheduler-now-btn");
 
 let hostBookings = [];
 let myBookings = [];
 let activeTab = "host";
+let currentUser = null;
 
 function bookingCard(booking) {
   const cancelled = booking.status === "cancelled";
@@ -46,6 +48,8 @@ function renderBookings() {
   reminderWindowLabel.style.display = activeTab === "host" ? "inline-flex" : "none";
   sendRemindersBtn.style.display = activeTab === "host" ? "inline-flex" : "none";
   reminderWindow.style.display = activeTab === "host" ? "inline-flex" : "none";
+  runSchedulerNowBtn.style.display =
+    activeTab === "host" && currentUser?.is_admin ? "inline-flex" : "none";
 
   if (!list.length) {
     gridEl.innerHTML = `
@@ -134,8 +138,36 @@ sendRemindersBtn.addEventListener("click", async () => {
   );
 });
 
+runSchedulerNowBtn.addEventListener("click", async () => {
+  if (!confirm("Run scheduler reminders for all hosts now?")) return;
+
+  runSchedulerNowBtn.disabled = true;
+  const originalLabel = runSchedulerNowBtn.textContent;
+  runSchedulerNowBtn.textContent = "Running...";
+
+  const { ok, data } = await apiFetch("/api/bookings/reminders/run-now", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+
+  runSchedulerNowBtn.disabled = false;
+  runSchedulerNowBtn.textContent = originalLabel;
+
+  if (!ok) {
+    showFlash(data.error || "Could not run scheduler reminders.", "danger");
+    return;
+  }
+
+  showFlash(
+    `Scheduler run complete: hosts ${data.host_count || 0}, sent ${data.sent_count || 0}, skipped ${data.skipped_count || 0}, failed ${data.failed_count || 0}.`,
+    "success"
+  );
+});
+
 (async () => {
   const user = await requireAuth();
   if (!user) return;
+  currentUser = user;
   await loadBookings();
 })();

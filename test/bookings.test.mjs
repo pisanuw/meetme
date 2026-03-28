@@ -428,3 +428,83 @@ test("reminder sending is host-only and idempotent", async () => {
   assert.equal(secondSendBody.sent_count, 0);
   assert.equal(secondSendBody.failed_count, 0);
 });
+
+test("admin can run scheduler reminders in allowed environments", async () => {
+  const host = { id: "host7", email: "host7@example.com", name: "Host Seven" };
+  const guest = { id: "guest7", email: "guest7@example.com", name: "Guest Seven" };
+  const admin = { id: "admin7", email: "admin@example.com", name: "Admin Seven" };
+  const nonAdmin = { id: "nonadmin7", email: "nonadmin@example.com", name: "Non Admin" };
+
+  await seedUser(host);
+  await seedUser(guest);
+  await seedUser(admin);
+  await seedUser(nonAdmin);
+
+  process.env.RESEND_API_KEY = "test-resend-key";
+  process.env.AUTH_FROM_EMAIL = "MeetMe <noreply@example.com>";
+
+  const bookingId = "booking-run-now-1";
+  const startsAt = new Date(Date.now() + 45 * 60 * 1000).toISOString();
+  const endsAt = new Date(Date.now() + 75 * 60 * 1000).toISOString();
+
+  await store("bookings").setJSON(`booking:${bookingId}`, {
+    id: bookingId,
+    status: "confirmed",
+    event_type_id: "evt-run-now",
+    event_title: "Run Now Event",
+    event_kind: "one_on_one",
+    host_user_id: host.id,
+    host_email: host.email,
+    host_name: host.name,
+    attendee_user_id: guest.id,
+    attendee_email: guest.email,
+    attendee_name: guest.name,
+    date: "2099-01-01",
+    start_time: "09:00",
+    end_time: "09:30",
+    timezone: "UTC",
+    starts_at_utc: startsAt,
+    ends_at_utc: endsAt,
+    created_at: new Date().toISOString(),
+    cancelled_at: null,
+    cancelled_by: null,
+  });
+  await store("bookings").setJSON(`host:${host.id}`, [bookingId]);
+
+  delete process.env.NETLIFY_DEV;
+  delete process.env.ALLOW_BOOKING_REMINDER_RUN_NOW;
+
+  const nonAdminForbidden = await bookingsHandler(
+    makeJsonRequest("http://localhost:8888/api/bookings/reminders/run-now", {
+      method: "POST",
+      headers: { cookie: authCookie(nonAdmin) },
+      body: {},
+    }),
+    {}
+  );
+  assert.equal(nonAdminForbidden.status, 403);
+
+  const envForbidden = await bookingsHandler(
+    makeJsonRequest("http://localhost:8888/api/bookings/reminders/run-now", {
+      method: "POST",
+      headers: { cookie: authCookie(admin) },
+      body: {},
+    }),
+    {}
+  );
+  assert.equal(envForbidden.status, 403);
+
+  process.env.ALLOW_BOOKING_REMINDER_RUN_NOW = "true";
+  const allowedRun = await bookingsHandler(
+    makeJsonRequest("http://localhost:8888/api/bookings/reminders/run-now", {
+      method: "POST",
+      headers: { cookie: authCookie(admin) },
+      body: {},
+    }),
+    {}
+  );
+  const allowedBody = await responseJson(allowedRun);
+  assert.equal(allowedRun.status, 200);
+  assert.equal(allowedBody.host_count, 1);
+  assert.equal(allowedBody.sent_count, 1);
+});

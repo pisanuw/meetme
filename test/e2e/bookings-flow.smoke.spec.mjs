@@ -107,12 +107,13 @@ test("book flow redirects to confirmation with booking detail", async ({ page })
 
 test("host reminders action posts selected reminder window", async ({ page }) => {
   let capturedReminderPayload = null;
+  let schedulerRunCalled = false;
 
   await page.route("**/api/auth/me", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ id: "host-smoke", email: "host@example.com", name: "Host Smoke" }),
+      body: JSON.stringify({ id: "host-smoke", email: "admin@example.com", name: "Host Smoke", is_admin: true }),
     });
   });
 
@@ -155,6 +156,15 @@ test("host reminders action posts selected reminder window", async ({ page }) =>
     });
   });
 
+  await page.route("**/api/bookings/reminders/run-now", async (route) => {
+    schedulerRunCalled = true;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ success: true, host_count: 2, sent_count: 1, skipped_count: 1, failed_count: 0 }),
+    });
+  });
+
   await page.goto("/bookings.html");
   await expect(page.getByRole("heading", { name: "My Bookings" })).toBeVisible();
 
@@ -162,6 +172,12 @@ test("host reminders action posts selected reminder window", async ({ page }) =>
   await page.getByRole("button", { name: "Send Reminders" }).click();
 
   await expect(page.getByText("Reminder run complete: sent 1, skipped 0, failed 0.")).toBeVisible();
+  page.once("dialog", async (dialog) => {
+    await dialog.accept();
+  });
+  await page.getByRole("button", { name: "Run Scheduler Now" }).click();
+  await expect(page.getByText("Scheduler run complete: hosts 2, sent 1, skipped 1, failed 0.")).toBeVisible();
   expect(capturedReminderPayload).toBeTruthy();
   expect(capturedReminderPayload.within_hours).toBe(6);
+  expect(schedulerRunCalled).toBeTruthy();
 });

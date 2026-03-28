@@ -20,6 +20,7 @@ import {
   getDb,
   getEnv,
   getUserFromRequest,
+  isAdmin,
   jsonResponse,
   errorResponse,
   log,
@@ -315,6 +316,17 @@ async function buildSlotsResponse({ eventType, dateStr, availabilityWindows, boo
   }
 
   return { slots: available, blocked_by_calendar: blockedByCalendar };
+}
+
+async function listBookingHostIds(bookingsDb) {
+  const listing = await bookingsDb.list().catch(() => ({ blobs: [] }));
+  return [...new Set(
+    asArray(listing.blobs)
+      .map((entry) => String(entry?.key || ""))
+      .filter((key) => key.startsWith("host:"))
+      .map((key) => key.slice("host:".length))
+      .filter(Boolean)
+  )];
 }
 
 function normalizeReminderWindowHours(input) {
@@ -896,6 +908,53 @@ async function handleBookings(req, _context) {
       failed_count: result.failed_count,
       reminder_booking_ids: result.reminder_booking_ids,
       within_hours: result.within_hours,
+    });
+  }
+
+  // POST /api/bookings/reminders/run-now (admin, non-production by default)
+  if (req.method === "POST" && pathname === "/api/bookings/reminders/run-now") {
+    if (!authUser) return errorResponse(401, "Not authenticated. Please sign in.");
+    if (!isAdmin(authUser)) return errorResponse(403, "Only admins can run scheduler reminders manually.");
+
+    const allowManualRunNow =
+      getEnv("NETLIFY_DEV", "") === "true" ||
+      getEnv("ALLOW_BOOKING_REMINDER_RUN_NOW", "") === "true";
+
+    if (!allowManualRunNow) {
+      return errorResponse(403, "Manual scheduler run is disabled outside approved environments.");
+    }
+
+    const hostIds = await listBookingHostIds(bookingsDb);
+    let totalSent = 0;
+    let totalSkipped = 0;
+    let totalFailed = 0;
+
+    for (const hostUserId of hostIds) {
+      const result = await sendUpcomingRemindersForHost({
+        bookingsDb,
+        hostUserId,
+        actorEmail: authUser.email,
+      });
+      totalSent += result.sent_count;
+      totalSkipped += result.skipped_count;
+      totalFailed += result.failed_count;
+    }
+
+    await persistEvent("warn", FN, "booking reminder scheduler run-now triggered", {
+      actor_email: authUser.email,
+      host_count: hostIds.length,
+      sent_count: totalSent,
+      skipped_count: totalSkipped,
+      failed_count: totalFailed,
+      allow_manual_run_now: allowManualRunNow,
+    });
+
+    return jsonResponse(200, {
+      success: true,
+      host_count: hostIds.length,
+      sent_count: totalSent,
+      skipped_count: totalSkipped,
+      failed_count: totalFailed,
     });
   }
 

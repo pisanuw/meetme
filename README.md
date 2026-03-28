@@ -109,6 +109,7 @@ and in your local `.env` file for development:
 | `AUTH_FROM_EMAIL`       | _(required for email)_ | Verified sender address, e.g. `MeetMe <noreply@yourdomain.com>`                            |
 | `RESEND_WEBHOOK_SECRET` | _(optional)_           | Shared secret for the Resend bounce/complaint webhook                                      |
 | `BOOKING_REMINDERS_RUN_SECRET` | _(recommended)_   | Shared secret required for manual calls to `/api/bookings/reminders/run`                    |
+| `ALLOW_BOOKING_REMINDER_RUN_NOW` | `false`          | Enables admin-triggered `/api/bookings/reminders/run-now` endpoint when set to `true`       |
 | `ADMIN_EMAILS`          | _(optional)_           | Comma-separated admin addresses, e.g. `alice@example.com,bob@example.com`                  |
 | `GOOGLE_CLIENT_ID`      | _(optional)_           | OAuth 2.0 client ID (required for Google sign-in and Calendar)                             |
 | `GOOGLE_CLIENT_SECRET`  | _(optional)_           | OAuth 2.0 client secret                                                                    |
