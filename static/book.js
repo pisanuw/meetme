@@ -93,8 +93,10 @@ bookBtn.addEventListener("click", async () => {
     return;
   }
 
-  document.getElementById("book-title").textContent = `Book Time with ${data.owner?.name || data.owner?.email || hostSlug}`;
-  document.getElementById("book-host").textContent = `Host: ${data.owner?.name || data.owner?.email || hostSlug}`;
+  document.getElementById("book-title").textContent =
+    `Book Time with ${data.owner?.name || data.owner?.email || hostSlug}`;
+  document.getElementById("book-host").textContent =
+    `Host: ${data.owner?.name || data.owner?.email || hostSlug}`;
 
   const eventTypes = data.event_types || [];
   eventSelect.innerHTML = eventTypes

@@ -113,7 +113,12 @@ test("host reminders action posts selected reminder window", async ({ page }) =>
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ id: "host-smoke", email: "admin@example.com", name: "Host Smoke", is_admin: true }),
+      body: JSON.stringify({
+        id: "host-smoke",
+        email: "admin@example.com",
+        name: "Host Smoke",
+        is_admin: true,
+      }),
     });
   });
 
@@ -161,7 +166,13 @@ test("host reminders action posts selected reminder window", async ({ page }) =>
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ success: true, host_count: 2, sent_count: 1, skipped_count: 1, failed_count: 0 }),
+      body: JSON.stringify({
+        success: true,
+        host_count: 2,
+        sent_count: 1,
+        skipped_count: 1,
+        failed_count: 0,
+      }),
     });
   });
 
@@ -176,7 +187,9 @@ test("host reminders action posts selected reminder window", async ({ page }) =>
     await dialog.accept();
   });
   await page.getByRole("button", { name: "Run Scheduler Now" }).click();
-  await expect(page.getByText("Scheduler run complete: hosts 2, sent 1, skipped 1, failed 0.")).toBeVisible();
+  await expect(
+    page.getByText("Scheduler run complete: hosts 2, sent 1, skipped 1, failed 0.")
+  ).toBeVisible();
   expect(capturedReminderPayload).toBeTruthy();
   expect(capturedReminderPayload.within_hours).toBe(6);
   expect(schedulerRunCalled).toBeTruthy();

@@ -202,7 +202,7 @@ async function checkAuth() {
       if (!stopLink.dataset.handlerBound) {
         stopLink.addEventListener("click", async (e) => {
           e.preventDefault();
-            accountMenu.open = false;
+          accountMenu.open = false;
           const { ok, data } = await apiFetch("/api/auth/impersonation/stop", {
             method: "POST",
             headers: { "Content-Type": "application/json" },

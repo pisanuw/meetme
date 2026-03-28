@@ -447,7 +447,9 @@ export function isAdmin(user) {
  * @returns {boolean}
  */
 export function isSuperAdminEmail(email) {
-  const normalized = String(email || "").trim().toLowerCase();
+  const normalized = String(email || "")
+    .trim()
+    .toLowerCase();
   if (!normalized) return false;
   const adminEmails = getEnv("ADMIN_EMAILS", "")
     .split(",")

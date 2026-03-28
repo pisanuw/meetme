@@ -71,7 +71,9 @@ export default async (req, context) => {
 };
 
 function toMinutes(timeStr) {
-  const [h, m] = String(timeStr || "").split(":").map(Number);
+  const [h, m] = String(timeStr || "")
+    .split(":")
+    .map(Number);
   return h * 60 + m;
 }
 
@@ -266,13 +268,22 @@ async function listEventTypesForOwner(eventTypesDb, ownerId) {
   const ids = asArray(await eventTypesDb.get(`owner:${ownerId}`, { type: "json" }).catch(() => []));
   const results = [];
   for (const id of ids) {
-    const eventType = await eventTypesDb.get(`event_type:${id}`, { type: "json" }).catch(() => null);
+    const eventType = await eventTypesDb
+      .get(`event_type:${id}`, { type: "json" })
+      .catch(() => null);
     if (eventType) results.push(eventType);
   }
   return results;
 }
 
-async function buildSlotsResponse({ eventType, dateStr, availabilityWindows, bookingsDb, usersDb, hostUser }) {
+async function buildSlotsResponse({
+  eventType,
+  dateStr,
+  availabilityWindows,
+  bookingsDb,
+  usersDb,
+  hostUser,
+}) {
   const candidates = buildSlotCandidates(eventType, availabilityWindows, dateStr);
   if (candidates.length === 0) return { slots: [], blocked_by_calendar: [] };
 
@@ -299,7 +310,9 @@ async function buildSlotsResponse({ eventType, dateStr, availabilityWindows, boo
 
     let confirmedCount = 0;
     for (const bookingId of slotBookingIds) {
-      const booking = await bookingsDb.get(`booking:${bookingId}`, { type: "json" }).catch(() => null);
+      const booking = await bookingsDb
+        .get(`booking:${bookingId}`, { type: "json" })
+        .catch(() => null);
       if (booking?.status === "confirmed") confirmedCount += 1;
     }
     if (confirmedCount >= (eventType.group_capacity || 1)) continue;
@@ -320,13 +333,15 @@ async function buildSlotsResponse({ eventType, dateStr, availabilityWindows, boo
 
 async function listBookingHostIds(bookingsDb) {
   const listing = await bookingsDb.list().catch(() => ({ blobs: [] }));
-  return [...new Set(
-    asArray(listing.blobs)
-      .map((entry) => String(entry?.key || ""))
-      .filter((key) => key.startsWith("host:"))
-      .map((key) => key.slice("host:".length))
-      .filter(Boolean)
-  )];
+  return [
+    ...new Set(
+      asArray(listing.blobs)
+        .map((entry) => String(entry?.key || ""))
+        .filter((key) => key.startsWith("host:"))
+        .map((key) => key.slice("host:".length))
+        .filter(Boolean)
+    ),
+  ];
 }
 
 function normalizeReminderWindowHours(input) {
@@ -390,7 +405,9 @@ export async function sendUpcomingRemindersForHost({
   const windowHours = normalizeReminderWindowHours(withinHours);
   const now = Date.now();
   const cutoff = now + windowHours * 3600 * 1000;
-  const hostIds = asArray(await bookingsDb.get(`host:${hostUserId}`, { type: "json" }).catch(() => []));
+  const hostIds = asArray(
+    await bookingsDb.get(`host:${hostUserId}`, { type: "json" }).catch(() => [])
+  );
 
   let sentCount = 0;
   let skippedCount = 0;
@@ -398,7 +415,9 @@ export async function sendUpcomingRemindersForHost({
   const reminderIds = [];
 
   for (const bookingId of hostIds) {
-    const booking = await bookingsDb.get(`booking:${bookingId}`, { type: "json" }).catch(() => null);
+    const booking = await bookingsDb
+      .get(`booking:${bookingId}`, { type: "json" })
+      .catch(() => null);
     if (!booking || booking.status !== "confirmed") {
       skippedCount += 1;
       continue;
@@ -490,7 +509,10 @@ async function handleBookings(req, _context) {
 
     if (!title) return errorResponse(400, "Event title is required.");
     if (title.length > MAX_EVENT_TITLE_LENGTH) {
-      return errorResponse(400, `Event title must be ${MAX_EVENT_TITLE_LENGTH} characters or fewer.`);
+      return errorResponse(
+        400,
+        `Event title must be ${MAX_EVENT_TITLE_LENGTH} characters or fewer.`
+      );
     }
     if (description.length > MAX_EVENT_DESCRIPTION_LENGTH) {
       return errorResponse(
@@ -501,14 +523,22 @@ async function handleBookings(req, _context) {
     if (!ALLOWED_EVENT_TYPES.has(eventKind)) {
       return errorResponse(400, "event_type must be one_on_one or group.");
     }
-    if (!Number.isFinite(durationMinutes) || durationMinutes < MIN_DURATION_MINUTES || durationMinutes > MAX_DURATION_MINUTES) {
+    if (
+      !Number.isFinite(durationMinutes) ||
+      durationMinutes < MIN_DURATION_MINUTES ||
+      durationMinutes > MAX_DURATION_MINUTES
+    ) {
       return errorResponse(
         400,
         `duration_minutes must be between ${MIN_DURATION_MINUTES} and ${MAX_DURATION_MINUTES}.`
       );
     }
 
-    if (!Number.isFinite(groupCapacity) || groupCapacity < 1 || groupCapacity > MAX_GROUP_CAPACITY) {
+    if (
+      !Number.isFinite(groupCapacity) ||
+      groupCapacity < 1 ||
+      groupCapacity > MAX_GROUP_CAPACITY
+    ) {
       return errorResponse(400, `group_capacity must be between 1 and ${MAX_GROUP_CAPACITY}.`);
     }
 
@@ -670,7 +700,9 @@ async function handleBookings(req, _context) {
     const allWindows = asArray(
       await availabilityDb.get(`owner:${owner.id}`, { type: "json" }).catch(() => [])
     );
-    const windows = allWindows.filter((w) => (w.timezone || "UTC") === (eventType.timezone || "UTC"));
+    const windows = allWindows.filter(
+      (w) => (w.timezone || "UTC") === (eventType.timezone || "UTC")
+    );
 
     const { slots, blocked_by_calendar: blockedByCalendar } = await buildSlotsResponse({
       eventType,
@@ -722,7 +754,9 @@ async function handleBookings(req, _context) {
     const allWindows = asArray(
       await availabilityDb.get(`owner:${owner.id}`, { type: "json" }).catch(() => [])
     );
-    const windows = allWindows.filter((w) => (w.timezone || "UTC") === (eventType.timezone || "UTC"));
+    const windows = allWindows.filter(
+      (w) => (w.timezone || "UTC") === (eventType.timezone || "UTC")
+    );
     const { slots } = await buildSlotsResponse({
       eventType,
       dateStr,
@@ -740,7 +774,9 @@ async function handleBookings(req, _context) {
     const slotBookingIds = asArray(await bookingsDb.get(slotKey, { type: "json" }).catch(() => []));
     let confirmedCount = 0;
     for (const bookingId of slotBookingIds) {
-      const booking = await bookingsDb.get(`booking:${bookingId}`, { type: "json" }).catch(() => null);
+      const booking = await bookingsDb
+        .get(`booking:${bookingId}`, { type: "json" })
+        .catch(() => null);
       if (booking?.status === "confirmed") confirmedCount += 1;
     }
     if (confirmedCount >= (eventType.group_capacity || 1)) {
@@ -838,13 +874,17 @@ async function handleBookings(req, _context) {
   if (req.method === "GET" && pathname === "/api/bookings/host") {
     if (!authUser) return errorResponse(401, "Not authenticated. Please sign in.");
 
-    const ids = asArray(await bookingsDb.get(`host:${authUser.id}`, { type: "json" }).catch(() => []));
+    const ids = asArray(
+      await bookingsDb.get(`host:${authUser.id}`, { type: "json" }).catch(() => [])
+    );
     const bookings = [];
     for (const id of ids) {
       const booking = await bookingsDb.get(`booking:${id}`, { type: "json" }).catch(() => null);
       if (booking) bookings.push(booking);
     }
-    bookings.sort((a, b) => String(a.starts_at_utc || "").localeCompare(String(b.starts_at_utc || "")));
+    bookings.sort((a, b) =>
+      String(a.starts_at_utc || "").localeCompare(String(b.starts_at_utc || ""))
+    );
     return jsonResponse(200, { bookings });
   }
 
@@ -860,7 +900,9 @@ async function handleBookings(req, _context) {
       const booking = await bookingsDb.get(`booking:${id}`, { type: "json" }).catch(() => null);
       if (booking) bookings.push(booking);
     }
-    bookings.sort((a, b) => String(a.starts_at_utc || "").localeCompare(String(b.starts_at_utc || "")));
+    bookings.sort((a, b) =>
+      String(a.starts_at_utc || "").localeCompare(String(b.starts_at_utc || ""))
+    );
     return jsonResponse(200, { bookings });
   }
 
@@ -870,10 +912,13 @@ async function handleBookings(req, _context) {
     if (!authUser) return errorResponse(401, "Not authenticated. Please sign in.");
 
     const bookingId = bookingDetailMatch[1];
-    const booking = await bookingsDb.get(`booking:${bookingId}`, { type: "json" }).catch(() => null);
+    const booking = await bookingsDb
+      .get(`booking:${bookingId}`, { type: "json" })
+      .catch(() => null);
     if (!booking) return errorResponse(404, "Booking not found.");
 
-    const canView = booking.host_user_id === authUser.id || booking.attendee_user_id === authUser.id;
+    const canView =
+      booking.host_user_id === authUser.id || booking.attendee_user_id === authUser.id;
     if (!canView) return errorResponse(403, "You cannot view this booking.");
 
     return jsonResponse(200, { booking });
@@ -914,7 +959,8 @@ async function handleBookings(req, _context) {
   // POST /api/bookings/reminders/run-now (admin, non-production by default)
   if (req.method === "POST" && pathname === "/api/bookings/reminders/run-now") {
     if (!authUser) return errorResponse(401, "Not authenticated. Please sign in.");
-    if (!isAdmin(authUser)) return errorResponse(403, "Only admins can run scheduler reminders manually.");
+    if (!isAdmin(authUser))
+      return errorResponse(403, "Only admins can run scheduler reminders manually.");
 
     const allowManualRunNow =
       getEnv("NETLIFY_DEV", "") === "true" ||
@@ -964,9 +1010,12 @@ async function handleBookings(req, _context) {
     if (!authUser) return errorResponse(401, "Not authenticated. Please sign in.");
 
     const bookingId = cancelMatch[1];
-    const booking = await bookingsDb.get(`booking:${bookingId}`, { type: "json" }).catch(() => null);
+    const booking = await bookingsDb
+      .get(`booking:${bookingId}`, { type: "json" })
+      .catch(() => null);
     if (!booking) return errorResponse(404, "Booking not found.");
-    const canCancel = booking.host_user_id === authUser.id || booking.attendee_user_id === authUser.id;
+    const canCancel =
+      booking.host_user_id === authUser.id || booking.attendee_user_id === authUser.id;
     if (!canCancel) return errorResponse(403, "You cannot cancel this booking.");
     if (booking.status === "cancelled") return jsonResponse(200, { success: true, booking });
 

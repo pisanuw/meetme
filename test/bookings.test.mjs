@@ -267,9 +267,12 @@ test("booking endpoint requires authentication", async () => {
   assert.equal(unauthBookRes.status, 401);
 
   // sanity check existing auth route still behaves as expected in this file context
-  const meRes = await authHandler(new Request("http://localhost:8888/api/auth/me", { method: "GET" }), {
-    params: { 0: "me" },
-  });
+  const meRes = await authHandler(
+    new Request("http://localhost:8888/api/auth/me", { method: "GET" }),
+    {
+      params: { 0: "me" },
+    }
+  );
   assert.equal(meRes.status, 401);
 });
 

@@ -19,7 +19,9 @@ function renderAvailabilityRow(window = {}) {
   row.innerHTML = `
     <select class="form-control js-day">
       ${weekdayOptions
-        .map((d) => `<option value="${d}" ${window.day_of_week === d ? "selected" : ""}>${d}</option>`)
+        .map(
+          (d) => `<option value="${d}" ${window.day_of_week === d ? "selected" : ""}>${d}</option>`
+        )
         .join("")}
     </select>
     <input class="form-control js-start" type="time" value="${window.start_time || "09:00"}" />
@@ -83,7 +85,8 @@ function renderEventTypes(items = []) {
       document.getElementById("event-kind").value = item.event_type || "one_on_one";
       document.getElementById("event-duration").value = String(item.duration_minutes || 30);
       document.getElementById("event-capacity").value = String(item.group_capacity || 1);
-      document.getElementById("event-timezone").value = item.timezone || userProfileTimezone || "UTC";
+      document.getElementById("event-timezone").value =
+        item.timezone || userProfileTimezone || "UTC";
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
   });
@@ -91,11 +94,14 @@ function renderEventTypes(items = []) {
   eventTypesList.querySelectorAll(".js-delete").forEach((btn) => {
     btn.addEventListener("click", async () => {
       if (!confirm("Delete this event type?")) return;
-      const { ok, data } = await apiFetch(`/api/bookings/event-types/${encodeURIComponent(btn.dataset.id)}/delete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
+      const { ok, data } = await apiFetch(
+        `/api/bookings/event-types/${encodeURIComponent(btn.dataset.id)}/delete`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        }
+      );
       if (!ok) {
         showFlash(data.error || "Could not delete event type.", "danger");
         return;
