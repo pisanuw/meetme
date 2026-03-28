@@ -237,11 +237,16 @@ async function handleAdmin(req, context) {
     target.is_admin = makeAdmin;
     await usersDb.setJSON(email, target);
 
-    await persistEvent("warn", FN, makeAdmin ? "admin granted user admin role" : "admin revoked user admin role", {
-      admin: user.email,
-      target: email,
-      is_admin: makeAdmin,
-    });
+    await persistEvent(
+      "warn",
+      FN,
+      makeAdmin ? "admin granted user admin role" : "admin revoked user admin role",
+      {
+        admin: user.email,
+        target: email,
+        is_admin: makeAdmin,
+      }
+    );
 
     return jsonResponse(200, {
       success: true,

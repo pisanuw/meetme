@@ -9,7 +9,9 @@
   <body>
     <nav class="navbar">
       <div class="nav-inner">
-        <a href="/dashboard.html" class="nav-brand"><span class="brand-icon">&#x27F3;</span> MeetMe</a>
+        <a href="/dashboard.html" class="nav-brand"
+          ><span class="brand-icon">&#x27F3;</span> MeetMe</a
+        >
         <div class="nav-links" id="nav-auth" style="display: none">
           <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
           <span class="nav-user" id="nav-username"></span>
@@ -24,7 +26,9 @@
       <div class="form-page">
         <div class="form-card">
           <h1>Booking Setup</h1>
-          <p class="text-muted">Create event types and weekly availability for your booking page.</p>
+          <p class="text-muted">
+            Create event types and weekly availability for your booking page.
+          </p>
 
           <section class="form-group">
             <h2 style="margin-bottom: 12px">Event Type</h2>
@@ -32,11 +36,22 @@
               <input type="hidden" id="event-type-id" />
               <div class="form-group">
                 <label for="event-title">Title <span class="required">*</span></label>
-                <input id="event-title" class="form-control" required maxlength="120" placeholder="e.g. Intro Call" />
+                <input
+                  id="event-title"
+                  class="form-control"
+                  required
+                  maxlength="120"
+                  placeholder="e.g. Intro Call"
+                />
               </div>
               <div class="form-group">
                 <label for="event-description">Description</label>
-                <textarea id="event-description" class="form-control" rows="2" maxlength="1200"></textarea>
+                <textarea
+                  id="event-description"
+                  class="form-control"
+                  rows="2"
+                  maxlength="1200"
+                ></textarea>
               </div>
               <div class="form-row">
                 <div class="form-group">
@@ -60,7 +75,14 @@
               <div class="form-row">
                 <div class="form-group">
                   <label for="event-capacity">Group capacity</label>
-                  <input id="event-capacity" type="number" min="1" max="100" value="1" class="form-control" />
+                  <input
+                    id="event-capacity"
+                    type="number"
+                    min="1"
+                    max="100"
+                    value="1"
+                    class="form-control"
+                  />
                 </div>
                 <div class="form-group">
                   <label for="event-timezone">Timezone</label>
@@ -76,11 +98,15 @@
 
           <section class="form-group" style="margin-top: 30px">
             <h2 style="margin-bottom: 12px">Weekly Availability</h2>
-            <p class="text-muted">Add one or more windows. Slots are generated in 15-minute increments.</p>
+            <p class="text-muted">
+              Add one or more windows. Slots are generated in 15-minute increments.
+            </p>
             <div id="availability-rows"></div>
             <div class="form-actions" style="margin-top: 12px">
               <button type="button" class="btn btn-ghost" id="add-window-btn">+ Add Window</button>
-              <button type="button" class="btn btn-primary" id="save-availability-btn">Save Availability</button>
+              <button type="button" class="btn btn-primary" id="save-availability-btn">
+                Save Availability
+              </button>
             </div>
           </section>
 

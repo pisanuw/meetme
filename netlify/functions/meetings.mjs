@@ -271,7 +271,9 @@ async function handleRequest(req, _context) {
     const datesText = Array.isArray(meeting.dates_or_days) ? meeting.dates_or_days.join(", ") : "";
     const timeRange = `${meeting.start_time || "08:00"} – ${meeting.end_time || "20:00"}${meeting.timezone ? ` (${meeting.timezone})` : ""}`;
 
-    const inviteesOnly = meetingInvites.filter((inv) => (inv.email || "").toLowerCase() !== creatorEmail);
+    const inviteesOnly = meetingInvites.filter(
+      (inv) => (inv.email || "").toLowerCase() !== creatorEmail
+    );
     const invite_results = [];
     for (const inv of inviteesOnly) {
       const inviteSubject = `You've been invited to share availability: ${meeting.title}`;

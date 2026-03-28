@@ -2,7 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import remindersHandler from "../netlify/functions/bookings-reminders.mjs";
-import { installInMemoryDb, uninstallInMemoryDb, setDefaultTestEnv, responseJson } from "./test-helpers.mjs";
+import {
+  installInMemoryDb,
+  uninstallInMemoryDb,
+  setDefaultTestEnv,
+  responseJson,
+} from "./test-helpers.mjs";
 
 let dbBackend;
 
@@ -55,18 +60,24 @@ test("scheduled reminders process host keys and remain idempotent", async () => 
     created_at: new Date().toISOString(),
   });
 
-  const first = await remindersHandler(new Request("http://localhost:8888/api/bookings/reminders/run"), {
-    cron: "0 * * * *",
-  });
+  const first = await remindersHandler(
+    new Request("http://localhost:8888/api/bookings/reminders/run"),
+    {
+      cron: "0 * * * *",
+    }
+  );
   const firstBody = await responseJson(first);
   assert.equal(first.status, 200);
   assert.equal(firstBody.host_count, 1);
   assert.equal(firstBody.sent_count, 1);
   assert.equal(firstBody.failed_count, 0);
 
-  const second = await remindersHandler(new Request("http://localhost:8888/api/bookings/reminders/run"), {
-    cron: "0 * * * *",
-  });
+  const second = await remindersHandler(
+    new Request("http://localhost:8888/api/bookings/reminders/run"),
+    {
+      cron: "0 * * * *",
+    }
+  );
   const secondBody = await responseJson(second);
   assert.equal(second.status, 200);
   assert.equal(secondBody.sent_count, 0);
@@ -74,7 +85,10 @@ test("scheduled reminders process host keys and remain idempotent", async () => 
 });
 
 test("manual reminders run is rejected when secret is not configured", async () => {
-  const res = await remindersHandler(new Request("http://localhost:8888/api/bookings/reminders/run"), {});
+  const res = await remindersHandler(
+    new Request("http://localhost:8888/api/bookings/reminders/run"),
+    {}
+  );
   assert.equal(res.status, 500);
 });
 

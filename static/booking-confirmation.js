@@ -43,7 +43,10 @@ function renderDetail(label, value) {
     detailsEl.innerHTML = [
       renderDetail("Event", booking.event_title),
       renderDetail("Date", booking.date),
-      renderDetail("Time", `${booking.start_time || ""} ${booking.timezone ? `(${booking.timezone})` : ""}`.trim()),
+      renderDetail(
+        "Time",
+        `${booking.start_time || ""} ${booking.timezone ? `(${booking.timezone})` : ""}`.trim()
+      ),
       renderDetail("Host", booking.host_name || booking.host_email),
       renderDetail("Attendee", booking.attendee_name || booking.attendee_email),
       renderDetail("Status", booking.status),

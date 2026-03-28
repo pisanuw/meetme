@@ -2,7 +2,15 @@
  * bookings-reminders.mjs
  * Scheduled reminder sender for upcoming bookings.
  */
-import { errorResponse, getDb, getEnv, jsonResponse, log, persistEvent, secretsEqual } from "./utils.mjs";
+import {
+  errorResponse,
+  getDb,
+  getEnv,
+  jsonResponse,
+  log,
+  persistEvent,
+  secretsEqual,
+} from "./utils.mjs";
 import { sendUpcomingRemindersForHost } from "./bookings.mjs";
 
 const FN = "bookings-reminders";

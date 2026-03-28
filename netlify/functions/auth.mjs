@@ -311,7 +311,8 @@ async function handleAuth(req, context) {
       is_new_user: !!isNew,
     });
     const returnTo = sanitizeNextPath(payload.next || "");
-    const dest = isNew || !user.profile_complete ? "/profile.html?setup=1" : returnTo || "/dashboard.html";
+    const dest =
+      isNew || !user.profile_complete ? "/profile.html?setup=1" : returnTo || "/dashboard.html";
     return redirectResponse(dest, { "Set-Cookie": setCookie("token", appToken) });
   }
 
@@ -349,7 +350,8 @@ async function handleAuth(req, context) {
     const tokenUser = getUserFromRequest(req);
     if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
     const users = getDb("users");
-    const user = (await users.get(tokenUser.email, { type: "json" }).catch(() => null)) || tokenUser;
+    const user =
+      (await users.get(tokenUser.email, { type: "json" }).catch(() => null)) || tokenUser;
     return jsonResponse(200, {
       id: user.id,
       email: user.email,

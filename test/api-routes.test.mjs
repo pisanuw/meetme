@@ -684,3 +684,390 @@ test("auth logout clears session cookie", async () => {
   assert.equal(res.status, 200);
   assert.match(res.headers.get("set-cookie") || "", /Max-Age=0/);
 });
+
+// ─── auth health — admin visibility ──────────────────────────────────────────
+
+test("auth health exposes checks to authenticated admin", async () => {
+  process.env.JWT_SECRET = "test-jwt-secret";
+  process.env.ADMIN_EMAILS = "admin@example.com";
+  const admin = { id: "adm1", email: "admin@example.com", name: "Admin" };
+  await store("users").setJSON("admin@example.com", { ...admin, is_admin: true });
+
+  const req = new Request("http://localhost:8888/api/auth/health", {
+    method: "GET",
+    headers: { cookie: authCookie(admin) },
+  });
+  const res = await authHandler(req, { params: { 0: "health" } });
+  assert.equal(res.status, 200);
+  const body = await responseJson(res);
+  assert.equal(typeof body.ok, "boolean");
+  assert.ok(typeof body.checks === "object", "admin should see checks object");
+  assert.ok(Array.isArray(body.missing), "admin should see missing array");
+});
+
+// ─── auth profile — GET ───────────────────────────────────────────────────────
+
+test("auth profile GET requires authentication", async () => {
+  const req = new Request("http://localhost:8888/api/auth/profile", { method: "GET" });
+  const res = await authHandler(req, { params: { 0: "profile" } });
+  assert.equal(res.status, 401);
+});
+
+test("auth profile GET returns user profile data", async () => {
+  const user = { id: "u50", email: "profile@example.com", name: "Profile User" };
+  await store("users").setJSON("profile@example.com", {
+    ...user,
+    first_name: "Profile",
+    last_name: "User",
+    timezone: "America/New_York",
+    profile_complete: true,
+    calendar_connected: false,
+    google_access_token: "",
+  });
+
+  const req = new Request("http://localhost:8888/api/auth/profile", {
+    method: "GET",
+    headers: { cookie: authCookie(user) },
+  });
+  const res = await authHandler(req, { params: { 0: "profile" } });
+  assert.equal(res.status, 200);
+  const body = await responseJson(res);
+  assert.equal(body.email, "profile@example.com");
+  assert.equal(body.first_name, "Profile");
+  assert.equal(body.timezone, "America/New_York");
+  assert.equal(body.google_access_token, undefined);
+});
+
+// ─── auth profile — POST ──────────────────────────────────────────────────────
+
+test("auth profile POST updates name and timezone", async () => {
+  const user = { id: "u51", email: "update@example.com", name: "Old Name" };
+  await store("users").setJSON("update@example.com", { ...user });
+
+  const req = makeJsonRequest("http://localhost:8888/api/auth/profile", {
+    method: "POST",
+    headers: { cookie: authCookie(user) },
+    body: { first_name: "New", last_name: "Name", timezone: "Europe/London" },
+  });
+  const res = await authHandler(req, { params: { 0: "profile" } });
+  assert.equal(res.status, 200);
+  const body = await responseJson(res);
+  assert.equal(body.success, true);
+  assert.equal(body.name, "New Name");
+
+  const saved = await store("users").get("update@example.com", { type: "json" });
+  assert.equal(saved.first_name, "New");
+  assert.equal(saved.timezone, "Europe/London");
+  assert.equal(saved.profile_complete, true);
+});
+
+test("auth profile POST rejects missing first name", async () => {
+  const user = { id: "u52", email: "nofirstname@example.com", name: "No Name" };
+  await store("users").setJSON("nofirstname@example.com", { ...user });
+
+  const req = makeJsonRequest("http://localhost:8888/api/auth/profile", {
+    method: "POST",
+    headers: { cookie: authCookie(user) },
+    body: { first_name: "", last_name: "Smith", timezone: "" },
+  });
+  const res = await authHandler(req, { params: { 0: "profile" } });
+  assert.equal(res.status, 400);
+  const body = await responseJson(res);
+  assert.match(body.error, /first name/i);
+});
+
+// ─── auth google/calendar-disconnect ─────────────────────────────────────────
+
+test("auth google/calendar-disconnect clears calendar tokens", async () => {
+  const user = { id: "u53", email: "caldisconn@example.com", name: "Cal Disconnect" };
+  await store("users").setJSON("caldisconn@example.com", {
+    ...user,
+    calendar_connected: true,
+    google_access_token: "enc:v1:xxx",
+    google_refresh_token: "enc:v1:yyy",
+    google_token_expiry: 9999999,
+  });
+
+  const req = makeJsonRequest("http://localhost:8888/api/auth/google/calendar-disconnect", {
+    method: "POST",
+    headers: { cookie: authCookie(user) },
+    body: {},
+  });
+  const res = await authHandler(req, { params: { 0: "google/calendar-disconnect" } });
+  assert.equal(res.status, 200);
+  const body = await responseJson(res);
+  assert.equal(body.success, true);
+
+  const saved = await store("users").get("caldisconn@example.com", { type: "json" });
+  assert.equal(saved.calendar_connected, false);
+  assert.equal(saved.google_access_token, "");
+  assert.equal(saved.google_refresh_token, "");
+});
+
+// ─── auth impersonation/stop ──────────────────────────────────────────────────
+
+test("auth impersonation/stop restores admin session", async () => {
+  const adminUser = {
+    id: "adm2",
+    email: "admin2@example.com",
+    name: "Admin Two",
+    is_admin: true,
+  };
+  const impersonatedUser = {
+    id: "u60",
+    email: "victim@example.com",
+    name: "Victim",
+    is_impersonated: true,
+    impersonator_email: "admin2@example.com",
+    impersonator_name: "Admin Two",
+  };
+
+  process.env.ADMIN_EMAILS = "admin2@example.com";
+  await store("users").setJSON("admin2@example.com", adminUser);
+
+  const req = makeJsonRequest("http://localhost:8888/api/auth/impersonation/stop", {
+    method: "POST",
+    headers: { cookie: authCookie(impersonatedUser) },
+    body: {},
+  });
+  const res = await authHandler(req, { params: { 0: "impersonation/stop" } });
+  assert.equal(res.status, 200);
+  const body = await responseJson(res);
+  assert.equal(body.success, true);
+  assert.match(res.headers.get("set-cookie") || "", /token=/);
+});
+
+test("auth impersonation/stop rejects non-impersonated session", async () => {
+  const user = { id: "u61", email: "regular@example.com", name: "Regular" };
+
+  const req = makeJsonRequest("http://localhost:8888/api/auth/impersonation/stop", {
+    method: "POST",
+    headers: { cookie: authCookie(user) },
+    body: {},
+  });
+  const res = await authHandler(req, { params: { 0: "impersonation/stop" } });
+  assert.equal(res.status, 403);
+});
+
+// ─── magic-link/verify edge cases ────────────────────────────────────────────
+
+test("magic-link verify with no token redirects to /?error=invalid-link", async () => {
+  const req = new Request("http://localhost:8888/api/auth/magic-link/verify", { method: "GET" });
+  const res = await authHandler(req, { params: { 0: "magic-link/verify" } });
+  assert.equal(res.status, 302);
+  assert.match(res.headers.get("location") || "", /invalid-link/);
+});
+
+test("magic-link verify with bad token redirects to /?error=invalid-link", async () => {
+  const req = new Request(
+    "http://localhost:8888/api/auth/magic-link/verify?token=not.a.real.token",
+    { method: "GET" }
+  );
+  const res = await authHandler(req, { params: { 0: "magic-link/verify" } });
+  assert.equal(res.status, 302);
+  assert.match(res.headers.get("location") || "", /invalid-link/);
+});
+
+test("magic-link verify with already-used token redirects to /?error=link-already-used", async () => {
+  process.env.RESEND_API_KEY = "re_test";
+  process.env.AUTH_FROM_EMAIL = "MeetMe <noreply@example.com>";
+
+  // First request the magic link (creates a login token in DB)
+  const requestReq = makeJsonRequest("http://localhost:8888/api/auth/magic-link/request", {
+    method: "POST",
+    body: { email: "reuse@example.com", name: "Reuse User" },
+  });
+  await authHandler(requestReq, { params: { 0: "magic-link/request" } });
+
+  // Get the JTI from the stored token
+  const tokenStore = store("login_tokens");
+  const allTokens = await tokenStore.list();
+  const jti = allTokens.blobs[0]?.key;
+  assert.ok(jti, "token should exist in store");
+
+  const tokenRecord = await tokenStore.get(jti, { type: "json" });
+
+  // Create a valid magic link token and mark it as used
+  const { createToken: mkToken } = await import("../netlify/functions/utils.mjs");
+  const magicToken = mkToken(
+    {
+      id: jti,
+      email: "reuse@example.com",
+      purpose: "magic_link",
+      jti,
+    },
+    "15m"
+  );
+  await tokenStore.setJSON(jti, { ...tokenRecord, used: true });
+
+  const verifyReq = new Request(
+    `http://localhost:8888/api/auth/magic-link/verify?token=${encodeURIComponent(magicToken)}`,
+    { method: "GET" }
+  );
+  const res = await authHandler(verifyReq, { params: { 0: "magic-link/verify" } });
+  assert.equal(res.status, 302);
+  assert.match(res.headers.get("location") || "", /link-already-used/);
+});
+
+// ─── meetings delete ──────────────────────────────────────────────────────────
+
+test("meetings delete — creator can delete a meeting", async () => {
+  const creator = { id: "u70", email: "creator70@example.com", name: "Creator 70" };
+  await store("users").setJSON("creator70@example.com", creator);
+
+  const meetingId = await createMeetingAs(creator);
+
+  const req = makeJsonRequest(`http://localhost:8888/api/meetings/${meetingId}/delete`, {
+    method: "POST",
+    headers: { cookie: authCookie(creator) },
+    body: {},
+  });
+  const res = await meetingsHandler(req, {});
+  assert.equal(res.status, 200);
+  const body = await responseJson(res);
+  assert.equal(body.success, true);
+
+  const gone = await store("meetings").get(meetingId, { type: "json" });
+  assert.equal(gone, null);
+});
+
+test("meetings delete — non-creator is rejected with 403", async () => {
+  const creator = { id: "u71", email: "creator71@example.com", name: "Creator 71" };
+  const other = { id: "u72", email: "other72@example.com", name: "Other 72" };
+  await store("users").setJSON("creator71@example.com", creator);
+
+  const meetingId = await createMeetingAs(creator);
+
+  const req = makeJsonRequest(`http://localhost:8888/api/meetings/${meetingId}/delete`, {
+    method: "POST",
+    headers: { cookie: authCookie(other) },
+    body: {},
+  });
+  const res = await meetingsHandler(req, {});
+  assert.equal(res.status, 403);
+});
+
+// ─── meetings leave ───────────────────────────────────────────────────────────
+
+test("meetings leave — invited user can leave a meeting", async () => {
+  const creator = { id: "u73", email: "creator73@example.com", name: "Creator 73" };
+  const invitee = { id: "u74", email: "friend@example.com", name: "Friend" };
+  await store("users").setJSON("creator73@example.com", creator);
+  await store("users").setJSON("friend@example.com", invitee);
+
+  const meetingId = await createMeetingAs(creator);
+
+  // Link the invitee's user record to their invite
+  const inviteStore = store("invites");
+  const meetingInvites = (await inviteStore.get(`meeting:${meetingId}`, { type: "json" })) || [];
+  const updatedInvites = meetingInvites.map((inv) =>
+    inv.email === "friend@example.com" ? { ...inv, user_id: invitee.id } : inv
+  );
+  await inviteStore.setJSON(`meeting:${meetingId}`, updatedInvites);
+
+  const req = makeJsonRequest(`http://localhost:8888/api/meetings/${meetingId}/leave`, {
+    method: "POST",
+    headers: { cookie: authCookie(invitee) },
+    body: {},
+  });
+  const res = await meetingsHandler(req, {});
+  assert.equal(res.status, 200);
+  const body = await responseJson(res);
+  assert.equal(body.success, true);
+});
+
+test("meetings leave — creator cannot leave their own meeting", async () => {
+  const creator = { id: "u75", email: "creator75@example.com", name: "Creator 75" };
+  await store("users").setJSON("creator75@example.com", creator);
+
+  const meetingId = await createMeetingAs(creator);
+
+  const req = makeJsonRequest(`http://localhost:8888/api/meetings/${meetingId}/leave`, {
+    method: "POST",
+    headers: { cookie: authCookie(creator) },
+    body: {},
+  });
+  const res = await meetingsHandler(req, {});
+  assert.equal(res.status, 403);
+});
+
+// ─── webhooks — complaint and unknown event types ─────────────────────────────
+
+test("webhooks resend handles spam complaint event", async () => {
+  process.env.RESEND_WEBHOOK_SECRET = "expected-secret";
+  process.env.RESEND_API_KEY = "re_test";
+  process.env.AUTH_FROM_EMAIL = "MeetMe <noreply@example.com>";
+  process.env.APP_URL = "http://localhost:8888";
+
+  await store("email_records").setJSON("mail-complaint-1", {
+    meeting_id: "m-complaint",
+    meeting_title: "Team Sync",
+    creator_email: "creator@example.com",
+    creator_name: "Creator",
+    invitee_email: "spam@example.com",
+  });
+
+  const req = makeJsonRequest("http://localhost:8888/api/webhooks/resend", {
+    method: "POST",
+    headers: { "x-webhook-secret": "expected-secret" },
+    body: {
+      type: "email.complained",
+      data: { email_id: "mail-complaint-1" },
+    },
+  });
+  const res = await webhooksHandler(req, { params: { 0: "resend" } });
+  const body = await responseJson(res);
+  assert.equal(res.status, 200);
+  assert.equal(body.ok, true);
+});
+
+test("webhooks resend acknowledges non-actionable events without acting", async () => {
+  process.env.RESEND_WEBHOOK_SECRET = "expected-secret";
+
+  const req = makeJsonRequest("http://localhost:8888/api/webhooks/resend", {
+    method: "POST",
+    headers: { "x-webhook-secret": "expected-secret" },
+    body: { type: "email.delivered", data: { email_id: "mail-delivered" } },
+  });
+  const res = await webhooksHandler(req, { params: { 0: "resend" } });
+  const body = await responseJson(res);
+  assert.equal(res.status, 200);
+  assert.equal(body.ok, true);
+  assert.match(body.message, /no action needed/i);
+});
+
+test("webhooks resend with missing email_id returns ok with no-correlation message", async () => {
+  process.env.RESEND_WEBHOOK_SECRET = "expected-secret";
+
+  const req = makeJsonRequest("http://localhost:8888/api/webhooks/resend", {
+    method: "POST",
+    headers: { "x-webhook-secret": "expected-secret" },
+    body: { type: "email.bounced", data: {} },
+  });
+  const res = await webhooksHandler(req, { params: { 0: "resend" } });
+  const body = await responseJson(res);
+  assert.equal(res.status, 200);
+  assert.equal(body.ok, true);
+  assert.match(body.message, /no email_id/i);
+});
+
+// ─── rate-limiting on IP ──────────────────────────────────────────────────────
+
+test("auth magic-link IP rate-limit blocks excessive requests from same IP", async () => {
+  process.env.DISABLE_RATE_LIMIT = "";
+  process.env.RESEND_API_KEY = "re_test";
+  process.env.AUTH_FROM_EMAIL = "MeetMe <noreply@example.com>";
+
+  await store("rate_limits").setJSON("auth_magic_link_ip:1.2.3.4", {
+    window_start: Date.now(),
+    count: 12,
+  });
+
+  const req = makeJsonRequest("http://localhost:8888/api/auth/magic-link/request", {
+    method: "POST",
+    headers: { "x-forwarded-for": "1.2.3.4" },
+    body: { email: "victim@example.com", name: "Victim" },
+  });
+  const res = await authHandler(req, { params: { 0: "magic-link/request" } });
+  assert.equal(res.status, 429);
+});
