@@ -161,7 +161,7 @@ test("host reminders action posts selected reminder window", async ({ page }) =>
   await page.locator("#reminder-window").selectOption("6");
   await page.getByRole("button", { name: "Send Reminders" }).click();
 
-  await expect(page.getByText("Reminder run complete: sent 1, skipped 0.")).toBeVisible();
+  await expect(page.getByText("Reminder run complete: sent 1, skipped 0, failed 0.")).toBeVisible();
   expect(capturedReminderPayload).toBeTruthy();
   expect(capturedReminderPayload.within_hours).toBe(6);
 });

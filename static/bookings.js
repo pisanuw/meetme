@@ -129,7 +129,7 @@ sendRemindersBtn.addEventListener("click", async () => {
   }
 
   showFlash(
-    `Reminder run complete: sent ${data.sent_count || 0}, skipped ${data.skipped_count || 0}.`,
+    `Reminder run complete: sent ${data.sent_count || 0}, skipped ${data.skipped_count || 0}, failed ${data.failed_count || 0}.`,
     "success"
   );
 });
