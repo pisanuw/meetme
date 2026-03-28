@@ -1,0 +1,35 @@
+This is a revocation certificate for the OpenPGP key:
+
+pub   rsa3072 2026-03-28 [SCEA] [expires: 2027-03-28]
+      B1315A2CEAEFA6505F9C5365FFF1B4E2D6C1C779
+uid          MeetMe SOPS Local <meetme-sops-local@localhost>
+
+A revocation certificate is a kind of "kill switch" to publicly
+declare that a key shall not anymore be used.  It is not possible
+to retract such a revocation certificate once it has been published.
+
+Use it to revoke this key in case of a compromise or loss of
+the secret key.  However, if the secret key is still accessible,
+it is better to generate a new revocation certificate and give
+a reason for the revocation.  For details see the description of
+of the gpg command "--generate-revocation" in the GnuPG manual.
+
+To avoid an accidental use of this file, a colon has been inserted
+before the 5 dashes below.  Remove this colon with a text editor
+before importing and publishing this revocation certificate.
+
+:-----BEGIN PGP PUBLIC KEY BLOCK-----
+Comment: This is a revocation certificate
+
+iQG1BCABCAAgFiEEsTFaLOrvplBfnFNl//G04tbBx3kFAmnH2dYCHQAACgkQ//G0
+4tbBx3mb0wv3X4CF/iv0OaLHfKC5sqwgn9tpaQ0YoEpatibuWsUEwFEMsUngXjqp
+NWA8xoQHDg/tdie88yEi77LEitwohlyhjU1BJZgaYR69XdSwmgO1lM/YBkO07ZTD
+ZwYjsgdHUpzYXoOkdqPvg6fc86PzvsHRDMDXPNqpUJ+cbrNT9TEmCvYiGY59wA+T
+7F7M0mqKM10CbBXC4w0cdLW4Duuacw4bmxw3WMPmAN4gFGv5JUCjUDV6AEs6U2C2
+YJV6kS6q0lutItcSBCgOThRxBwWeRuQqZSy+w7aR7std9xFw+te5Z4aASKd8Evt+
+1VQEIQnTRzLB1uuoo+x8iP7A8KaNyafaqMcFx1ssvjBMWsWJ0PuM1tON3vFZSaDB
+dWjKj+w2lhhUM8JPC1kgIYXjm41rwPkpXk1neXcE0HcLpTOgtr49HhizILDvyYZJ
+JEg44mLhXmeJdiTZruKz1Uphq5wHIkmEK3551FMUaG17SYRj9YCUV0GowvK+iMyP
+bfqwWFuieu8=
+=Tbgg
+-----END PGP PUBLIC KEY BLOCK-----

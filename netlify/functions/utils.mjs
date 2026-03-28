@@ -402,7 +402,26 @@ export function clearCookie(name) {
  * @returns {string}
  */
 export function getAppUrl(req) {
-  return getEnv("APP_URL", new URL(req.url).origin);
+  const requestOrigin = new URL(req.url).origin;
+  const appUrl = getEnv("APP_URL", "").trim();
+  const isNetlifyDev = getEnv("NETLIFY_DEV", "").trim().toLowerCase() === "true";
+
+  if (!appUrl) return requestOrigin;
+
+  // Safety for local Netlify Dev: ignore production APP_URL values to avoid
+  // broken localhost OAuth redirects when .env contains deployed settings.
+  if (isNetlifyDev) {
+    try {
+      const parsed = new URL(appUrl);
+      const host = parsed.hostname.toLowerCase();
+      const isLocalHost = host === "localhost" || host === "127.0.0.1" || host === "::1";
+      if (!isLocalHost) return requestOrigin;
+    } catch {
+      return requestOrigin;
+    }
+  }
+
+  return appUrl;
 }
 
 // ─── Admin ───────────────────────────────────────────────────────────────────

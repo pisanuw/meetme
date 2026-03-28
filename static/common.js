@@ -49,6 +49,85 @@ function getCurrentPathWithQuery() {
   return path;
 }
 
+function ensureNavDropdown(logoutLink, { menuId, listId, label }) {
+  let menu = document.getElementById(menuId);
+  let menuList = document.getElementById(listId);
+
+  if (!menu || !menuList) {
+    menu = document.createElement("details");
+    menu.id = menuId;
+    menu.className = "nav-dropdown";
+
+    const summary = document.createElement("summary");
+    summary.className = "nav-dropdown-trigger";
+    summary.textContent = label;
+
+    menuList = document.createElement("div");
+    menuList.id = listId;
+    menuList.className = "nav-dropdown-list";
+
+    menu.append(summary, menuList);
+    logoutLink.parentNode.insertBefore(menu, logoutLink);
+  }
+
+  return { menu, menuList };
+}
+
+function ensureNavMenus(logoutLink) {
+  if (!logoutLink?.parentNode) return null;
+
+  const bookings = ensureNavDropdown(logoutLink, {
+    menuId: "nav-bookings-menu",
+    listId: "nav-bookings-menu-list",
+    label: "Bookings",
+  });
+  const account = ensureNavDropdown(logoutLink, {
+    menuId: "nav-account-menu",
+    listId: "nav-account-menu-list",
+    label: "Account",
+  });
+
+  logoutLink.className = "nav-dropdown-item nav-dropdown-item-danger";
+  if (logoutLink.parentNode !== account.menuList) {
+    account.menuList.appendChild(logoutLink);
+  }
+
+  return {
+    bookingsMenu: bookings.menu,
+    bookingsMenuList: bookings.menuList,
+    accountMenu: account.menu,
+    accountMenuList: account.menuList,
+  };
+}
+
+function ensureMenuLink(navMenuList, { id, href, text, className = "", beforeNode = null }) {
+  let link = document.getElementById(id);
+  if (!link) {
+    link = document.createElement("a");
+    link.id = id;
+    link.href = href;
+    link.textContent = text;
+  }
+
+  link.className = `nav-dropdown-item ${className}`.trim();
+  navMenuList.insertBefore(link, beforeNode);
+
+  return link;
+}
+
+function ensureMenuDivider(navMenuList, logoutLink) {
+  let divider = document.getElementById("nav-menu-divider");
+  if (!divider) {
+    divider = document.createElement("div");
+    divider.id = "nav-menu-divider";
+  }
+
+  divider.className = "nav-dropdown-divider";
+  if (divider.parentNode !== navMenuList) {
+    navMenuList.insertBefore(divider, logoutLink);
+  }
+}
+
 /**
  * Call /api/auth/me and, if the user is signed in, update the navigation bar
  * to show their name and inject "Edit Profile" (and "Admin" if applicable) links.
@@ -70,84 +149,90 @@ async function checkAuth() {
     }
 
     const logoutLink = document.getElementById("logout-link");
+    const menuState = ensureNavMenus(logoutLink);
+    if (!menuState) return user;
 
-    // Inject the "Edit Profile" link once, immediately before the logout link.
-    if (!document.getElementById("profile-link") && logoutLink?.parentNode) {
-      const profileLink = document.createElement("a");
-      profileLink.id = "profile-link";
-      profileLink.href = "/profile.html";
-      profileLink.className = "nav-link";
-      profileLink.textContent = "Edit Profile";
-      logoutLink.parentNode.insertBefore(profileLink, logoutLink);
-    }
+    const { bookingsMenu, bookingsMenuList, accountMenu, accountMenuList } = menuState;
 
-    if (!document.getElementById("booking-setup-link") && logoutLink?.parentNode) {
-      const setupLink = document.createElement("a");
-      setupLink.id = "booking-setup-link";
-      setupLink.href = "/booking-setup.html";
-      setupLink.className = "nav-link";
-      setupLink.textContent = "Booking Setup";
-      logoutLink.parentNode.insertBefore(setupLink, logoutLink);
-    }
+    ensureMenuLink(accountMenuList, {
+      id: "profile-link",
+      href: "/profile.html",
+      text: "Edit Profile",
+      beforeNode: logoutLink,
+    });
+    ensureMenuLink(bookingsMenuList, {
+      id: "booking-setup-link",
+      href: "/booking-setup.html",
+      text: "Booking Setup",
+    });
+    ensureMenuLink(bookingsMenuList, {
+      id: "booking-links-link",
+      href: "/booking-links.html",
+      text: "Booking Links",
+    });
+    ensureMenuLink(bookingsMenuList, {
+      id: "bookings-link",
+      href: "/bookings.html",
+      text: "My Bookings",
+    });
 
-    if (!document.getElementById("booking-links-link") && logoutLink?.parentNode) {
-      const linksLink = document.createElement("a");
-      linksLink.id = "booking-links-link";
-      linksLink.href = "/booking-links.html";
-      linksLink.className = "nav-link";
-      linksLink.textContent = "Booking Links";
-      logoutLink.parentNode.insertBefore(linksLink, logoutLink);
-    }
-
-    if (!document.getElementById("bookings-link") && logoutLink?.parentNode) {
-      const bookingsLink = document.createElement("a");
-      bookingsLink.id = "bookings-link";
-      bookingsLink.href = "/bookings.html";
-      bookingsLink.className = "nav-link";
-      bookingsLink.textContent = "My Bookings";
-      logoutLink.parentNode.insertBefore(bookingsLink, logoutLink);
-    }
-
-    // Inject the "Admin" link once for admin users. This check is separate from
-    // the profile link check so both links are always injected regardless of order.
-    if (user.is_admin && !document.getElementById("admin-nav-link") && logoutLink?.parentNode) {
-      const adminLink = document.createElement("a");
-      adminLink.id = "admin-nav-link";
-      adminLink.href = "/admin.html";
-      adminLink.className = "nav-link";
-      adminLink.textContent = "Admin";
-      adminLink.style.color = "#c084fc";
-      logoutLink.parentNode.insertBefore(adminLink, logoutLink);
-    }
-
-    // When an admin is impersonating another user, provide an easy way to
-    // restore the original admin session from any page.
-    if (
-      user.is_impersonated &&
-      !document.getElementById("stop-impersonation-link") &&
-      logoutLink?.parentNode
-    ) {
-      const stopLink = document.createElement("a");
-      stopLink.id = "stop-impersonation-link";
-      stopLink.href = "#";
-      stopLink.className = "nav-link";
-      stopLink.textContent = "Return to Admin";
-      stopLink.style.color = "#f59e0b";
-      stopLink.addEventListener("click", async (e) => {
-        e.preventDefault();
-        const { ok, data } = await apiFetch("/api/auth/impersonation/stop", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: "{}",
-        });
-        if (!ok) {
-          showFlash(data.error || "Could not restore admin session.", "error");
-          return;
-        }
-        window.location.href = "/admin.html";
+    const existingAdmin = document.getElementById("admin-nav-link");
+    if (user.is_admin) {
+      ensureMenuLink(accountMenuList, {
+        id: "admin-nav-link",
+        href: "/admin.html",
+        text: "Admin",
+        className: "nav-dropdown-item-admin",
+        beforeNode: logoutLink,
       });
-      logoutLink.parentNode.insertBefore(stopLink, logoutLink);
+    } else if (existingAdmin) {
+      existingAdmin.remove();
     }
+
+    const existingStop = document.getElementById("stop-impersonation-link");
+    if (user.is_impersonated) {
+      const stopLink = ensureMenuLink(accountMenuList, {
+        id: "stop-impersonation-link",
+        href: "#",
+        text: "Return to Admin",
+        className: "nav-dropdown-item-warning",
+        beforeNode: logoutLink,
+      });
+
+      if (!stopLink.dataset.handlerBound) {
+        stopLink.addEventListener("click", async (e) => {
+          e.preventDefault();
+            accountMenu.open = false;
+          const { ok, data } = await apiFetch("/api/auth/impersonation/stop", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          });
+          if (!ok) {
+            showFlash(data.error || "Could not restore admin session.", "error");
+            return;
+          }
+          window.location.href = "/admin.html";
+        });
+        stopLink.dataset.handlerBound = "1";
+      }
+    } else if (existingStop) {
+      existingStop.remove();
+    }
+
+    ensureMenuDivider(accountMenuList, logoutLink);
+
+    [bookingsMenuList, accountMenuList].forEach((list) => {
+      list.querySelectorAll("a").forEach((link) => {
+        if (!link.dataset.closeMenuBound) {
+          link.addEventListener("click", () => {
+            bookingsMenu.open = false;
+            accountMenu.open = false;
+          });
+          link.dataset.closeMenuBound = "1";
+        }
+      });
+    });
 
     return user;
   } catch {

@@ -34,6 +34,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Setup SOPS env (optional)
+        uses: ./.github/actions/decrypt-sops-env
+        with:
+          sops-gpg-private-key: ${{ secrets.SOPS_GPG_PRIVATE_KEY }}
+
       - name: Run production dependency audit
         run: npm audit --omit=dev
 
@@ -52,6 +57,11 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Setup SOPS env (optional)
+        uses: ./.github/actions/decrypt-sops-env
+        with:
+          sops-gpg-private-key: ${{ secrets.SOPS_GPG_PRIVATE_KEY }}
 
       - name: Run tests
         run: npm test
@@ -74,6 +84,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Setup SOPS env (optional)
+        uses: ./.github/actions/decrypt-sops-env
+        with:
+          sops-gpg-private-key: ${{ secrets.SOPS_GPG_PRIVATE_KEY }}
+
       - name: Run tests
         run: npm test
 
@@ -92,6 +107,11 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Setup SOPS env (optional)
+        uses: ./.github/actions/decrypt-sops-env
+        with:
+          sops-gpg-private-key: ${{ secrets.SOPS_GPG_PRIVATE_KEY }}
 
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
@@ -116,6 +136,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Setup SOPS env (optional)
+        uses: ./.github/actions/decrypt-sops-env
+        with:
+          sops-gpg-private-key: ${{ secrets.SOPS_GPG_PRIVATE_KEY }}
+
       - name: Run staging smoke checks
         env:
           BASE_URL: ${{ inputs.staging_base_url }}
@@ -138,6 +163,11 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Setup SOPS env (optional)
+        uses: ./.github/actions/decrypt-sops-env
+        with:
+          sops-gpg-private-key: ${{ secrets.SOPS_GPG_PRIVATE_KEY }}
 
       - name: Run staging smoke checks
         env:

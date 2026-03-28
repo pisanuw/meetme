@@ -1,0 +1,21 @@
+# SOPS policy for MeetMe env files.
+# Replace fingerprints below with real GPG key fingerprints:
+# - local developers (one fingerprint per person)
+# - one dedicated CI service key
+
+creation_rules:
+  # Root env secrets encrypted in-repo (recommended target file: .env.enc)
+  # Matches: .env.enc, .env.staging.enc, .env.production.enc, etc.
+  - path_regex: ^\.env(\.[A-Za-z0-9_-]+)?\.enc$
+    format: dotenv
+    key_groups:
+      - pgp:
+          - "B1315A2CEAEFA6505F9C5365FFF1B4E2D6C1C779"
+
+  # Optional nested env files if you later store secrets in subfolders.
+  # Matches examples: netlify/.env.enc, config/.env.staging.enc
+  - path_regex: ^.+/\.env(\.[A-Za-z0-9_-]+)?\.enc$
+    format: dotenv
+    key_groups:
+      - pgp:
+          - "B1315A2CEAEFA6505F9C5365FFF1B4E2D6C1C779"

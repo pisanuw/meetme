@@ -1,0 +1,39 @@
+name: Decrypt SOPS Env
+
+description: Install SOPS and optionally decrypt .env.enc into .env using a GPG private key.
+
+inputs:
+  sops-gpg-private-key:
+    description: ASCII-armored GPG private key used by SOPS to decrypt .env.enc
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Install SOPS
+      shell: bash
+      run: |
+        set -euo pipefail
+        SOPS_VERSION=3.9.4
+        curl -fsSL "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.amd64" -o /usr/local/bin/sops
+        chmod +x /usr/local/bin/sops
+
+    - name: Decrypt .env.enc (optional)
+      shell: bash
+      env:
+        SOPS_GPG_PRIVATE_KEY: ${{ inputs.sops-gpg-private-key }}
+      run: |
+        set -euo pipefail
+        if [ ! -f .env.enc ]; then
+          echo ".env.enc not found; continuing without decryption."
+          exit 0
+        fi
+        if [ -z "${SOPS_GPG_PRIVATE_KEY:-}" ]; then
+          echo "SOPS_GPG_PRIVATE_KEY secret not set; continuing without decryption."
+          exit 0
+        fi
+        mkdir -p ~/.gnupg
+        chmod 700 ~/.gnupg
+        printf '%s' "${SOPS_GPG_PRIVATE_KEY}" | gpg --batch --import
+        sops --decrypt .env.enc > .env
+        chmod 600 .env

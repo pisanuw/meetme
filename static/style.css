@@ -110,6 +110,77 @@ a:hover {
   text-decoration: none;
 }
 
+.nav-dropdown {
+  position: relative;
+}
+.nav-dropdown-trigger {
+  list-style: none;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  user-select: none;
+}
+.nav-dropdown-trigger::-webkit-details-marker {
+  display: none;
+}
+.nav-dropdown-trigger::after {
+  content: " ▾";
+  font-size: 0.78rem;
+}
+.nav-dropdown[open] .nav-dropdown-trigger {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.55);
+}
+.nav-dropdown-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 220px;
+  background: #ffffff;
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 120;
+}
+.nav-dropdown-item {
+  display: block;
+  color: var(--gray-900);
+  font-size: 0.86rem;
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+.nav-dropdown-item:hover {
+  background: var(--blue-light);
+  color: var(--gray-900);
+  text-decoration: none;
+}
+.nav-dropdown-item-admin {
+  color: #7c3aed;
+  font-weight: 600;
+}
+.nav-dropdown-item-warning {
+  color: #b45309;
+  font-weight: 600;
+}
+.nav-dropdown-item-danger {
+  color: #b91c1c;
+  font-weight: 600;
+}
+.nav-dropdown-divider {
+  height: 1px;
+  background: var(--gray-200);
+  margin: 4px 6px;
+}
+
 /* ────────────────────────────────────────────
    FLASH MESSAGES
 ──────────────────────────────────────────── */
@@ -1016,6 +1087,22 @@ a:hover {
    RESPONSIVE
 ──────────────────────────────────────────── */
 @media (max-width: 700px) {
+  .nav-inner {
+    padding: 0 12px;
+  }
+  .nav-links {
+    gap: 8px;
+  }
+  .nav-user {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .nav-dropdown-list {
+    right: -4px;
+    width: min(250px, 84vw);
+  }
   .main-content {
     padding: 12px;
   }

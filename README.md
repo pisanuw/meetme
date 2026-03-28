@@ -211,6 +211,25 @@ Recommended approach:
 If you must run inside Docker, use deployed Netlify preview/production for
 auth/function validation and limit container-local checks to static/UI behavior.
 
+### esbuild Platform Mismatch (Docker + macOS)
+
+If `npm run dev` fails with a message like:
+
+- `You installed esbuild for another platform than the one you're currently using`
+
+you are likely reusing `node_modules` between Linux (Docker) and macOS.
+
+Fix on macOS:
+
+```bash
+npm run fix:deps
+```
+
+Prevention:
+
+1. Do not share `node_modules` between host and container.
+2. Install dependencies separately in each environment (`npm ci` on each side).
+
 ### Quality checks
 
 ```bash
