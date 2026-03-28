@@ -20,7 +20,8 @@
 async function apiFetch(url, options = {}) {
   let res;
   try {
-    res = await fetch(url, options);
+    // Always send credentials (cookies) with API requests to maintain sessions
+    res = await fetch(url, { ...options, credentials: "include" });
   } catch (networkErr) {
     return { ok: false, status: 0, data: { error: `Network error: ${networkErr.message}` } };
   }
@@ -52,7 +53,10 @@ async function apiFetch(url, options = {}) {
 async function checkAuth() {
   try {
     const { ok, data: user } = await apiFetch("/api/auth/me");
-    if (!ok || !user) return null;
+    if (!ok || !user) {
+      console.log("checkAuth: not authenticated", { ok, user });
+      return null;
+    }
 
     // Show the authenticated nav section and display the user's name.
     const navAuth = document.getElementById("nav-auth");
