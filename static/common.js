@@ -25,11 +25,8 @@ async function apiFetch(url, options = {}) {
     return { ok: false, status: 0, data: { error: `Network error: ${networkErr.message}` } };
   }
 
-  // Treat 401 as a session expiry — redirect to the sign-in page automatically.
-  if (res.status === 401) {
-    window.location.href = "/";
-    return { ok: false, status: 401, data: { error: "Session expired. Redirecting to sign in…" } };
-  }
+  // Don't auto-redirect on 401 — let each page handle it (login page needs 401 to show login form).
+  // Pages that require auth (like dashboard.js) use requireAuth() to handle 401 explicitly.
 
   let data;
   const text = await res.text().catch(() => "");
