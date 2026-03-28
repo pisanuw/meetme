@@ -21,8 +21,11 @@ async function apiFetch(url, options = {}) {
   let res;
   try {
     // Always send credentials (cookies) with API requests to maintain sessions
+    console.log("apiFetch: fetching", { url, method: options.method || "GET" });
     res = await fetch(url, { ...options, credentials: "include" });
+    console.log("apiFetch: fetch complete", { url, status: res.status, statusText: res.statusText });
   } catch (networkErr) {
+    console.error("apiFetch: network error", { url, error: networkErr.message });
     return { ok: false, status: 0, data: { error: `Network error: ${networkErr.message}` } };
   }
 
@@ -43,6 +46,10 @@ async function apiFetch(url, options = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
+// Prevent multiple concurrent checkAuth calls to avoid race conditions
+let checkAuthInProgress = false;
+let checkAuthResult = null;
+
 /**
  * Call /api/auth/me and, if the user is signed in, update the navigation bar
  * to show their name and inject "Edit Profile" (and "Admin" if applicable) links.
@@ -51,10 +58,21 @@ async function apiFetch(url, options = {}) {
  * @returns {Promise<object|null>} The user object from the session, or null
  */
 async function checkAuth() {
+  // If already in progress, return cached result or wait
+  if (checkAuthInProgress) {
+    console.log("checkAuth: already in progress, returning cached result");
+    return checkAuthResult;
+  }
+  
+  checkAuthInProgress = true;
   try {
-    const { ok, data: user } = await apiFetch("/api/auth/me");
+    console.log("checkAuth: starting fetch to /api/auth/me");
+    const { ok, status, data: user } = await apiFetch("/api/auth/me");
+    console.log("checkAuth: fetch complete", { ok, status, hasUser: !!user, userKeys: user ? Object.keys(user) : [] });
+    
     if (!ok || !user) {
-      console.log("checkAuth: not authenticated", { ok, user });
+      console.log("checkAuth: not authenticated", { ok, status, user });
+      checkAuthResult = null;
       return null;
     }
 
@@ -146,9 +164,15 @@ async function checkAuth() {
       logoutLink.parentNode.insertBefore(stopLink, logoutLink);
     }
 
+    console.log("checkAuth: user authenticated", { email: user.email, name: user.name });
+    checkAuthResult = user;
     return user;
-  } catch {
+  } catch (err) {
+    console.error("checkAuth: exception thrown", err);
+    checkAuthResult = null;
     return null;
+  } finally {
+    checkAuthInProgress = false;
   }
 }
 

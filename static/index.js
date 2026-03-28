@@ -1,6 +1,14 @@
-checkAuth().then((user) => {
-  if (user) window.location.href = "/dashboard.html";
+console.log("index.js: loaded");
 
+checkAuth().then((user) => {
+  console.log("index.js: checkAuth returned", { authenticated: !!user });
+  if (user) {
+    console.log("index.js: authenticated, redirecting to /dashboard.html");
+    window.location.href = "/dashboard.html";
+    return;
+  }
+
+  console.log("index.js: not authenticated, showing login form");
   const params = new URLSearchParams(window.location.search);
   const error = params.get("error");
   const errorMap = {
@@ -20,20 +28,30 @@ checkAuth().then((user) => {
     showFlash(errorMap[error], "danger");
     window.history.replaceState({}, document.title, "/");
   }
+}).catch((err) => {
+  console.error("index.js: checkAuth error", err);
 });
 
-document.getElementById("magic-link-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const email = document.getElementById("email").value.trim();
+const form = document.getElementById("magic-link-form");
+if (form) {
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    console.log("index.js: magic-link form submitted");
+    const email = document.getElementById("email").value.trim();
 
-  const { ok, data } = await apiFetch("/api/auth/magic-link/request", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
+    const { ok, data } = await apiFetch("/api/auth/magic-link/request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    if (ok) {
+      console.log("index.js: magic-link request succeeded");
+      window.location.href = "/email-sent.html?email=" + encodeURIComponent(email);
+    } else {
+      console.error("index.js: magic-link request failed", data);
+      showFlash(data.error || "Could not send sign-in link. Please try again.", "danger");
+    }
   });
-  if (ok) {
-    window.location.href = "/email-sent.html?email=" + encodeURIComponent(email);
-  } else {
-    showFlash(data.error || "Could not send sign-in link. Please try again.", "danger");
-  }
-});
+} else {
+  console.warn("index.js: magic-link-form element not found");
+}
