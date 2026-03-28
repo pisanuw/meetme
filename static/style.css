@@ -510,10 +510,15 @@ a:hover {
 }
 .date-chip.removable {
   cursor: pointer;
+  border: none;
 }
 .date-chip.removable:hover {
   background: #ffebee;
   color: var(--red);
+}
+.date-chip.active {
+  background: var(--blue);
+  color: white;
 }
 
 /* ────────────────────────────────────────────

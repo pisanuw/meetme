@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Booking Setup – MeetMe</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-inner">
+        <a href="/dashboard.html" class="nav-brand"><span class="brand-icon">&#x27F3;</span> MeetMe</a>
+        <div class="nav-links" id="nav-auth" style="display: none">
+          <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
+          <span class="nav-user" id="nav-username"></span>
+          <a href="#" class="nav-link" id="logout-link">Log out</a>
+        </div>
+      </div>
+    </nav>
+
+    <div id="flash-container" class="flash-container"></div>
+
+    <main class="main-content">
+      <div class="form-page">
+        <div class="form-card">
+          <h1>Booking Setup</h1>
+          <p class="text-muted">Create event types and weekly availability for your booking page.</p>
+
+          <section class="form-group">
+            <h2 style="margin-bottom: 12px">Event Type</h2>
+            <form id="event-type-form">
+              <input type="hidden" id="event-type-id" />
+              <div class="form-group">
+                <label for="event-title">Title <span class="required">*</span></label>
+                <input id="event-title" class="form-control" required maxlength="120" placeholder="e.g. Intro Call" />
+              </div>
+              <div class="form-group">
+                <label for="event-description">Description</label>
+                <textarea id="event-description" class="form-control" rows="2" maxlength="1200"></textarea>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="event-kind">Type</label>
+                  <select id="event-kind" class="form-control">
+                    <option value="one_on_one">One-on-one</option>
+                    <option value="group">Group</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="event-duration">Duration (minutes)</label>
+                  <select id="event-duration" class="form-control">
+                    <option value="15">15</option>
+                    <option value="30" selected>30</option>
+                    <option value="45">45</option>
+                    <option value="60">60</option>
+                    <option value="90">90</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="event-capacity">Group capacity</label>
+                  <input id="event-capacity" type="number" min="1" max="100" value="1" class="form-control" />
+                </div>
+                <div class="form-group">
+                  <label for="event-timezone">Timezone</label>
+                  <input id="event-timezone" class="form-control" value="UTC" />
+                </div>
+              </div>
+              <div class="form-actions">
+                <button type="button" class="btn btn-ghost" id="event-reset">Reset</button>
+                <button type="submit" class="btn btn-primary">Save Event Type</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="form-group" style="margin-top: 30px">
+            <h2 style="margin-bottom: 12px">Weekly Availability</h2>
+            <p class="text-muted">Add one or more windows. Slots are generated in 15-minute increments.</p>
+            <div id="availability-rows"></div>
+            <div class="form-actions" style="margin-top: 12px">
+              <button type="button" class="btn btn-ghost" id="add-window-btn">+ Add Window</button>
+              <button type="button" class="btn btn-primary" id="save-availability-btn">Save Availability</button>
+            </div>
+          </section>
+
+          <section class="form-group" style="margin-top: 30px">
+            <h2 style="margin-bottom: 12px">Your Event Types</h2>
+            <div id="event-types-list" class="meeting-grid"></div>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer" data-shared-footer></footer>
+
+    <script src="/static/layout.js"></script>
+    <script src="/static/common.js"></script>
+    <script src="/static/booking-setup.js" defer></script>
+  </body>
+</html>

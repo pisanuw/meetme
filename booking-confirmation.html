@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Booking Confirmation - MeetMe</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-inner">
+        <a href="/dashboard.html" class="nav-brand"><span class="brand-icon">&#x27F3;</span> MeetMe</a>
+        <div class="nav-links" id="nav-auth" style="display: none">
+          <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
+          <span class="nav-user" id="nav-username"></span>
+          <a href="#" class="nav-link" id="logout-link">Log out</a>
+        </div>
+      </div>
+    </nav>
+
+    <div id="flash-container" class="flash-container"></div>
+
+    <main class="main-content">
+      <div class="form-page">
+        <div class="form-card">
+          <h1>Booking Confirmation</h1>
+          <p class="text-muted" id="confirmation-subtitle">Loading booking details...</p>
+
+          <div id="confirmation-details" class="form-group" style="display: none; margin-top: 18px;"></div>
+
+          <div class="form-actions">
+            <a class="btn btn-ghost" href="/bookings.html">Back to My Bookings</a>
+            <a class="btn btn-primary" href="/booking-links.html">Book Another</a>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer" data-shared-footer></footer>
+
+    <script src="/static/layout.js"></script>
+    <script src="/static/common.js"></script>
+    <script src="/static/booking-confirmation.js" defer></script>
+  </body>
+</html>

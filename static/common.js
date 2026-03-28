@@ -77,6 +77,33 @@ async function checkAuth() {
       logoutLink.parentNode.insertBefore(profileLink, logoutLink);
     }
 
+    if (!document.getElementById("booking-setup-link") && logoutLink?.parentNode) {
+      const setupLink = document.createElement("a");
+      setupLink.id = "booking-setup-link";
+      setupLink.href = "/booking-setup.html";
+      setupLink.className = "nav-link";
+      setupLink.textContent = "Booking Setup";
+      logoutLink.parentNode.insertBefore(setupLink, logoutLink);
+    }
+
+    if (!document.getElementById("booking-links-link") && logoutLink?.parentNode) {
+      const linksLink = document.createElement("a");
+      linksLink.id = "booking-links-link";
+      linksLink.href = "/booking-links.html";
+      linksLink.className = "nav-link";
+      linksLink.textContent = "Booking Links";
+      logoutLink.parentNode.insertBefore(linksLink, logoutLink);
+    }
+
+    if (!document.getElementById("bookings-link") && logoutLink?.parentNode) {
+      const bookingsLink = document.createElement("a");
+      bookingsLink.id = "bookings-link";
+      bookingsLink.href = "/bookings.html";
+      bookingsLink.className = "nav-link";
+      bookingsLink.textContent = "My Bookings";
+      logoutLink.parentNode.insertBefore(bookingsLink, logoutLink);
+    }
+
     // Inject the "Admin" link once for admin users. This check is separate from
     // the profile link check so both links are always injected regardless of order.
     if (user.is_admin && !document.getElementById("admin-nav-link") && logoutLink?.parentNode) {

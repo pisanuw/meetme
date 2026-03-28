@@ -1,0 +1,152 @@
+import { expect, test } from "@playwright/test";
+
+test("book flow redirects to confirmation with booking detail", async ({ page }) => {
+  let capturedBookingPayload = null;
+
+  await page.route("**/api/auth/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ id: "u-booker", email: "booker@example.com", name: "Booker" }),
+    });
+  });
+
+  await page.route("**/api/bookings/page/host-smoke", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        owner: { id: "host-1", email: "host@example.com", name: "Host Smoke" },
+        event_types: [
+          {
+            id: "evt-smoke",
+            title: "Intro Call",
+            duration_minutes: 30,
+            event_type: "one_on_one",
+            timezone: "UTC",
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.route("**/api/bookings/page/host-smoke/slots**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ slots: ["09:00"], blocked_by_calendar: [] }),
+    });
+  });
+
+  await page.route("**/api/bookings/page/host-smoke/book", async (route) => {
+    capturedBookingPayload = JSON.parse(route.request().postData() || "{}");
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        booking: {
+          id: "bk-smoke-1",
+          event_title: "Intro Call",
+          date: "2026-04-06",
+          start_time: "09:00",
+          timezone: "UTC",
+        },
+      }),
+    });
+  });
+
+  await page.route("**/api/bookings/bk-smoke-1", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        booking: {
+          id: "bk-smoke-1",
+          event_title: "Intro Call",
+          date: "2026-04-06",
+          start_time: "09:00",
+          timezone: "UTC",
+          host_name: "Host Smoke",
+          attendee_name: "Booker",
+          status: "confirmed",
+        },
+      }),
+    });
+  });
+
+  await page.goto("/book.html?host=host-smoke&event=evt-smoke");
+  await expect(page.getByRole("heading", { name: /Book Time with Host Smoke/ })).toBeVisible();
+
+  await page.getByRole("button", { name: "09:00" }).click();
+  await page.getByRole("button", { name: "Book Selected Slot" }).click();
+
+  await expect(page).toHaveURL(/\/booking-confirmation\.html\?id=bk-smoke-1/);
+  await expect(page.getByText("Booking confirmed.")).toBeVisible();
+  await expect(page.getByText("Intro Call")).toBeVisible();
+
+  expect(capturedBookingPayload).toBeTruthy();
+  expect(capturedBookingPayload.event_type_id).toBe("evt-smoke");
+  expect(capturedBookingPayload.start_time).toBe("09:00");
+});
+
+test("host reminders action posts selected reminder window", async ({ page }) => {
+  let capturedReminderPayload = null;
+
+  await page.route("**/api/auth/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ id: "host-smoke", email: "host@example.com", name: "Host Smoke" }),
+    });
+  });
+
+  await page.route("**/api/bookings/host", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        bookings: [
+          {
+            id: "bk-host-1",
+            event_title: "Host Event",
+            date: "2026-04-06",
+            start_time: "09:00",
+            timezone: "UTC",
+            status: "confirmed",
+            event_kind: "one_on_one",
+            host_name: "Host Smoke",
+            attendee_name: "Guest Smoke",
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.route("**/api/bookings/mine", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ bookings: [] }),
+    });
+  });
+
+  await page.route("**/api/bookings/reminders/send", async (route) => {
+    capturedReminderPayload = JSON.parse(route.request().postData() || "{}");
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ success: true, sent_count: 1, skipped_count: 0, failed_count: 0 }),
+    });
+  });
+
+  await page.goto("/bookings.html");
+  await expect(page.getByRole("heading", { name: "My Bookings" })).toBeVisible();
+
+  await page.locator("#reminder-window").selectOption("6");
+  await page.getByRole("button", { name: "Send Reminders" }).click();
+
+  await expect(page.getByText("Reminder run complete: sent 1, skipped 0.")).toBeVisible();
+  expect(capturedReminderPayload).toBeTruthy();
+  expect(capturedReminderPayload.within_hours).toBe(6);
+});
