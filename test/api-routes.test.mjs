@@ -138,6 +138,45 @@ test("auth magic-link verify sets session cookie", async () => {
   assert.match(res.headers.get("set-cookie") || "", /token=/);
 });
 
+test("auth magic-link verify redirects existing users to requested next path", async () => {
+  await store("users").setJSON("returning@example.com", {
+    id: "u-returning",
+    email: "returning@example.com",
+    name: "Returning User",
+    profile_complete: true,
+    created_at: new Date().toISOString(),
+  });
+
+  const jti = "jti-next-1";
+  await store("login_tokens").setJSON(jti, {
+    email: "returning@example.com",
+    used: false,
+    created_at: new Date().toISOString(),
+  });
+
+  const magicToken = createToken(
+    {
+      id: "magic-link",
+      email: "returning@example.com",
+      name: "Returning User",
+      purpose: "magic_link",
+      jti,
+      next: "/book.html?host=alice&event=evt1",
+    },
+    "15m"
+  );
+
+  const req = new Request(
+    `http://localhost:8888/api/auth/magic-link/verify?token=${encodeURIComponent(magicToken)}`,
+    { method: "GET" }
+  );
+  const res = await authHandler(req, { params: { 0: "magic-link/verify" } });
+
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get("location"), "/book.html?host=alice&event=evt1");
+  assert.match(res.headers.get("set-cookie") || "", /token=/);
+});
+
 test("auth magic-link request is rate-limited when limits are enabled", async () => {
   process.env.DISABLE_RATE_LIMIT = "";
   process.env.RESEND_API_KEY = "re_test";
@@ -214,6 +253,67 @@ test("auth google callback succeeds with valid state and google responses", asyn
 
   const dbUser = await store("users").get("google.user@example.com", { type: "json" });
   assert.equal(dbUser.email, "google.user@example.com");
+});
+
+test("auth google callback redirects existing users to state return_to", async () => {
+  process.env.GOOGLE_CLIENT_ID = "google-client-id";
+  process.env.GOOGLE_CLIENT_SECRET = "google-client-secret";
+
+  await store("users").setJSON("google.return@example.com", {
+    id: "u-google-return",
+    email: "google.return@example.com",
+    name: "Google Return",
+    profile_complete: true,
+    created_at: new Date().toISOString(),
+  });
+
+  global.fetch = async (url) => {
+    const target = String(url);
+    if (target.includes("oauth2.googleapis.com/token")) {
+      return new Response(
+        JSON.stringify({ access_token: "google-access-token", expires_in: 3600 }),
+        { status: 200 }
+      );
+    }
+    if (target.includes("www.googleapis.com/oauth2/v3/userinfo")) {
+      return new Response(
+        JSON.stringify({
+          email: "google.return@example.com",
+          name: "Google Return",
+          email_verified: true,
+        }),
+        { status: 200 }
+      );
+    }
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+
+  const state = createToken(
+    {
+      id: "oauth-state",
+      email: "oauth-state@meetme.local",
+      name: "oauth",
+      purpose: "google_oauth_state",
+      return_to: "/book.html?host=alice&event=evt1",
+      jti: "state-jti-return",
+    },
+    "10m"
+  );
+
+  const req = new Request(
+    `http://localhost:8888/api/auth/google/callback?code=test-code&state=${encodeURIComponent(state)}`,
+    {
+      method: "GET",
+      headers: {
+        cookie: `oauth_state=${state}`,
+      },
+    }
+  );
+
+  const res = await authHandler(req, { params: { 0: "google/callback" } });
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get("location"), "/book.html?host=alice&event=evt1");
+  assert.match(res.headers.get("set-cookie") || "", /token=/);
 });
 
 test("meetings create/list/detail/leave lifecycle works", async () => {

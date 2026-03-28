@@ -20,12 +20,8 @@
 async function apiFetch(url, options = {}) {
   let res;
   try {
-    // Always send credentials (cookies) with API requests to maintain sessions
-    console.log("apiFetch: fetching", { url, method: options.method || "GET" });
     res = await fetch(url, { ...options, credentials: "include" });
-    console.log("apiFetch: fetch complete", { url, status: res.status, statusText: res.statusText });
   } catch (networkErr) {
-    console.error("apiFetch: network error", { url, error: networkErr.message });
     return { ok: false, status: 0, data: { error: `Network error: ${networkErr.message}` } };
   }
 
@@ -46,9 +42,12 @@ async function apiFetch(url, options = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
-// Prevent multiple concurrent checkAuth calls to avoid race conditions
-let checkAuthInProgress = false;
-let checkAuthResult = null;
+function getCurrentPathWithQuery() {
+  const path = `${window.location.pathname || "/"}${window.location.search || ""}${window.location.hash || ""}`;
+  if (!path.startsWith("/")) return "/";
+  if (path.startsWith("//")) return "/";
+  return path;
+}
 
 /**
  * Call /api/auth/me and, if the user is signed in, update the navigation bar
@@ -58,23 +57,9 @@ let checkAuthResult = null;
  * @returns {Promise<object|null>} The user object from the session, or null
  */
 async function checkAuth() {
-  // If already in progress, return cached result or wait
-  if (checkAuthInProgress) {
-    console.log("checkAuth: already in progress, returning cached result");
-    return checkAuthResult;
-  }
-  
-  checkAuthInProgress = true;
   try {
-    console.log("checkAuth: starting fetch to /api/auth/me");
-    const { ok, status, data: user } = await apiFetch("/api/auth/me");
-    console.log("checkAuth: fetch complete", { ok, status, hasUser: !!user, userKeys: user ? Object.keys(user) : [] });
-    
-    if (!ok || !user) {
-      console.log("checkAuth: not authenticated", { ok, status, user });
-      checkAuthResult = null;
-      return null;
-    }
+    const { ok, data: user } = await apiFetch("/api/auth/me");
+    if (!ok || !user) return null;
 
     // Show the authenticated nav section and display the user's name.
     const navAuth = document.getElementById("nav-auth");
@@ -164,15 +149,9 @@ async function checkAuth() {
       logoutLink.parentNode.insertBefore(stopLink, logoutLink);
     }
 
-    console.log("checkAuth: user authenticated", { email: user.email, name: user.name });
-    checkAuthResult = user;
     return user;
-  } catch (err) {
-    console.error("checkAuth: exception thrown", err);
-    checkAuthResult = null;
+  } catch {
     return null;
-  } finally {
-    checkAuthInProgress = false;
   }
 }
 
@@ -184,7 +163,9 @@ async function checkAuth() {
 async function requireAuth() {
   const user = await checkAuth();
   if (!user) {
-    window.location.href = "/";
+    const next = getCurrentPathWithQuery();
+    const loginUrl = next && next !== "/" ? `/?next=${encodeURIComponent(next)}` : "/";
+    window.location.href = loginUrl;
     return null;
   }
   return user;

@@ -1,15 +1,19 @@
-console.log("index.js: loaded");
+function sanitizeNextPath(raw) {
+  const value = String(raw || "").trim();
+  if (!value.startsWith("/")) return "";
+  if (value.startsWith("//")) return "";
+  return value;
+}
+
+const params = new URLSearchParams(window.location.search);
+const next = sanitizeNextPath(params.get("next"));
 
 checkAuth().then((user) => {
-  console.log("index.js: checkAuth returned", { authenticated: !!user });
   if (user) {
-    console.log("index.js: authenticated, redirecting to /dashboard.html");
-    window.location.href = "/dashboard.html";
+    window.location.href = next || "/dashboard.html";
     return;
   }
 
-  console.log("index.js: not authenticated, showing login form");
-  const params = new URLSearchParams(window.location.search);
   const error = params.get("error");
   const errorMap = {
     "invalid-link": "That sign-in link is invalid. Please request a new one.",
@@ -26,32 +30,31 @@ checkAuth().then((user) => {
   };
   if (error && errorMap[error]) {
     showFlash(errorMap[error], "danger");
-    window.history.replaceState({}, document.title, "/");
+    const cleanUrl = next ? `/?next=${encodeURIComponent(next)}` : "/";
+    window.history.replaceState({}, document.title, cleanUrl);
   }
-}).catch((err) => {
-  console.error("index.js: checkAuth error", err);
 });
+
+const googleLink = document.querySelector('a[href="/api/auth/google/start"]');
+if (googleLink && next) {
+  googleLink.href = `/api/auth/google/start?next=${encodeURIComponent(next)}`;
+}
 
 const form = document.getElementById("magic-link-form");
 if (form) {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    console.log("index.js: magic-link form submitted");
     const email = document.getElementById("email").value.trim();
 
     const { ok, data } = await apiFetch("/api/auth/magic-link/request", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, next }),
     });
     if (ok) {
-      console.log("index.js: magic-link request succeeded");
       window.location.href = "/email-sent.html?email=" + encodeURIComponent(email);
     } else {
-      console.error("index.js: magic-link request failed", data);
       showFlash(data.error || "Could not send sign-in link. Please try again.", "danger");
     }
   });
-} else {
-  console.warn("index.js: magic-link-form element not found");
 }

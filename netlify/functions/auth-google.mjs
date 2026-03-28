@@ -38,6 +38,14 @@ function redirectResponse(location, extraHeaders = {}) {
   });
 }
 
+function sanitizeNextPath(raw) {
+  const value = String(raw || "").trim();
+  if (!value.startsWith("/")) return "";
+  if (value.startsWith("//")) return "";
+  if (value.includes("\n") || value.includes("\r")) return "";
+  return value;
+}
+
 export async function handleGoogleAuthRoute({
   req,
   path,
@@ -49,6 +57,9 @@ export async function handleGoogleAuthRoute({
   getOrCreateUser,
 }) {
   if (req.method === "GET" && path === "google/start") {
+    const url = new URL(req.url);
+    const next = sanitizeNextPath(url.searchParams.get("next") || "");
+
     if (isRateLimitEnabled()) {
       const ip = getClientIp(req);
       const ipRate = await checkRateLimit({
@@ -75,7 +86,7 @@ export async function handleGoogleAuthRoute({
         email: "oauth-state@meetme.local",
         name: "oauth",
         purpose: "google_oauth_state",
-        return_to: "/dashboard.html",
+        return_to: next || "/dashboard.html",
         jti: generateId(),
       },
       "10m"

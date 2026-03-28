@@ -53,6 +53,14 @@ import { handleGoogleAuthRoute } from "./auth-google.mjs";
 const FN = "auth";
 const MAX_NAME_LENGTH = 100;
 
+function sanitizeNextPath(raw) {
+  const value = String(raw || "").trim();
+  if (!value.startsWith("/")) return "";
+  if (value.startsWith("//")) return "";
+  if (value.includes("\n") || value.includes("\r")) return "";
+  return value;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Build the Google OAuth redirect URI for sign-in (must match Google Console setting). */
@@ -302,7 +310,8 @@ async function handleAuth(req, context) {
       name: user.name || user.email,
       is_new_user: !!isNew,
     });
-    const dest = isNew || !user.profile_complete ? "/profile.html?setup=1" : "/dashboard.html";
+    const returnTo = sanitizeNextPath(payload.next || "");
+    const dest = isNew || !user.profile_complete ? "/profile.html?setup=1" : returnTo || "/dashboard.html";
     return redirectResponse(dest, { "Set-Cookie": setCookie("token", appToken) });
   }
 
@@ -461,6 +470,7 @@ async function handleAuth(req, context) {
   if (path === "magic-link/request") {
     const emailKey = validateEmail(body.email || "");
     const name = (body.name || "").trim();
+    const next = sanitizeNextPath(body.next || "");
 
     if (!emailKey) {
       return errorResponse(400, "A valid email address is required.");
@@ -510,7 +520,7 @@ async function handleAuth(req, context) {
     });
 
     const token = createToken(
-      { id: "magic-link", email: emailKey, name, purpose: "magic_link", jti },
+      { id: "magic-link", email: emailKey, name, purpose: "magic_link", jti, next },
       "15m"
     );
     const link = `${getAppUrl(req)}/api/auth/magic-link/verify?token=${encodeURIComponent(token)}`;
