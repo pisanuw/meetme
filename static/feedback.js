@@ -30,8 +30,8 @@ document.getElementById("feedback-form").addEventListener("submit", async (e) =>
   btn.textContent = "✉ Send Feedback";
 
   if (ok) {
-    document.getElementById("feedback-form").style.display = "none";
-    document.getElementById("feedback-sent").style.display = "";
+    document.getElementById("feedback-form").hidden = true;
+    document.getElementById("feedback-sent").hidden = false;
   } else {
     showFlash(data.error || "Could not send feedback. Please try again.", "danger");
   }

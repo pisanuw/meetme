@@ -50,10 +50,8 @@ document.querySelectorAll('input[name="meeting_type"]').forEach((radio) => {
 switchType("days_of_week");
 
 function switchType(type) {
-  document.getElementById("panel-specific-dates").style.display =
-    type === "specific_dates" ? "" : "none";
-  document.getElementById("panel-days-of-week").style.display =
-    type === "days_of_week" ? "" : "none";
+  document.getElementById("panel-specific-dates").hidden = type !== "specific_dates";
+  document.getElementById("panel-days-of-week").hidden = type !== "days_of_week";
   document.getElementById("tab-dates").classList.toggle("active", type === "specific_dates");
   document.getElementById("tab-days").classList.toggle("active", type === "days_of_week");
 }

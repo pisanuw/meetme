@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Availability – MeetMe</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-inner">
+        <a href="/dashboard.html" class="nav-brand"><span class="brand-icon">&#x27F3;</span> MeetMe</a>
+        <div class="nav-links" id="nav-auth" hidden>
+          <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
+          <span class="nav-user" id="nav-username"></span>
+          <a href="#" class="nav-link" id="logout-link">Log out</a>
+        </div>
+      </div>
+    </nav>
+
+    <div id="flash-container" class="flash-container"></div>
+
+    <main class="main-content">
+      <div class="form-page">
+        <div class="form-card">
+          <p class="text-muted"><a href="/booking-setup.html">&#x2190; Event Types</a></p>
+          <h1>Availability</h1>
+          <p class="text-muted">Set the time windows for one event type at a time. Office hours, social chats, and longer sessions can each have their own schedule.</p>
+
+          <div id="availability-gate-message" class="text-muted" hidden></div>
+
+          <section class="form-group setup-section-spaced">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="availability-event-type">Event type</label>
+                <select id="availability-event-type" class="form-control"></select>
+              </div>
+            </div>
+
+            <p class="text-muted" id="availability-event-type-help"></p>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="availability-mode">Availability mode</label>
+                <select id="availability-mode" class="form-control">
+                  <option value="weekly">Weekly pattern between dates</option>
+                  <option value="specific_dates">Specific dates and times</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="availability-start-date">Start date</label>
+                <input id="availability-start-date" class="form-control" type="date" />
+              </div>
+              <div class="form-group">
+                <label for="availability-end-date">End date</label>
+                <input id="availability-end-date" class="form-control" type="date" />
+              </div>
+            </div>
+
+            <p class="text-muted" id="availability-mode-help">
+              Weekly mode repeats selected weekdays within the date range.
+            </p>
+
+            <div id="availability-rows"></div>
+
+            <div class="form-actions setup-actions-tight">
+              <button type="button" class="btn btn-ghost" id="add-window-btn">+ Add Window</button>
+              <button type="button" class="btn btn-primary" id="save-availability-btn">Save Availability</button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer" data-shared-footer></footer>
+
+    <script src="/static/layout.js"></script>
+    <script src="/static/common.js"></script>
+    <script src="/static/booking-availability.js" defer></script>
+  </body>
+</html>

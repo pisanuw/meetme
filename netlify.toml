@@ -37,8 +37,8 @@
     # Content Security Policy:
     #   default-src 'self'          — only load resources from this origin by default
     #   script-src  'self'          — no inline scripts or inline event handlers
-    #   style-src   'self' 'unsafe-inline' — inline styles are used for dynamic UI
+    #   style-src   'self'                 — styles load from the local stylesheet only
     #   img-src     'self' data:    — data URIs are used for some icons
     #   connect-src 'self'          — API calls only go back to this origin
     #   frame-ancestors 'none'      — reinforces X-Frame-Options: DENY
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"

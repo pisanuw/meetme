@@ -6,16 +6,35 @@ let currentPerson = 0;
 let isDragging = false;
 let dragAction = null;
 let saveTimer = null;
+let saveLifecycleBound = false;
 let pendingFinalize = null;
 let meetingTz = "UTC";
 let viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 let showMeetingTz = false;
 let busySlots = new Set();
 
+function flushPendingAvailabilitySave() {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  void saveAvailability({ keepalive: true });
+}
+
+function bindAvailabilityPersistenceLifecycle() {
+  if (saveLifecycleBound) return;
+
+  window.addEventListener("pagehide", flushPendingAvailabilitySave);
+  window.addEventListener("beforeunload", flushPendingAvailabilitySave);
+
+  saveLifecycleBound = true;
+}
+
 (async () => {
   const user = await requireAuth();
   if (!user) return;
   currentUser = user;
+
+  bindAvailabilityPersistenceLifecycle();
 
   const params = new URLSearchParams(window.location.search);
   const meetingId = params.get("id");
@@ -72,17 +91,17 @@ let busySlots = new Set();
     const bar = document.getElementById("tz-bar");
     const lbl = document.getElementById("tz-label");
     const btn = document.getElementById("tz-toggle-btn");
-    bar.style.display = "flex";
+    bar.hidden = false;
     lbl.textContent = viewerTz;
     btn.textContent = meetingTz !== viewerTz ? `Switch to meeting TZ (${meetingTz})` : "";
-    btn.style.display = meetingTz !== viewerTz ? "" : "none";
+    btn.hidden = meetingTz === viewerTz;
   }
 
   if (pOk && pData.calendar_connected && M.meetingType === "specific_dates") {
-    document.getElementById("gcal-area").style.display = "";
+    document.getElementById("gcal-area").hidden = false;
   }
 
-  document.getElementById("meeting-page").style.display = "";
+  document.getElementById("meeting-page").hidden = false;
   document.title = `${M.meeting.title} – MeetMe`;
 
   document.getElementById("meeting-title").textContent = M.meeting.title;
@@ -101,20 +120,20 @@ let busySlots = new Set();
     `Showing combined availability for all ${data.invite_count} participant${data.invite_count !== 1 ? "s" : ""}.`;
 
   if (M.isFinalized) {
-    document.getElementById("finalized-badge").style.display = "";
+    document.getElementById("finalized-badge").hidden = false;
     const banner = document.getElementById("finalized-banner");
-    banner.style.display = "";
+    banner.hidden = false;
     document.getElementById("finalized-time").innerHTML =
       `&#x1F4C5; ${escapeHtml(M.finalizedDate)} at ${fmtTime(M.finalizedSlot, M.finalizedDate)} (${M.meeting.duration_minutes} min)`;
     if (meetingTz && meetingTz !== "UTC") {
       document.getElementById("finalized-time").innerHTML +=
-        ` <span style="font-size:0.75rem;color:var(--text-muted);">(${escapeHtml(meetingTz)})</span>`;
+        ` <span class="meeting-finalized-tz">(${escapeHtml(meetingTz)})</span>`;
     }
     if (M.meeting.note) {
       document.getElementById("finalized-note").textContent = M.meeting.note;
     }
     if (M.isCreator) {
-      document.getElementById("btn-unfinalize").style.display = "";
+      document.getElementById("btn-unfinalize").hidden = false;
     }
   }
 
@@ -141,15 +160,15 @@ let busySlots = new Set();
   }
 
   if (M.participants.length > 0) {
-    document.getElementById("participants-panel").style.display = "";
+    document.getElementById("participants-panel").hidden = false;
     document.getElementById("participant-count").textContent = `(${data.invite_count})`;
     const list = document.getElementById("participants-list");
     const rowParts = M.participants.map((p, i) => {
       const clickableAttrs = M.isCreator
-        ? `data-participant-index="${i}" style="cursor:pointer;"`
+        ? `data-participant-index="${i}" class="participant-row participant-row-clickable"`
         : "";
       return `
-        <div class="participant-row" ${clickableAttrs}>
+        <div ${clickableAttrs || 'class="participant-row"'}>
           <div class="participant-avatar">${escapeHtml((p.name || "?")[0].toUpperCase())}</div>
           <div class="participant-info">
             <div class="participant-name">${escapeHtml(p.name)}</div>
@@ -185,7 +204,7 @@ let busySlots = new Set();
     const shareInput = document.getElementById("share-url");
     const meetingUrl = `${window.location.origin}/meeting.html?id=${encodeURIComponent(M.id)}`;
     shareInput.value = meetingUrl;
-    shareWrap.style.display = "";
+    shareWrap.hidden = false;
   }
 
   const btnUnfinalize = document.getElementById("btn-unfinalize");
@@ -605,14 +624,18 @@ function attachGridEvents(grid) {
 
 function scheduleSave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveAvailability, 500);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    void saveAvailability();
+  }, 500);
 }
 
-async function saveAvailability() {
+async function saveAvailability({ keepalive = false } = {}) {
   const slots = Array.from(M.mySlots);
   const { ok, data } = await apiFetch(`/api/meetings/${M.id}/availability`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    keepalive,
     body: JSON.stringify({ slots }),
   });
   if (ok && data.success) {
@@ -655,10 +678,10 @@ function refreshParticipantsPanel() {
   let html = "";
   M.participants.forEach((p, i) => {
     const clickableAttrs = M.isCreator
-      ? `data-participant-index="${i}" style="cursor:pointer;"`
+      ? `data-participant-index="${i}" class="participant-row participant-row-clickable"`
       : "";
     html += `
-      <div class="participant-row" ${clickableAttrs}>
+      <div ${clickableAttrs || 'class="participant-row"'}>
         <div class="participant-avatar">${escapeHtml((p.name || "?")[0].toUpperCase())}</div>
         <div class="participant-info">
           <div class="participant-name">${escapeHtml(p.name)}</div>

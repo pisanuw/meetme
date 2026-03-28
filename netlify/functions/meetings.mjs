@@ -33,7 +33,9 @@ import {
   escapeHtml,
   buildTimeSlots,
   listMeetingIds,
+  createToken,
 } from "./utils.mjs";
+import meetingActionsHandler from "./meeting-actions.mjs";
 
 const FN = "meetings";
 const MAX_TITLE_LENGTH = 200;
@@ -58,7 +60,7 @@ export default async (req, context) => {
     return await handleRequest(req, context);
   } catch (err) {
     log("error", FN, "unhandled exception", { message: err.message, stack: err.stack });
-    return errorResponse(500, `Internal server error: ${err.message}`);
+    return errorResponse(500, "Internal server error.");
   }
 };
 
@@ -71,6 +73,18 @@ async function handleRequest(req, _context) {
 
   const url = new URL(req.url);
   const pathParts = url.pathname.replace("/api/meetings", "").split("/").filter(Boolean);
+
+  // In local Netlify dev, overlapping function route patterns under /api/meetings
+  // can dispatch action endpoints here instead of meeting-actions.mjs. Delegate
+  // those subroutes explicitly so availability/finalize flows behave the same
+  // in every environment.
+  if (
+    req.method === "POST" &&
+    pathParts.length === 2 &&
+    new Set(["availability", "finalize", "unfinalize", "remind-pending"]).has(pathParts[1])
+  ) {
+    return meetingActionsHandler(req, _context);
+  }
 
   const meetings = getDb("meetings");
   const invites = getDb("invites");
@@ -209,10 +223,6 @@ async function handleRequest(req, _context) {
 
     await meetings.setJSON(meetingId, meeting);
 
-    const indexData = asArray(await meetings.get("index", { type: "json" }).catch(() => []));
-    indexData.push(meetingId);
-    await meetings.setJSON("index", indexData);
-
     const meetingInvites = [
       {
         id: generateId(),
@@ -225,7 +235,10 @@ async function handleRequest(req, _context) {
     ];
 
     if (invite_emails) {
-      const rawEmails = invite_emails.split(/[\n,]+/);
+      const rawInviteEmails = Array.isArray(invite_emails)
+        ? invite_emails.join(",")
+        : String(invite_emails);
+      const rawEmails = rawInviteEmails.split(/[\n,]+/);
       const emails = [
         ...new Set(rawEmails.map((e) => validateEmail(e)).filter((e) => e && e !== creatorEmail)),
       ];
@@ -274,6 +287,20 @@ async function handleRequest(req, _context) {
     const inviteesOnly = meetingInvites.filter((inv) => (inv.email || "").toLowerCase() !== creatorEmail);
     const invite_results = [];
     for (const inv of inviteesOnly) {
+      const preferencesToken = createToken(
+        {
+          id: "email-preferences",
+          purpose: "email_preferences",
+          email: inv.email,
+          organizer_email: user.email,
+          meeting_id: meetingId,
+          jti: generateId(),
+        },
+        "365d"
+      );
+      const globalOptOutUrl = `${appUrl}/api/email-preferences/confirm?token=${encodeURIComponent(preferencesToken)}&action=global_opt_out`;
+      const blockOrganizerUrl = `${appUrl}/api/email-preferences/confirm?token=${encodeURIComponent(preferencesToken)}&action=block_organizer`;
+
       const inviteSubject = `You've been invited to share availability: ${meeting.title}`;
       // Build the email body. escapeHtml() prevents XSS if any user-supplied
       // text (title, name, description) were rendered in an HTML context.
@@ -296,16 +323,26 @@ async function handleRequest(req, _context) {
             Open meeting &amp; set availability
           </a>
         </p>
+        <hr style="margin:20px 0;border:none;border-top:1px solid #e5e7eb" />
+        <p style="color:#666;font-size:12px;line-height:1.5;">
+          Email preferences:<br />
+          <a href="${globalOptOutUrl}">Never receive any MeetMe emails again</a><br />
+          <a href="${blockOrganizerUrl}">Stop receiving meeting emails from ${escapeHtml(user.name || user.email)}</a>
+        </p>
         <p style="color:#888;font-size:12px;">If you weren't expecting this, you can ignore this email.</p>
       `;
 
-      const inviteText = `${user.name || user.email} invited you to coordinate a meeting: "${meeting.title}".\n\nDates/days: ${datesText}\nTime range: ${timeRange}\n\nOpen the meeting and set your availability:\n${meetingUrl}`;
+      const inviteText = `${user.name || user.email} invited you to coordinate a meeting: "${meeting.title}".\n\nDates/days: ${datesText}\nTime range: ${timeRange}\n\nOpen the meeting and set your availability:\n${meetingUrl}\n\nEmail preferences:\n- Never receive any MeetMe emails again: ${globalOptOutUrl}\n- Stop receiving meeting emails from ${user.name || user.email}: ${blockOrganizerUrl}`;
 
       const result = await sendEmail({
         to: inv.email,
         subject: inviteSubject,
         html: inviteHtml,
         text: inviteText,
+        suppression: {
+          category: "meeting",
+          organizerEmail: user.email,
+        },
         tags: [
           { name: "type", value: "invite" },
           { name: "meeting_id", value: meetingId },
@@ -446,7 +483,9 @@ async function handleRequest(req, _context) {
       total_invited: meetingInvites.length,
       participants,
       time_slots: timeSlots,
-      all_invites: meetingInvites,
+      all_invites: isCreator
+        ? meetingInvites
+        : meetingInvites.map(({ email: _email, ...rest }) => rest),
       respond_count: meetingInvites.filter((i) => i.responded).length,
       invite_count: meetingInvites.length,
     });
@@ -477,10 +516,6 @@ async function handleRequest(req, _context) {
     await meetings.delete(meetingId);
     await invites.delete(`meeting:${meetingId}`);
     await availability.delete(`meeting:${meetingId}`);
-
-    const indexData = asArray(await meetings.get("index", { type: "json" }).catch(() => []));
-    const newIndex = indexData.filter((id) => id !== meetingId);
-    await meetings.setJSON("index", newIndex);
 
     log("info", FN, "meeting deleted", { meetingId });
     await persistEvent("warn", FN, "meeting deleted", { deletedBy: user.email, meetingId });

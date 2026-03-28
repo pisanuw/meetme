@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Booking Setup – MeetMe</title>
+    <title>Event Types – MeetMe</title>
     <link rel="stylesheet" href="/static/style.css" />
   </head>
   <body>
     <nav class="navbar">
       <div class="nav-inner">
         <a href="/dashboard.html" class="nav-brand"><span class="brand-icon">&#x27F3;</span> MeetMe</a>
-        <div class="nav-links" id="nav-auth" style="display: none">
+        <div class="nav-links" id="nav-auth" hidden>
           <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
           <span class="nav-user" id="nav-username"></span>
           <a href="#" class="nav-link" id="logout-link">Log out</a>
@@ -23,11 +23,11 @@
     <main class="main-content">
       <div class="form-page">
         <div class="form-card">
-          <h1>Booking Setup</h1>
-          <p class="text-muted">Create event types and weekly availability for your booking page.</p>
+          <h1>Event Types</h1>
+          <p class="text-muted">Define the meeting types people can book with you. After creating event types, set your availability so bookers can see open time slots.</p>
 
-          <section class="form-group">
-            <h2 style="margin-bottom: 12px">Event Type</h2>
+          <section id="event-type-panel" class="form-group">
+            <h2 class="setup-section-title" id="event-form-heading">New Event Type</h2>
             <form id="event-type-form">
               <input type="hidden" id="event-type-id" />
               <div class="form-group">
@@ -68,24 +68,20 @@
                 </div>
               </div>
               <div class="form-actions">
-                <button type="button" class="btn btn-ghost" id="event-reset">Reset</button>
+                <button type="button" class="btn btn-ghost" id="event-cancel-btn" hidden>Cancel</button>
                 <button type="submit" class="btn btn-primary">Save Event Type</button>
               </div>
             </form>
           </section>
 
-          <section class="form-group" style="margin-top: 30px">
-            <h2 style="margin-bottom: 12px">Weekly Availability</h2>
-            <p class="text-muted">Add one or more windows. Slots are generated in 15-minute increments.</p>
-            <div id="availability-rows"></div>
-            <div class="form-actions" style="margin-top: 12px">
-              <button type="button" class="btn btn-ghost" id="add-window-btn">+ Add Window</button>
-              <button type="button" class="btn btn-primary" id="save-availability-btn">Save Availability</button>
+          <section class="form-group setup-section-spaced" id="event-types-section">
+            <div class="setup-section-header">
+              <h2 class="setup-section-title">Your Event Types</h2>
+              <div class="setup-section-header-actions">
+                <a href="/booking-availability.html" class="btn btn-ghost">Set Availability</a>
+                <button type="button" class="btn btn-primary" id="new-event-type-btn" hidden>+ New Event Type</button>
+              </div>
             </div>
-          </section>
-
-          <section class="form-group" style="margin-top: 30px">
-            <h2 style="margin-bottom: 12px">Your Event Types</h2>
             <div id="event-types-list" class="meeting-grid"></div>
           </section>
         </div>

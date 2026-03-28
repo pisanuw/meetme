@@ -7,13 +7,13 @@ function linkCard(item, hostSlug) {
   return `
     <article class="meeting-card">
       <h3>${escapeHtml(item.title)}</h3>
-      <p class="text-muted" style="margin-top: 6px;">${escapeHtml(item.description || "No description")}</p>
-      <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
+      <p class="text-muted booking-card-copy">${escapeHtml(item.description || "No description")}</p>
+      <div class="booking-card-badges">
         <span class="badge ${item.event_type === "group" ? "badge-orange" : "badge-blue"}">${item.event_type}</span>
         <span class="badge badge-gray">${item.duration_minutes} min</span>
         <span class="badge badge-gray">cap ${item.group_capacity}</span>
       </div>
-      <div class="form-group" style="margin-top: 12px;">
+      <div class="form-group booking-card-share-group">
         <label>Share URL</label>
         <input class="form-control" readonly value="${escapeHtml(url)}" />
       </div>
@@ -41,7 +41,7 @@ function linkCard(item, hostSlug) {
 
   if (!items.length) {
     grid.innerHTML = `
-      <div class="empty-state" style="grid-column: 1 / -1;">
+      <div class="empty-state empty-state-full">
         <p>No event types yet.</p>
         <a class="btn btn-primary" href="/booking-setup.html">Create Event Type</a>
       </div>

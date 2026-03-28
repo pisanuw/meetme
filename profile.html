@@ -12,7 +12,7 @@
         <a href="/dashboard.html" class="nav-brand">
           <span class="brand-icon">&#x27F3;</span> MeetMe
         </a>
-        <div class="nav-links" id="nav-auth" style="display: none">
+        <div class="nav-links" id="nav-auth" hidden>
           <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
           <span class="nav-user" id="nav-username"></span>
           <a href="/profile.html" class="nav-link" id="profile-link">Edit Profile</a>
@@ -24,8 +24,8 @@
     <div id="flash-container" class="flash-container"></div>
 
     <main class="main-content">
-      <div class="auth-wrapper" style="align-items: flex-start; padding-top: 32px">
-        <div class="auth-card" style="max-width: 520px">
+      <div class="auth-wrapper profile-wrapper">
+        <div class="auth-card profile-card">
           <div class="auth-header">
             <div class="auth-logo">&#x1F464;</div>
             <h1 id="page-title">Your Profile</h1>
@@ -36,7 +36,7 @@
           <form id="profile-form" class="auth-form" autocomplete="off">
             <div class="form-row">
               <div class="form-group">
-                <label for="first-name">First name <span style="color: var(--red)">*</span></label>
+                <label for="first-name">First name <span class="required">*</span></label>
                 <input
                   type="text"
                   id="first-name"
@@ -128,31 +128,64 @@
               <p class="form-hint">Used to show meeting times in your local time zone.</p>
             </div>
 
-            <div style="display: flex; gap: 10px; margin-top: 4px">
-              <button type="submit" class="btn btn-primary" id="save-btn" style="flex: 1">
+            <div class="profile-actions-row">
+              <button type="submit" class="btn btn-primary profile-action" id="save-btn">
                 Save profile
               </button>
               <a
                 id="skip-btn"
                 href="/dashboard.html"
-                class="btn btn-ghost"
-                style="flex: 1; display: none; text-align: center"
+                class="btn btn-ghost profile-action profile-action-link"
+                hidden
                 >Skip for now</a
               >
             </div>
           </form>
 
           <!-- ── Google Calendar section ─────────────────────────────────────── -->
-          <div style="margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--border)">
-            <h2 style="font-size: 1rem; font-weight: 700; margin-bottom: 6px">Google Calendar</h2>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px">
+          <div class="profile-section">
+            <h2 class="profile-section-title">Google Calendar</h2>
+            <p class="profile-section-copy">
               Connect your Google Calendar so MeetMe can automatically highlight slots when you’re
               busy. You can always override the suggestions manually.
             </p>
             <div id="calendar-status"><!-- filled by JS --></div>
           </div>
 
-          <p class="auth-footer" id="back-link" style="display: none; margin-top: 20px">
+          <!-- ── Email Preferences section ─────────────────────────────────── -->
+          <div class="profile-section">
+            <h2 class="profile-section-title">Email Preferences</h2>
+            <p class="profile-section-copy">
+              Control which MeetMe emails you receive.
+            </p>
+
+            <label class="profile-checkbox-label">
+              <input type="checkbox" id="pref-global-opt-out" class="profile-checkbox-input" />
+              <span class="profile-checkbox-copy">
+                Never send me any emails from MeetMe
+              </span>
+            </label>
+
+            <p class="form-hint profile-form-hint-tight">
+              If enabled, this overrides all organizer-level settings below.
+            </p>
+
+            <div class="form-group profile-form-group-tight">
+              <label for="pref-blocked-organizers">Block meeting emails from specific organizers</label>
+              <textarea
+                id="pref-blocked-organizers"
+                class="form-control"
+                rows="4"
+                placeholder="one.email@example.com&#10;another@example.com"
+              ></textarea>
+              <p class="form-hint">One email per line. These organizers can no longer send you meeting invites, reminders, or finalized notices.</p>
+            </div>
+
+            <button type="button" class="btn btn-ghost" id="save-email-prefs-btn">Save email preferences</button>
+            <p id="email-prefs-meta" class="form-hint profile-form-hint-meta"></p>
+          </div>
+
+          <p class="auth-footer profile-back-link" id="back-link" hidden>
             <a href="/dashboard.html">&#x2190; Back to Dashboard</a>
           </p>
         </div>

@@ -24,11 +24,32 @@ import {
   escapeHtml,
   buildTimeSlots,
   getAppUrl,
+  createToken,
+  generateId,
 } from "./utils.mjs";
 
 const FN = "meeting-actions";
 const MIN_DURATION_MINUTES = 15;
 const MAX_DURATION_MINUTES = 24 * 60;
+
+function buildEmailPreferenceLinks(appUrl, recipientEmail, organizerEmail, meetingId) {
+  const token = createToken(
+    {
+      id: "email-preferences",
+      purpose: "email_preferences",
+      email: recipientEmail,
+      organizer_email: organizerEmail,
+      meeting_id: meetingId,
+      jti: generateId(),
+    },
+    "365d"
+  );
+
+  return {
+    globalOptOutUrl: `${appUrl}/api/email-preferences/confirm?token=${encodeURIComponent(token)}&action=global_opt_out`,
+    blockOrganizerUrl: `${appUrl}/api/email-preferences/confirm?token=${encodeURIComponent(token)}&action=block_organizer`,
+  };
+}
 
 // Top-level entry point — catch-all for unhandled exceptions.
 export default async (req, context) => {
@@ -36,7 +57,7 @@ export default async (req, context) => {
     return await handleMeetingActions(req, context);
   } catch (err) {
     log("error", FN, "unhandled exception", { message: err.message, stack: err.stack });
-    return errorResponse(500, `Internal server error: ${err.message}`);
+    return errorResponse(500, "Internal server error.");
   }
 };
 
@@ -172,7 +193,8 @@ async function handleMeetingActions(req, _context) {
     const recipients = [
       ...new Set(meetingInvites.map((i) => (i?.email || "").trim().toLowerCase()).filter(Boolean)),
     ];
-    const meetingUrl = `${getAppUrl(req)}/meeting.html?id=${encodeURIComponent(meetingId)}`;
+    const appUrl = getAppUrl(req);
+    const meetingUrl = `${appUrl}/meeting.html?id=${encodeURIComponent(meetingId)}`;
     const whenText = `${body.date_or_day} at ${body.time_slot} (${meeting.timezone || "UTC"})`;
     const durationText = `${meeting.duration_minutes} minute${meeting.duration_minutes === 1 ? "" : "s"}`;
 
@@ -181,6 +203,7 @@ async function handleMeetingActions(req, _context) {
     const failures = [];
 
     for (const email of recipients) {
+      const links = buildEmailPreferenceLinks(appUrl, email, user.email, meetingId);
       const result = await sendEmail({
         to: email,
         subject: `Finalized: ${meeting.title}`,
@@ -191,6 +214,12 @@ async function handleMeetingActions(req, _context) {
              <strong>Duration:</strong> ${escapeHtml(durationText)}</p>
           ${meeting.note ? `<p><strong>Note from organizer:</strong><br />${escapeHtml(meeting.note)}</p>` : ""}
           <p><a href="${meetingUrl}">Open meeting details</a></p>
+          <hr style="margin:20px 0;border:none;border-top:1px solid #e5e7eb" />
+          <p style="color:#666;font-size:12px;line-height:1.5;">
+            Email preferences:<br />
+            <a href="${links.globalOptOutUrl}">Never receive any MeetMe emails again</a><br />
+            <a href="${links.blockOrganizerUrl}">Stop receiving meeting emails from this organizer</a>
+          </p>
         `,
         text: [
           `"${meeting.title}" has been finalized.`,
@@ -199,7 +228,15 @@ async function handleMeetingActions(req, _context) {
           ...(meeting.note ? [`Note from organizer: ${meeting.note}`] : []),
           "",
           `Open meeting details: ${meetingUrl}`,
+          "",
+          "Email preferences:",
+          `- Never receive any MeetMe emails again: ${links.globalOptOutUrl}`,
+          `- Stop receiving meeting emails from this organizer: ${links.blockOrganizerUrl}`,
         ].join("\n"),
+        suppression: {
+          category: "meeting",
+          organizerEmail: user.email,
+        },
         tags: [
           { name: "type", value: "finalized" },
           { name: "meeting_id", value: meetingId },
@@ -286,12 +323,14 @@ async function handleMeetingActions(req, _context) {
       });
     }
 
-    const meetingUrl = `${getAppUrl(req)}/meeting.html?id=${encodeURIComponent(meetingId)}`;
+    const appUrl = getAppUrl(req);
+    const meetingUrl = `${appUrl}/meeting.html?id=${encodeURIComponent(meetingId)}`;
     let sentCount = 0;
     let failedCount = 0;
     const failures = [];
 
     for (const inv of pending) {
+      const links = buildEmailPreferenceLinks(appUrl, inv.email, user.email, meetingId);
       // Build reminder email using the shared sendEmail helper (utils.mjs).
       const whenText = `${meeting.start_time || "08:00"} - ${meeting.end_time || "20:00"} (${meeting.timezone || "UTC"})`;
       const result = await sendEmail({
@@ -302,6 +341,12 @@ async function handleMeetingActions(req, _context) {
           <p>This is a reminder to share your availability for <strong>${meeting.title}</strong>.</p>
           <p><strong>Time range:</strong> ${whenText}</p>
           <p><a href="${meetingUrl}">Open meeting and submit availability</a></p>
+          <hr style="margin:20px 0;border:none;border-top:1px solid #e5e7eb" />
+          <p style="color:#666;font-size:12px;line-height:1.5;">
+            Email preferences:<br />
+            <a href="${links.globalOptOutUrl}">Never receive any MeetMe emails again</a><br />
+            <a href="${links.blockOrganizerUrl}">Stop receiving meeting emails from this organizer</a>
+          </p>
           <p>Thanks!</p>
         `,
         text: [
@@ -312,8 +357,16 @@ async function handleMeetingActions(req, _context) {
           "",
           `Open meeting and submit availability: ${meetingUrl}`,
           "",
+          "Email preferences:",
+          `- Never receive any MeetMe emails again: ${links.globalOptOutUrl}`,
+          `- Stop receiving meeting emails from this organizer: ${links.blockOrganizerUrl}`,
+          "",
           "Thanks!",
         ].join("\n"),
+        suppression: {
+          category: "meeting",
+          organizerEmail: user.email,
+        },
         tags: [
           { name: "type", value: "reminder" },
           { name: "meeting_id", value: meetingId },

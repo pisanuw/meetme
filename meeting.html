@@ -12,7 +12,7 @@
         <a href="/dashboard.html" class="nav-brand">
           <span class="brand-icon">&#x27F3;</span> MeetMe
         </a>
-        <div class="nav-links" id="nav-auth" style="display: none">
+        <div class="nav-links" id="nav-auth" hidden>
           <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
           <span class="nav-user" id="nav-username"></span>
           <a href="#" class="nav-link" id="logout-link">Log out</a>
@@ -23,7 +23,7 @@
     <div id="flash-container" class="flash-container"></div>
 
     <main class="main-content">
-      <div class="meeting-page" id="meeting-page" style="display: none">
+      <div class="meeting-page" id="meeting-page" hidden>
         <!-- HEADER -->
         <div class="meeting-header">
           <div>
@@ -34,61 +34,37 @@
               <span class="badge badge-blue" id="meeting-type-badge"></span>
               <span class="text-muted" id="meeting-time-range"></span>
               <span class="text-muted" id="meeting-respond-count"></span>
-              <span class="badge badge-green" id="finalized-badge" style="display: none"
+              <span class="badge badge-green" id="finalized-badge" hidden
                 >&#x2713; Finalized</span
               >
             </div>
-            <div
-              id="tz-bar"
-              style="
-                display: none;
-                margin-top: 6px;
-                font-size: 0.8rem;
-                color: var(--text-muted);
-                display: flex;
-                gap: 8px;
-                align-items: center;
-                flex-wrap: wrap;
-              "
-            >
+            <div id="tz-bar" class="tz-bar meeting-tz-bar" hidden>
               <span>&#x1F5FA; Time zone:</span>
-              <span id="tz-label" style="font-weight: 600"></span>
-              <button
-                id="tz-toggle-btn"
-                class="btn btn-xs btn-ghost"
-                style="padding: 2px 8px; font-size: 0.75rem"
-              ></button>
+              <span id="tz-label" class="meeting-tz-label"></span>
+              <button id="tz-toggle-btn" class="btn btn-xs btn-ghost meeting-tz-toggle" hidden></button>
             </div>
           </div>
 
-          <div class="finalized-banner" id="finalized-banner" style="display: none">
+          <div class="finalized-banner" id="finalized-banner" hidden>
             <div class="finalized-time" id="finalized-time"></div>
             <div class="finalized-note" id="finalized-note"></div>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap">
-              <button class="btn btn-ghost" id="btn-unfinalize" style="display: none">
+            <div class="meeting-inline-actions">
+              <button class="btn btn-ghost" id="btn-unfinalize" hidden>
                 Edit finalization
               </button>
             </div>
           </div>
 
-          <div id="share-controls" style="display: none; margin-top: 10px">
-            <div
-              style="
-                margin-bottom: 8px;
-                font-size: 0.8rem;
-                color: var(--text-muted);
-                font-weight: 600;
-              "
-            >
+          <div id="share-controls" class="meeting-share-controls" hidden>
+            <div class="meeting-share-label">
               Private meeting URL
             </div>
-            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+            <div class="meeting-share-row">
               <input
                 id="share-url"
-                class="form-control"
+                class="form-control meeting-share-input"
                 type="text"
                 readonly
-                style="min-width: 280px; max-width: 520px"
               />
               <button id="copy-share-url-btn" class="btn btn-sm btn-ghost" type="button">
                 Copy URL
@@ -103,13 +79,9 @@
         <!-- TOOLBAR -->
         <div class="grid-toolbar">
           <div class="view-tabs" id="view-tabs"></div>
-          <div id="gcal-area" style="display: none">
-            <button
-              class="btn btn-sm btn-ghost"
-              id="gcal-btn"
-              style="gap: 6px; display: flex; align-items: center"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="flex-shrink: 0">
+          <div id="gcal-area" hidden>
+            <button class="btn btn-sm btn-ghost meeting-gcal-btn" id="gcal-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" class="meeting-gcal-icon">
                 <path
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
                   fill="#4285F4"
@@ -130,20 +102,20 @@
               Load busy times
             </button>
           </div>
-          <div id="person-selector" style="display: none">
+          <div id="person-selector" hidden>
             <select class="form-control" id="person-select"></select>
           </div>
           <div class="legend">
             <span class="legend-label">Fewer</span>
-            <span class="legend-swatch" style="background: #edfaed"></span>
-            <span class="legend-swatch" style="background: #a5d6a7"></span>
-            <span class="legend-swatch" style="background: #4caf50"></span>
-            <span class="legend-swatch" style="background: #1b5e20"></span>
+            <span class="legend-swatch legend-swatch-level-1"></span>
+            <span class="legend-swatch legend-swatch-level-2"></span>
+            <span class="legend-swatch legend-swatch-level-3"></span>
+            <span class="legend-swatch legend-swatch-level-4"></span>
             <span class="legend-label">More</span>
           </div>
         </div>
 
-        <div id="edit-instructions" class="instructions" style="display: none">
+        <div id="edit-instructions" class="instructions" hidden>
           Click or click-and-drag to select your available times. Changes save automatically.
         </div>
         <div id="heatmap-instructions" class="instructions"></div>
@@ -154,67 +126,29 @@
         </div>
 
         <!-- SLOT DETAIL PANEL -->
-        <div
-          id="slot-detail"
-          style="
-            display: none;
-            margin-top: 14px;
-            padding: 14px 16px;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            font-size: 0.875rem;
-          "
-        >
-          <div
-            id="slot-detail-heading"
-            style="font-weight: 700; margin-bottom: 10px; color: var(--text)"
-          ></div>
-          <div
-            id="slot-detail-body"
-            style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px"
-          >
+        <div id="slot-detail" class="slot-detail-panel" hidden>
+          <div id="slot-detail-heading" class="slot-detail-heading"></div>
+          <div id="slot-detail-body" class="slot-detail-body">
             <div>
-              <div
-                style="
-                  font-size: 0.72rem;
-                  font-weight: 700;
-                  color: #2e7d32;
-                  text-transform: uppercase;
-                  letter-spacing: 0.06em;
-                  margin-bottom: 6px;
-                "
-              >
+              <div class="slot-detail-label slot-detail-label-available">
                 &#x2713; Available
               </div>
-              <ul id="slot-detail-available" style="margin: 0; padding: 0; list-style: none"></ul>
+              <ul id="slot-detail-available" class="slot-detail-list"></ul>
             </div>
             <div>
-              <div
-                style="
-                  font-size: 0.72rem;
-                  font-weight: 700;
-                  color: #c62828;
-                  text-transform: uppercase;
-                  letter-spacing: 0.06em;
-                  margin-bottom: 6px;
-                "
-              >
+              <div class="slot-detail-label slot-detail-label-unavailable">
                 &#x2717; Not available
               </div>
-              <ul id="slot-detail-unavailable" style="margin: 0; padding: 0; list-style: none"></ul>
+              <ul id="slot-detail-unavailable" class="slot-detail-list"></ul>
             </div>
           </div>
-          <div
-            id="slot-detail-no-participants"
-            style="display: none; color: var(--text-muted); font-size: 0.82rem; margin-top: 2px"
-          >
+          <div id="slot-detail-no-participants" class="slot-detail-empty" hidden>
             Hover over a time slot to see availability details.
           </div>
         </div>
 
         <!-- FINALIZE PANEL -->
-        <div class="finalize-panel" id="finalize-panel" style="display: none">
+        <div class="finalize-panel" id="finalize-panel" hidden>
           <h3>&#x1F4CC; Finalize meeting time</h3>
           <p class="text-muted">
             You've selected: <strong id="finalize-slot-label">&ndash;</strong>
@@ -241,7 +175,7 @@
               placeholder="Location, dial-in link, agenda..."
             ></textarea>
           </div>
-          <div style="display: flex; gap: 12px; margin-top: 16px">
+          <div class="meeting-inline-actions meeting-inline-actions-wide">
             <button class="btn btn-primary" id="btn-confirm-finalize">
               &#x2713; Confirm &amp; Finalize
             </button>
@@ -250,7 +184,7 @@
         </div>
 
         <!-- PARTICIPANTS -->
-        <div class="participants-panel" id="participants-panel" style="display: none">
+        <div class="participants-panel" id="participants-panel" hidden>
           <h3>Participants <span class="text-muted" id="participant-count"></span></h3>
           <div class="participants-list" id="participants-list"></div>
         </div>

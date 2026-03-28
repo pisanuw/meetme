@@ -47,11 +47,16 @@ import {
   asArray,
   escapeHtml,
   getAppUrl,
+  getEmailPreferences,
+  saveEmailPreferences,
+  saveUserRecord,
 } from "./utils.mjs";
 import { handleGoogleAuthRoute } from "./auth-google.mjs";
 
 const FN = "auth";
 const MAX_NAME_LENGTH = 100;
+const MAX_FEEDBACK_NAME_LENGTH = 100;
+const MAX_FEEDBACK_MESSAGE_LENGTH = 5000;
 
 function sanitizeNextPath(raw) {
   const value = String(raw || "").trim();
@@ -154,7 +159,7 @@ async function getOrCreateUser(email, preferredName = "") {
     created_at: new Date().toISOString(),
   };
 
-  await users.setJSON(emailKey, user);
+  user = await saveUserRecord(users, user);
   await linkPendingInvites(emailKey, user);
   log("info", FN, "new user created", { email: emailKey, id: user.id });
   return { user, isNew: true };
@@ -202,7 +207,7 @@ export default async (req, context) => {
     return await handleAuth(req, context);
   } catch (err) {
     log("error", FN, "unhandled exception", { error: err.message, stack: err.stack });
-    return errorResponse(500, "Internal server error.", err.message);
+    return errorResponse(500, "Internal server error.");
   }
 };
 
@@ -361,6 +366,19 @@ async function handleAuth(req, context) {
     });
   }
 
+  if (req.method === "GET" && path === "email-preferences") {
+    const tokenUser = getUserFromRequest(req);
+    if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
+
+    const prefs = await getEmailPreferences(tokenUser.email);
+    return jsonResponse(200, {
+      email: prefs.email,
+      global_opt_out: prefs.global_opt_out,
+      blocked_organizers: prefs.blocked_organizers,
+      updated_at: prefs.updated_at,
+    });
+  }
+
   if (req.method !== "POST") {
     return errorResponse(405, `Method ${req.method} not allowed.`);
   }
@@ -392,7 +410,7 @@ async function handleAuth(req, context) {
     user.google_access_token = "";
     user.google_refresh_token = "";
     user.google_token_expiry = 0;
-    await users.setJSON(tokenUser.email, user);
+    await saveUserRecord(users, user);
 
     await persistEvent("info", FN, "calendar disconnected", { email: user.email });
     return jsonResponse(200, { success: true, message: "Google Calendar disconnected." });
@@ -456,15 +474,44 @@ async function handleAuth(req, context) {
     user.name = lastName ? `${firstName} ${lastName}` : firstName;
     user.profile_complete = true;
     if (timezone) user.timezone = timezone;
-    await users.setJSON(tokenUser.email, user);
+    const savedUser = await saveUserRecord(users, user);
 
-    const newToken = createToken(user);
-    log("info", FN, "profile updated", { email: user.email, name: user.name });
+    const newToken = createToken(savedUser);
+    log("info", FN, "profile updated", { email: savedUser.email, name: savedUser.name });
     return jsonResponse(
       200,
-      { success: true, name: user.name },
+      { success: true, name: savedUser.name },
       { "Set-Cookie": setCookie("token", newToken) }
     );
+  }
+
+  if (path === "email-preferences") {
+    const tokenUser = getUserFromRequest(req);
+    if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
+
+    const globalOptOut = body.global_opt_out === true;
+    const blockedOrganizers = asArray(body.blocked_organizers)
+      .map((item) => validateEmail(item || ""))
+      .filter(Boolean);
+
+    const prefs = await saveEmailPreferences(tokenUser.email, {
+      global_opt_out: globalOptOut,
+      blocked_organizers: blockedOrganizers,
+    });
+
+    await persistEvent("info", FN, "user updated email preferences", {
+      email: tokenUser.email,
+      global_opt_out: prefs.global_opt_out,
+      blocked_organizers_count: prefs.blocked_organizers.length,
+    });
+
+    return jsonResponse(200, {
+      success: true,
+      email: prefs.email,
+      global_opt_out: prefs.global_opt_out,
+      blocked_organizers: prefs.blocked_organizers,
+      updated_at: prefs.updated_at,
+    });
   }
 
   if (path === "magic-link/request") {
@@ -553,11 +600,52 @@ async function handleAuth(req, context) {
     const feedbackType = (body.type || "other").trim();
     const message = (body.message || "").trim();
 
+    if (isRateLimitEnabled()) {
+      const ip = getClientIp(req);
+      const ipRate = await checkRateLimit({
+        bucket: "auth_feedback_ip",
+        key: ip,
+        limit: 6,
+        windowMs: 15 * 60 * 1000,
+      });
+      if (!ipRate.ok) {
+        return jsonResponse(429, {
+          error: "Too many feedback submissions from this network. Please try again later.",
+          retry_after_seconds: ipRate.retryAfterSec,
+        });
+      }
+
+      const emailRate = await checkRateLimit({
+        bucket: "auth_feedback_email",
+        key: senderEmail || "unknown",
+        limit: 5,
+        windowMs: 60 * 60 * 1000,
+      });
+      if (!emailRate.ok) {
+        return jsonResponse(429, {
+          error: "Too many feedback submissions from this email. Please try again later.",
+          retry_after_seconds: emailRate.retryAfterSec,
+        });
+      }
+    }
+
     if (!senderEmail) {
       return errorResponse(400, "A valid email address is required.");
     }
+    if (senderName.length > MAX_FEEDBACK_NAME_LENGTH) {
+      return errorResponse(
+        400,
+        `Name must be ${MAX_FEEDBACK_NAME_LENGTH} characters or fewer.`
+      );
+    }
     if (!message) {
       return errorResponse(400, "Message is required.");
+    }
+    if (message.length > MAX_FEEDBACK_MESSAGE_LENGTH) {
+      return errorResponse(
+        400,
+        `Message must be ${MAX_FEEDBACK_MESSAGE_LENGTH} characters or fewer.`
+      );
     }
 
     const adminEmails = getEnv("ADMIN_EMAILS", "")
@@ -605,7 +693,7 @@ async function handleAuth(req, context) {
 
     if (!result.ok) {
       log("error", FN, "feedback email failed", { error: result.error });
-      return errorResponse(500, `Could not send feedback email: ${result.error}`);
+      return errorResponse(500, "Could not send feedback email at this time.");
     }
 
     log("info", FN, "feedback sent", { from: senderEmail, type: feedbackType });

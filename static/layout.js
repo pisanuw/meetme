@@ -5,11 +5,11 @@ function renderSharedFooter() {
     const topLine =
       variant === "admin"
         ? "MeetMe &ndash; Find the perfect time together"
-        : 'MeetMe &ndash; Find the perfect time together &mdash; <a href="/feedback.html" style="color:inherit;">Send feedback</a>';
+        : 'MeetMe &ndash; Find the perfect time together &mdash; <a href="/feedback.html" class="footer-link-inherit">Send feedback</a>';
 
     footer.innerHTML = `
       <p>${topLine}</p>
-      <p><a href="https://buymeacoffee.com/yusufpisanh" target="_blank" rel="noopener noreferrer" style="color:inherit;">&#x2615; Buy me a coffee</a></p>
+      <p><a href="https://buymeacoffee.com/yusufpisanh" target="_blank" rel="noopener noreferrer" class="footer-link-inherit">&#x2615; Buy me a coffee</a></p>
     `;
   });
 }

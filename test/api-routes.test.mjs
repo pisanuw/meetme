@@ -7,6 +7,7 @@ import meetingActionsHandler from "../netlify/functions/meeting-actions.mjs";
 import adminHandler from "../netlify/functions/admin.mjs";
 import calendarHandler from "../netlify/functions/calendar.mjs";
 import webhooksHandler from "../netlify/functions/webhooks.mjs";
+import emailPreferencesHandler from "../netlify/functions/email-preferences.mjs";
 import { createToken, encryptSecret } from "../netlify/functions/utils.mjs";
 import {
   installInMemoryDb,
@@ -86,6 +87,39 @@ test("auth me requires authentication", async () => {
   assert.equal(res.status, 401);
   const body = await responseJson(res);
   assert.match(body.error, /Not authenticated/i);
+});
+
+test("auth email preferences get and update for signed-in user", async () => {
+  const token = createToken({ id: "u-pref", email: "prefs@example.com", name: "Prefs User" });
+
+  const getReq = new Request("http://localhost:8888/api/auth/email-preferences", {
+    method: "GET",
+    headers: { cookie: `token=${token}` },
+  });
+  const getRes = await authHandler(getReq, { params: { 0: "email-preferences" } });
+  const getBody = await responseJson(getRes);
+  assert.equal(getRes.status, 200);
+  assert.equal(getBody.global_opt_out, false);
+  assert.deepEqual(getBody.blocked_organizers, []);
+
+  const postReq = makeJsonRequest("http://localhost:8888/api/auth/email-preferences", {
+    method: "POST",
+    headers: { cookie: `token=${token}` },
+    body: {
+      global_opt_out: true,
+      blocked_organizers: ["organizer@example.com", "ORGANIZER@example.com"],
+    },
+  });
+  const postRes = await authHandler(postReq, { params: { 0: "email-preferences" } });
+  const postBody = await responseJson(postRes);
+  assert.equal(postRes.status, 200);
+  assert.equal(postBody.success, true);
+  assert.equal(postBody.global_opt_out, true);
+  assert.deepEqual(postBody.blocked_organizers, ["organizer@example.com"]);
+
+  const prefsInDb = await store("email_preferences").get("email:prefs@example.com", { type: "json" });
+  assert.equal(prefsInDb.global_opt_out, true);
+  assert.deepEqual(prefsInDb.blocked_organizers, ["organizer@example.com"]);
 });
 
 test("auth magic-link request succeeds and persists login token", async () => {
@@ -351,6 +385,38 @@ test("meetings create/list/detail/leave lifecycle works", async () => {
   assert.equal(leaveBody.success, true);
 });
 
+test("meeting detail redacts all_invites emails for non-creators", async () => {
+  const creator = { id: "u-creator-privacy", email: "creator-privacy@example.com", name: "Creator" };
+  const invitee = { id: "u-invitee-privacy", email: "friend@example.com", name: "Friend" };
+
+  const meetingId = await createMeetingAs(creator);
+
+  const inviteeDetailReq = new Request(`http://localhost:8888/api/meetings/${meetingId}`, {
+    method: "GET",
+    headers: { cookie: authCookie(invitee) },
+  });
+  const inviteeDetailRes = await meetingsHandler(inviteeDetailReq, {});
+  const inviteeBody = await responseJson(inviteeDetailRes);
+
+  assert.equal(inviteeDetailRes.status, 200);
+  assert.equal(Array.isArray(inviteeBody.all_invites), true);
+  assert.equal(inviteeBody.all_invites.length > 0, true);
+  for (const inv of inviteeBody.all_invites) {
+    assert.equal(Object.prototype.hasOwnProperty.call(inv, "email"), false);
+  }
+
+  const creatorDetailReq = new Request(`http://localhost:8888/api/meetings/${meetingId}`, {
+    method: "GET",
+    headers: { cookie: authCookie(creator) },
+  });
+  const creatorDetailRes = await meetingsHandler(creatorDetailReq, {});
+  const creatorBody = await responseJson(creatorDetailRes);
+
+  assert.equal(creatorDetailRes.status, 200);
+  assert.equal(Array.isArray(creatorBody.all_invites), true);
+  assert.equal(creatorBody.all_invites.some((inv) => inv.email === "friend@example.com"), true);
+});
+
 test("meeting creation does not send invite email to creator", async () => {
   const creator = { id: "u1a", email: "creator-self@example.com", name: "Creator Self" };
 
@@ -375,6 +441,131 @@ test("meeting creation does not send invite email to creator", async () => {
   assert.equal(body.success, true);
   assert.equal(body.invite_results.length, 1);
   assert.equal(body.invite_results[0].email, "friend@example.com");
+});
+
+test("email preferences confirm and apply global opt-out", async () => {
+  const token = createToken(
+    {
+      id: "email-preferences",
+      purpose: "email_preferences",
+      email: "recipient@example.com",
+      organizer_email: "organizer@example.com",
+      jti: "pref-jti-1",
+    },
+    "10m"
+  );
+
+  const confirmReq = new Request(
+    `http://localhost:8888/api/email-preferences/confirm?token=${encodeURIComponent(token)}&action=global_opt_out`,
+    { method: "GET" }
+  );
+  const confirmRes = await emailPreferencesHandler(confirmReq, {});
+  const confirmHtml = await confirmRes.text();
+  assert.equal(confirmRes.status, 200);
+  assert.match(confirmHtml, /Confirm email preference/i);
+
+  const applyReq = new Request("http://localhost:8888/api/email-preferences/apply", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ token, action: "global_opt_out" }).toString(),
+  });
+  const applyRes = await emailPreferencesHandler(applyReq, {});
+  const applyHtml = await applyRes.text();
+  assert.equal(applyRes.status, 200);
+  assert.match(applyHtml, /Preference updated/i);
+
+  const prefs = await store("email_preferences").get("email:recipient@example.com", { type: "json" });
+  assert.equal(prefs.global_opt_out, true);
+});
+
+test("meeting invite is suppressed for global email opt-out recipient", async () => {
+  const creator = { id: "u-optout-creator", email: "creator-optout@example.com", name: "Creator" };
+  process.env.RESEND_API_KEY = "re_test";
+  process.env.AUTH_FROM_EMAIL = "MeetMe <noreply@example.com>";
+
+  await store("email_preferences").setJSON("email:friend@example.com", {
+    email: "friend@example.com",
+    global_opt_out: true,
+    blocked_organizers: [],
+    updated_at: new Date().toISOString(),
+  });
+
+  let resendCallCount = 0;
+  global.fetch = async (url) => {
+    if (String(url).includes("api.resend.com/emails")) {
+      resendCallCount += 1;
+      return new Response(JSON.stringify({ id: `resend-${Date.now()}` }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+
+  const req = makeJsonRequest("http://localhost:8888/api/meetings", {
+    method: "POST",
+    headers: { cookie: authCookie(creator) },
+    body: {
+      title: "Suppression Test",
+      description: "Global opt-out recipient",
+      meeting_type: "days_of_week",
+      dates_or_days: ["Monday"],
+      start_time: "09:00",
+      end_time: "10:00",
+      invite_emails: "friend@example.com",
+      timezone: "UTC",
+    },
+  });
+  const res = await meetingsHandler(req, {});
+  const body = await responseJson(res);
+
+  assert.equal(res.status, 200);
+  assert.equal(body.invite_results.length, 1);
+  assert.equal(body.invite_results[0].ok, false);
+  assert.match(body.invite_results[0].error || "", /suppressed/i);
+  assert.equal(resendCallCount, 0);
+});
+
+test("meeting invite is suppressed when recipient blocks organizer", async () => {
+  const creator = { id: "u-block-creator", email: "creator-block@example.com", name: "Creator" };
+  process.env.RESEND_API_KEY = "re_test";
+  process.env.AUTH_FROM_EMAIL = "MeetMe <noreply@example.com>";
+
+  await store("email_preferences").setJSON("email:friend@example.com", {
+    email: "friend@example.com",
+    global_opt_out: false,
+    blocked_organizers: ["creator-block@example.com"],
+    updated_at: new Date().toISOString(),
+  });
+
+  let resendCallCount = 0;
+  global.fetch = async (url) => {
+    if (String(url).includes("api.resend.com/emails")) {
+      resendCallCount += 1;
+      return new Response(JSON.stringify({ id: `resend-${Date.now()}` }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+
+  const req = makeJsonRequest("http://localhost:8888/api/meetings", {
+    method: "POST",
+    headers: { cookie: authCookie(creator) },
+    body: {
+      title: "Organizer Block Test",
+      description: "Recipient blocked organizer",
+      meeting_type: "days_of_week",
+      dates_or_days: ["Tuesday"],
+      start_time: "09:00",
+      end_time: "10:00",
+      invite_emails: "friend@example.com",
+      timezone: "UTC",
+    },
+  });
+  const res = await meetingsHandler(req, {});
+  const body = await responseJson(res);
+
+  assert.equal(res.status, 200);
+  assert.equal(body.invite_results.length, 1);
+  assert.equal(body.invite_results[0].ok, false);
+  assert.match(body.invite_results[0].error || "", /suppressed/i);
+  assert.equal(resendCallCount, 0);
 });
 
 test("meeting actions availability/finalize/unfinalize/reminder flows", async () => {
@@ -439,6 +630,34 @@ test("meeting actions availability/finalize/unfinalize/reminder flows", async ()
   const reminderBody = await responseJson(reminderRes);
   assert.equal(reminderRes.status, 200);
   assert.equal(reminderBody.success, true);
+});
+
+test("meetings handler delegates action subroutes when availability hits /api/meetings/*", async () => {
+  const creator = { id: "u10b", email: "creator10b@example.com", name: "Creator 10B" };
+  const invitee = { id: "u11b", email: "friend@example.com", name: "Friend B" };
+  const meetingId = await createMeetingAs(creator);
+
+  const availabilityReq = makeJsonRequest(
+    `http://localhost:8888/api/meetings/${meetingId}/availability`,
+    {
+      method: "POST",
+      headers: { cookie: authCookie(invitee) },
+      body: { slots: ["Monday_09:00"] },
+    }
+  );
+
+  const availabilityRes = await meetingsHandler(availabilityReq, {});
+  const availabilityBody = await responseJson(availabilityRes);
+
+  assert.equal(availabilityRes.status, 200);
+  assert.equal(availabilityBody.success, true);
+
+  const availabilityRows = await store("availability").get(`meeting:${meetingId}`, { type: "json" });
+  assert.equal(Array.isArray(availabilityRows), true);
+  assert.equal(availabilityRows.length, 1);
+  assert.equal(availabilityRows[0].user_id, invitee.id);
+  assert.equal(availabilityRows[0].date_or_day, "Monday");
+  assert.equal(availabilityRows[0].time_slot, "09:00");
 });
 
 test("meetings list requires authentication", async () => {
@@ -564,6 +783,98 @@ test("admin stats and events routes work for admins", async () => {
   const eventsBody = await responseJson(eventsRes);
   assert.equal(eventsRes.status, 200);
   assert.ok(Array.isArray(eventsBody.events));
+});
+
+test("admin users and meetings endpoints support pagination metadata", async () => {
+  const token = createToken({ id: "a4", email: "admin@example.com", name: "Admin" });
+
+  await store("users").setJSON("admin@example.com", {
+    id: "a4",
+    email: "admin@example.com",
+    name: "Admin",
+    first_name: "Admin",
+    last_name: "User",
+    profile_complete: true,
+    created_at: new Date("2026-03-01T00:00:00Z").toISOString(),
+    is_admin: true,
+  });
+  await store("users").setJSON("one@example.com", {
+    id: "u-one",
+    email: "one@example.com",
+    name: "One Example",
+    first_name: "One",
+    last_name: "Example",
+    profile_complete: true,
+    created_at: new Date("2026-03-02T00:00:00Z").toISOString(),
+  });
+  await store("users").setJSON("two@example.com", {
+    id: "u-two",
+    email: "two@example.com",
+    name: "Two Example",
+    first_name: "Two",
+    last_name: "Example",
+    profile_complete: true,
+    created_at: new Date("2026-03-03T00:00:00Z").toISOString(),
+  });
+
+  await store("meetings").setJSON("m-page-1", {
+    id: "m-page-1",
+    title: "Alpha Meeting",
+    creator_id: "u-one",
+    creator_name: "One Example",
+    meeting_type: "days_of_week",
+    dates_or_days: ["Monday"],
+    start_time: "09:00",
+    end_time: "10:00",
+    timezone: "UTC",
+    is_finalized: false,
+    finalized_date: null,
+    finalized_slot: null,
+    created_at: new Date("2026-03-03T00:00:00Z").toISOString(),
+  });
+  await store("meetings").setJSON("m-page-2", {
+    id: "m-page-2",
+    title: "Beta Meeting",
+    creator_id: "u-two",
+    creator_name: "Two Example",
+    meeting_type: "days_of_week",
+    dates_or_days: ["Tuesday"],
+    start_time: "09:00",
+    end_time: "10:00",
+    timezone: "UTC",
+    is_finalized: false,
+    finalized_date: null,
+    finalized_slot: null,
+    created_at: new Date("2026-03-04T00:00:00Z").toISOString(),
+  });
+  await store("invites").setJSON("meeting:m-page-1", []);
+  await store("invites").setJSON("meeting:m-page-2", []);
+
+  const usersReq = new Request("http://localhost:8888/api/admin/users?page=2&page_size=1", {
+    method: "GET",
+    headers: { cookie: `token=${token}` },
+  });
+  const usersRes = await adminHandler(usersReq, { params: { 0: "users" } });
+  const usersBody = await responseJson(usersRes);
+  assert.equal(usersRes.status, 200);
+  assert.equal(usersBody.users.length, 1);
+  assert.equal(usersBody.pagination.page, 2);
+  assert.equal(usersBody.pagination.page_size, 1);
+  assert.equal(usersBody.pagination.total >= 3, true);
+
+  const meetingsReq = new Request(
+    "http://localhost:8888/api/admin/meetings?page=1&page_size=1&q=beta",
+    {
+      method: "GET",
+      headers: { cookie: `token=${token}` },
+    }
+  );
+  const meetingsRes = await adminHandler(meetingsReq, { params: { 0: "meetings" } });
+  const meetingsBody = await responseJson(meetingsRes);
+  assert.equal(meetingsRes.status, 200);
+  assert.equal(meetingsBody.meetings.length, 1);
+  assert.equal(meetingsBody.meetings[0].title, "Beta Meeting");
+  assert.equal(meetingsBody.pagination.total, 1);
 });
 
 test("calendar busy route enforces auth and calendar connection", async () => {

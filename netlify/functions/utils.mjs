@@ -42,9 +42,13 @@ export function getEnv(name, fallback = "") {
   return fallback;
 }
 
-/** Returns the JWT signing secret, falling back to a dev placeholder. */
+/** Returns the JWT signing secret. Throws if JWT_SECRET is not configured. */
 export function getJwtSecret() {
-  return getEnv("JWT_SECRET", "meetsync-dev-secret-change-in-prod");
+  const secret = getEnv("JWT_SECRET", "").trim();
+  if (!secret) {
+    throw new Error("Missing JWT_SECRET environment variable.");
+  }
+  return secret;
 }
 
 /**
@@ -295,7 +299,109 @@ export async function safeJson(req) {
  */
 export function validateEmail(email) {
   const e = (email || "").trim().toLowerCase();
-  return e.includes("@") && e.includes(".") ? e : null;
+  if (!e) return null;
+  if (e.length > 254) return null;
+  // Practical validation: require exactly one @, no spaces, and a basic domain suffix.
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) ? e : null;
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function emailPreferenceKey(email) {
+  return `email:${normalizeEmail(email)}`;
+}
+
+/**
+ * Load persisted email preferences for a recipient.
+ *
+ * @param {string} recipientEmail
+ * @returns {Promise<{ email: string, global_opt_out: boolean, blocked_organizers: string[], updated_at: string|null }>}
+ */
+export async function getEmailPreferences(recipientEmail) {
+  const email = normalizeEmail(recipientEmail);
+  const base = {
+    email,
+    global_opt_out: false,
+    blocked_organizers: [],
+    updated_at: null,
+  };
+
+  if (!email) return base;
+
+  const prefsDb = getDb("email_preferences");
+  const raw = await prefsDb.get(emailPreferenceKey(email), { type: "json" }).catch(() => null);
+  if (!raw || typeof raw !== "object") return base;
+
+  const blocked = asArray(raw.blocked_organizers)
+    .map((item) => normalizeEmail(item))
+    .filter(Boolean);
+
+  return {
+    email,
+    global_opt_out: raw.global_opt_out === true,
+    blocked_organizers: [...new Set(blocked)],
+    updated_at: raw.updated_at || null,
+  };
+}
+
+/**
+ * Persist recipient email preferences.
+ *
+ * @param {string} recipientEmail
+ * @param {{ global_opt_out?: boolean, blocked_organizers?: string[] }} updates
+ * @returns {Promise<{ email: string, global_opt_out: boolean, blocked_organizers: string[], updated_at: string }>}
+ */
+export async function saveEmailPreferences(recipientEmail, updates = {}) {
+  const current = await getEmailPreferences(recipientEmail);
+  const blocked = Array.isArray(updates.blocked_organizers)
+    ? updates.blocked_organizers
+    : current.blocked_organizers;
+
+  const next = {
+    email: current.email,
+    global_opt_out:
+      typeof updates.global_opt_out === "boolean" ? updates.global_opt_out : current.global_opt_out,
+    blocked_organizers: [...new Set(asArray(blocked).map((item) => normalizeEmail(item)).filter(Boolean))],
+    updated_at: new Date().toISOString(),
+  };
+
+  if (!next.email) return next;
+
+  const prefsDb = getDb("email_preferences");
+  await prefsDb.setJSON(emailPreferenceKey(next.email), next);
+  return next;
+}
+
+/**
+ * Determine whether email delivery should be suppressed for a recipient.
+ *
+ * @param {object} opts
+ * @param {string} opts.recipientEmail
+ * @param {"general"|"meeting"} [opts.category]
+ * @param {string} [opts.organizerEmail]
+ * @returns {Promise<{ suppress: boolean, reason: string|null }>}
+ */
+export async function shouldSuppressEmailDelivery({
+  recipientEmail,
+  category = "general",
+  organizerEmail = "",
+} = {}) {
+  const recipient = normalizeEmail(recipientEmail);
+  if (!recipient) return { suppress: false, reason: null };
+
+  const prefs = await getEmailPreferences(recipient);
+  if (prefs.global_opt_out) {
+    return { suppress: true, reason: "global_opt_out" };
+  }
+
+  const organizer = normalizeEmail(organizerEmail);
+  if (category === "meeting" && organizer && prefs.blocked_organizers.includes(organizer)) {
+    return { suppress: true, reason: "organizer_blocked" };
+  }
+
+  return { suppress: false, reason: null };
 }
 
 // ─── Response helpers ────────────────────────────────────────────────────────
@@ -670,6 +776,109 @@ export function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function normalizeSlug(value) {
+  const base = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return base || "user";
+}
+
+async function resolveUniqueBookingPublicSlug(usersDb, desiredSlug, email) {
+  const baseSlug = normalizeSlug(desiredSlug || String(email || "").split("@")[0]);
+  let candidate = baseSlug;
+  let suffix = 2;
+
+  while (true) {
+    const mapped = await usersDb
+      .get(`booking_public_slug:${candidate}`, { type: "json" })
+      .catch(() => null);
+    const mappedEmail = normalizeEmail(mapped?.email || mapped);
+    if (!mappedEmail || mappedEmail === email) return candidate;
+    candidate = `${baseSlug}-${suffix}`;
+    suffix += 1;
+  }
+}
+
+export async function saveUserRecord(usersDb, userRecord) {
+  const email = validateEmail(userRecord?.email || "") || normalizeEmail(userRecord?.email || "");
+  if (!email) throw new Error("User record must include a valid email.");
+
+  const existing = await usersDb.get(email, { type: "json" }).catch(() => null);
+  const previousSlug = String(existing?.booking_public_slug || "").trim().toLowerCase();
+  const bookingPublicSlug = await resolveUniqueBookingPublicSlug(
+    usersDb,
+    userRecord?.booking_public_slug || existing?.booking_public_slug || email.split("@")[0],
+    email
+  );
+
+  const next = {
+    ...(existing && typeof existing === "object" ? existing : {}),
+    ...(userRecord && typeof userRecord === "object" ? userRecord : {}),
+    email,
+    booking_public_slug: bookingPublicSlug,
+  };
+
+  await usersDb.setJSON(email, next);
+  await usersDb.setJSON(`booking_public_slug:${bookingPublicSlug}`, { email });
+
+  if (previousSlug && previousSlug !== bookingPublicSlug) {
+    const mapped = await usersDb
+      .get(`booking_public_slug:${previousSlug}`, { type: "json" })
+      .catch(() => null);
+    const mappedEmail = normalizeEmail(mapped?.email || mapped);
+    if (!mappedEmail || mappedEmail === email) {
+      await usersDb.delete(`booking_public_slug:${previousSlug}`).catch(() => null);
+    }
+  }
+
+  return next;
+}
+
+export async function deleteUserRecord(usersDb, email) {
+  const normalizedEmail = validateEmail(email || "") || normalizeEmail(email || "");
+  if (!normalizedEmail) return;
+
+  const existing = await usersDb.get(normalizedEmail, { type: "json" }).catch(() => null);
+  const slug = String(existing?.booking_public_slug || "").trim().toLowerCase();
+
+  await usersDb.delete(normalizedEmail).catch(() => null);
+
+  if (slug) {
+    const mapped = await usersDb.get(`booking_public_slug:${slug}`, { type: "json" }).catch(() => null);
+    const mappedEmail = normalizeEmail(mapped?.email || mapped);
+    if (!mappedEmail || mappedEmail === normalizedEmail) {
+      await usersDb.delete(`booking_public_slug:${slug}`).catch(() => null);
+    }
+  }
+}
+
+export async function findUserByBookingPublicSlug(usersDb, ownerSlug) {
+  const slug = normalizeSlug(ownerSlug);
+  if (!slug) return null;
+
+  const mapped = await usersDb.get(`booking_public_slug:${slug}`, { type: "json" }).catch(() => null);
+  const mappedEmail = normalizeEmail(mapped?.email || mapped);
+  if (mappedEmail) {
+    const user = await usersDb.get(mappedEmail, { type: "json" }).catch(() => null);
+    if (user && String(user.booking_public_slug || "").trim().toLowerCase() === slug) return user;
+    await usersDb.delete(`booking_public_slug:${slug}`).catch(() => null);
+  }
+
+  const listing = await usersDb.list().catch(() => ({ blobs: [] }));
+  for (const entry of asArray(listing?.blobs)) {
+    const key = entry?.key;
+    if (!key || key.includes(":")) continue;
+    const user = await usersDb.get(key, { type: "json" }).catch(() => null);
+    if (!user) continue;
+    const saved = await saveUserRecord(usersDb, user).catch(() => null);
+    if (saved && saved.booking_public_slug === slug) return saved;
+  }
+
+  return null;
+}
+
 /**
  * Build an ordered list of "HH:MM" time-slot strings between startTime and
  * endTime at fixed-minute intervals. The end time itself is excluded.
@@ -692,6 +901,30 @@ export function buildTimeSlots(startTime, endTime, stepMin = 15) {
     cur += stepMin;
   }
   return slots;
+}
+
+export function localToUTC(dateStr, timeStr, timezone) {
+  const localStr = `${dateStr}T${timeStr}:00`;
+  const utcCandidate = new Date(localStr + "Z");
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const parts = {};
+  fmt.formatToParts(utcCandidate).forEach(({ type, value }) => {
+    parts[type] = value;
+  });
+  const hour = parts.hour === "24" ? "00" : parts.hour;
+  const tzStr = `${parts.year}-${parts.month}-${parts.day}T${hour}:${parts.minute}:${parts.second}Z`;
+  const tzAsIfUtc = new Date(tzStr);
+  const offsetMs = tzAsIfUtc - utcCandidate;
+  return new Date(utcCandidate.getTime() - offsetMs);
 }
 
 /**
@@ -746,9 +979,10 @@ export function escapeHtml(str) {
  * @param {string}          opts.text    - Plain-text fallback
  * @param {string}          [opts.replyTo] - Reply-To address
  * @param {Array<{name:string,value:string}>} [opts.tags] - Resend tags for analytics
+ * @param {{ category?: "general"|"meeting", organizerEmail?: string }} [opts.suppression]
  * @returns {Promise<{ ok: boolean, emailId?: string, error?: string }>}
  */
-export async function sendEmail({ to, subject, html, text, replyTo, tags } = {}) {
+export async function sendEmail({ to, subject, html, text, replyTo, tags, suppression } = {}) {
   const apiKey = getEnv("RESEND_API_KEY");
   const fromEmail = getEnv("AUTH_FROM_EMAIL");
   if (!apiKey || !fromEmail) {
@@ -758,9 +992,37 @@ export async function sendEmail({ to, subject, html, text, replyTo, tags } = {})
     };
   }
   try {
+    const recipients = (Array.isArray(to) ? to : [to])
+      .map((item) => normalizeEmail(item))
+      .filter(Boolean);
+
+    const suppressedRecipients = [];
+    const deliverableRecipients = [];
+
+    for (const recipient of recipients) {
+      const suppressionResult = await shouldSuppressEmailDelivery({
+        recipientEmail: recipient,
+        category: suppression?.category || "general",
+        organizerEmail: suppression?.organizerEmail || "",
+      });
+      if (suppressionResult.suppress) {
+        suppressedRecipients.push({ email: recipient, reason: suppressionResult.reason });
+      } else {
+        deliverableRecipients.push(recipient);
+      }
+    }
+
+    if (deliverableRecipients.length === 0) {
+      return {
+        ok: false,
+        error: "Email suppressed by recipient preference.",
+        suppressed_recipients: suppressedRecipients,
+      };
+    }
+
     const payload = {
       from: fromEmail,
-      to: Array.isArray(to) ? to : [to],
+      to: deliverableRecipients,
       subject,
       html,
       text,
@@ -779,7 +1041,7 @@ export async function sendEmail({ to, subject, html, text, replyTo, tags } = {})
       return { ok: false, error: `Resend API error (HTTP ${res.status}): ${body.slice(0, 200)}` };
     }
     const data = await res.json().catch(() => ({}));
-    return { ok: true, emailId: data.id };
+    return { ok: true, emailId: data.id, suppressed_recipients: suppressedRecipients };
   } catch (err) {
     return { ok: false, error: `Email send failed: ${err.message}` };
   }

@@ -15,51 +15,32 @@
 
     <main class="main-content">
       <div class="auth-wrapper">
-        <div class="auth-card" style="text-align: center">
+        <div class="auth-card email-sent-card">
           <div class="auth-header">
-            <div class="auth-logo" style="font-size: 2.8rem; margin-bottom: 8px">
+            <div class="auth-logo email-sent-logo">
               &#x2709;&#xFE0F;
             </div>
             <h1>Check your email</h1>
             <p id="email-msg">We've sent a sign-in link to your email address.</p>
           </div>
 
-          <div
-            style="
-              background: #f0fdf4;
-              border: 1px solid #bbf7d0;
-              border-radius: 10px;
-              padding: 16px 20px;
-              margin: 16px 0;
-              text-align: left;
-            "
-          >
-            <p style="margin: 0 0 8px; font-size: 0.9rem; font-weight: 600; color: #166534">
+          <div class="email-sent-next-steps">
+            <p class="email-sent-next-title">
               What to do next
             </p>
-            <ol
-              style="
-                margin: 0;
-                padding-left: 18px;
-                font-size: 0.875rem;
-                color: #14532d;
-                line-height: 1.8;
-              "
-            >
+            <ol class="email-sent-next-list">
               <li>Open your email inbox</li>
               <li>Find the email from MeetMe</li>
               <li>Click the <strong>Sign in to MeetMe</strong> link</li>
             </ol>
           </div>
 
-          <p
-            style="color: var(--text-muted); font-size: 0.82rem; line-height: 1.6; margin-top: 16px"
-          >
+          <p class="email-sent-note">
             The link expires in <strong>15 minutes</strong> and can only be used once. If you don't
             see it, check your spam or junk folder.
           </p>
 
-          <div style="margin-top: 24px; display: flex; flex-direction: column; gap: 10px">
+          <div class="email-sent-actions">
             <a href="/" class="btn btn-ghost btn-full">&#x21BA; Request a new sign-in link</a>
           </div>
         </div>

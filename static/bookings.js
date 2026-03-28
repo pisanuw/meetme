@@ -16,24 +16,24 @@ function bookingCard(booking) {
   return `
     <article class="meeting-card">
       <h3>${escapeHtml(booking.event_title || "Booking")}</h3>
-      <p class="text-muted" style="margin-top: 6px;">
+      <p class="text-muted booking-card-copy">
         ${escapeHtml(booking.date || "")}
         ${booking.start_time ? `at ${escapeHtml(booking.start_time)}` : ""}
         ${booking.timezone ? `(${escapeHtml(booking.timezone)})` : ""}
       </p>
-      <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
+      <div class="booking-card-badges">
         <span class="badge ${cancelled ? "badge-gray" : "badge-green"}">${escapeHtml(booking.status || "confirmed")}</span>
         <span class="badge badge-gray">${escapeHtml(booking.event_kind || "")}</span>
       </div>
-      <div class="form-group" style="margin-top: 12px;">
+      <div class="form-group booking-card-share-group">
         <label>Host</label>
         <div class="text-muted">${escapeHtml(booking.host_name || booking.host_email || "")}</div>
       </div>
-      <div class="form-group" style="margin-top: 8px;">
+      <div class="form-group booking-card-subgroup">
         <label>Attendee</label>
         <div class="text-muted">${escapeHtml(booking.attendee_name || booking.attendee_email || "")}</div>
       </div>
-      <div class="form-actions" style="margin-top: 12px;">
+      <div class="form-actions booking-card-actions">
         <a class="btn btn-ghost" href="/booking-confirmation.html?id=${encodeURIComponent(booking.id || "")}">View</a>
         <button type="button" class="btn btn-danger js-cancel" data-id="${booking.id}" ${cancelled ? "disabled" : ""}>Cancel</button>
       </div>
@@ -53,7 +53,7 @@ function renderBookings() {
 
   if (!list.length) {
     gridEl.innerHTML = `
-      <div class="empty-state" style="grid-column: 1 / -1;">
+      <div class="empty-state empty-state-full">
         <p>No bookings found in this view.</p>
       </div>
     `;

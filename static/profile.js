@@ -22,9 +22,9 @@
     document.getElementById("page-title").textContent = "Welcome to MeetMe!";
     document.getElementById("page-subtitle").textContent =
       "Enter your name and time zone so others can schedule with you.";
-    document.getElementById("skip-btn").style.display = "";
+    document.getElementById("skip-btn").hidden = false;
   } else {
-    document.getElementById("back-link").style.display = "";
+    document.getElementById("back-link").hidden = false;
   }
 
   const { ok, data } = await apiFetch("/api/auth/profile");
@@ -49,6 +49,8 @@
 
     renderCalendarStatus(data.calendar_connected);
   }
+
+  await loadEmailPreferences();
 
   document.getElementById("profile-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -80,19 +82,96 @@
       showFlash(saveData.error || "Could not save profile. Please try again.", "danger");
     }
   });
+
+  document.getElementById("save-email-prefs-btn")?.addEventListener("click", saveEmailPreferences);
 })();
+
+function parseBlockedOrganizerInput(value) {
+  return [...new Set(
+    String(value || "")
+      .split(/[\n,]+/)
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean)
+  )];
+}
+
+function isSimpleEmail(value) {
+  const v = String(value || "").trim().toLowerCase();
+  return v.includes("@") && v.includes(".");
+}
+
+function formatUpdatedAt(value) {
+  if (!value) return "";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return "";
+  return dt.toLocaleString();
+}
+
+async function loadEmailPreferences() {
+  const { ok, data } = await apiFetch("/api/auth/email-preferences");
+  if (!ok) {
+    showFlash(data.error || "Could not load email preferences.", "danger");
+    return;
+  }
+
+  const globalOptOutInput = document.getElementById("pref-global-opt-out");
+  const blockedInput = document.getElementById("pref-blocked-organizers");
+  const meta = document.getElementById("email-prefs-meta");
+
+  globalOptOutInput.checked = data.global_opt_out === true;
+  blockedInput.value = Array.isArray(data.blocked_organizers)
+    ? data.blocked_organizers.join("\n")
+    : "";
+  meta.textContent = data.updated_at ? `Last updated: ${formatUpdatedAt(data.updated_at)}` : "";
+}
+
+async function saveEmailPreferences() {
+  const saveBtn = document.getElementById("save-email-prefs-btn");
+  const globalOptOutInput = document.getElementById("pref-global-opt-out");
+  const blockedInput = document.getElementById("pref-blocked-organizers");
+
+  const blockedOrganizers = parseBlockedOrganizerInput(blockedInput.value);
+  const invalid = blockedOrganizers.find((email) => !isSimpleEmail(email));
+  if (invalid) {
+    showFlash(`Invalid organizer email: ${invalid}`, "danger");
+    return;
+  }
+
+  saveBtn.disabled = true;
+  saveBtn.textContent = "Saving…";
+
+  const { ok, data } = await apiFetch("/api/auth/email-preferences", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      global_opt_out: globalOptOutInput.checked,
+      blocked_organizers: blockedOrganizers,
+    }),
+  });
+
+  saveBtn.disabled = false;
+  saveBtn.textContent = "Save email preferences";
+
+  if (!ok) {
+    showFlash(data.error || "Could not save email preferences.", "danger");
+    return;
+  }
+
+  showFlash("Email preferences saved.", "success");
+  await loadEmailPreferences();
+}
 
 function renderCalendarStatus(connected) {
   const el = document.getElementById("calendar-status");
   if (connected) {
     el.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--green0);border:1px solid var(--green1);border-radius:8px;">
-        <span style="font-size:1.2rem;">✅</span>
-        <div style="flex:1;">
-          <strong style="font-size:0.875rem;color:var(--green4);">Google Calendar connected</strong>
-          <p style="font-size:0.8rem;color:var(--text-muted);margin-top:2px;">MeetMe can load your busy times on meeting pages.</p>
+      <div class="profile-calendar-status">
+        <span class="profile-calendar-icon">✅</span>
+        <div class="profile-calendar-copy">
+          <strong class="profile-calendar-title">Google Calendar connected</strong>
+          <p class="profile-calendar-note">MeetMe can load your busy times on meeting pages.</p>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <div class="profile-calendar-actions">
           <a href="/api/auth/google/calendar-start" class="btn btn-sm btn-ghost">Reconnect</a>
           <button type="button" class="btn btn-sm btn-danger" id="disconnect-calendar-btn">Disconnect</button>
         </div>
@@ -102,7 +181,7 @@ function renderCalendarStatus(connected) {
     if (disconnectBtn) disconnectBtn.addEventListener("click", disconnectCalendar);
   } else {
     el.innerHTML = `
-      <a href="/api/auth/google/calendar-start" class="btn btn-ghost btn-full" style="justify-content:center;gap:8px;">
+      <a href="/api/auth/google/calendar-start" class="btn btn-ghost btn-full profile-calendar-connect">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
           <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
           <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -111,7 +190,7 @@ function renderCalendarStatus(connected) {
         </svg>
         Connect Google Calendar
       </a>
-      <p style="font-size:0.78rem;color:var(--text-muted);text-align:center;margin-top:8px;">Read-only. MeetMe never modifies your calendar.</p>`;
+      <p class="profile-calendar-readonly">Read-only. MeetMe never modifies your calendar.</p>`;
   }
 }
 

@@ -29,6 +29,7 @@ import {
   encryptSecret,
   decryptSecret,
   isRateLimitEnabled,
+  saveUserRecord,
 } from "./utils.mjs";
 
 function redirectResponse(location, extraHeaders = {}) {
@@ -227,10 +228,8 @@ export async function handleGoogleAuthRoute({
       name: user.name || user.email,
       is_new_user: !!isNew,
     });
-    const dest =
-      isNew || !user.profile_complete
-        ? "/profile.html?setup=1"
-        : statePayload.return_to || "/dashboard.html";
+    const safeReturnTo = sanitizeNextPath(statePayload.return_to || "") || "/dashboard.html";
+    const dest = isNew || !user.profile_complete ? "/profile.html?setup=1" : safeReturnTo;
     return redirectResponse(dest, { "Set-Cookie": setCookie("token", appToken) });
   }
 
@@ -351,7 +350,7 @@ export async function handleGoogleAuthRoute({
     dbUser.google_refresh_token = encryptSecret(refreshPlain);
     dbUser.google_token_expiry = Date.now() + (tokenData.expires_in || 3600) * 1000;
     dbUser.calendar_connected = true;
-    await usersDb.setJSON(calUser.email, dbUser);
+    await saveUserRecord(usersDb, dbUser);
 
     await persistEvent("info", fnName, "calendar connected", { email: calUser.email });
     log("info", fnName, "google calendar connected", { email: calUser.email });

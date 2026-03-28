@@ -31,16 +31,47 @@ import {
   setCookie,
   listMeetingIds,
   sanitizeUser,
+  saveUserRecord,
+  deleteUserRecord,
 } from "./utils.mjs";
 
 const FN = "admin";
+const DEFAULT_PAGE_SIZE = 25;
+const MAX_PAGE_SIZE = 100;
+
+function parsePagination(url) {
+  const page = Math.max(1, Number.parseInt(url.searchParams.get("page") || "1", 10) || 1);
+  const pageSize = Math.min(
+    MAX_PAGE_SIZE,
+    Math.max(
+      1,
+      Number.parseInt(url.searchParams.get("page_size") || `${DEFAULT_PAGE_SIZE}`, 10) ||
+        DEFAULT_PAGE_SIZE
+    )
+  );
+  const query = String(url.searchParams.get("q") || "").trim().toLowerCase();
+  return { page, pageSize, query };
+}
+
+function buildPagination(total, page, pageSize) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  return {
+    page: safePage,
+    page_size: pageSize,
+    total,
+    total_pages: totalPages,
+    has_prev: safePage > 1,
+    has_next: safePage < totalPages,
+  };
+}
 
 export default async (req, context) => {
   try {
     return await handleAdmin(req, context);
   } catch (err) {
     log("error", FN, "unhandled exception", { message: err.message, stack: err.stack });
-    return errorResponse(500, `Internal server error: ${err.message}`);
+    return errorResponse(500, "Internal server error.");
   }
 };
 
@@ -74,6 +105,7 @@ async function handleAdmin(req, context) {
 
   // ─── GET /api/admin/users ────────────────────────────────────────────────
   if (req.method === "GET" && path === "users") {
+    const { page, pageSize, query } = parsePagination(url);
     const list = await usersDb.list().catch(() => ({ blobs: [] }));
     const users = (
       await Promise.all(
@@ -89,8 +121,20 @@ async function handleAdmin(req, context) {
         safe.is_admin = safe.is_super_admin || !!u.is_admin;
         return safe;
       });
-    users.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
-    return jsonResponse(200, { users });
+    const filtered = users
+      .filter((u) => {
+        if (!query) return true;
+        return [u.email, u.first_name, u.last_name, u.name]
+          .map((value) => String(value || "").toLowerCase())
+          .some((value) => value.includes(query));
+      })
+      .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+    const pagination = buildPagination(filtered.length, page, pageSize);
+    const offset = (pagination.page - 1) * pagination.page_size;
+    return jsonResponse(200, {
+      users: filtered.slice(offset, offset + pagination.page_size),
+      pagination,
+    });
   }
 
   // ─── GET /api/admin/users/:email ────────────────────────────────────────
@@ -188,10 +232,10 @@ async function handleAdmin(req, context) {
         name,
         profile_complete: true,
       };
-      await usersDb.setJSON(email, u);
+      const savedUser = await saveUserRecord(usersDb, u);
       await persistEvent("info", FN, "admin updated user", { admin: user.email, target: email });
       log("info", FN, "admin updated user", { admin: user.email, target: email });
-      return jsonResponse(200, { success: true, user: u });
+      return jsonResponse(200, { success: true, user: savedUser });
     } else {
       const firstName = (body.first_name || "").trim();
       const lastName = (body.last_name || "").trim();
@@ -211,10 +255,10 @@ async function handleAdmin(req, context) {
         created_at: new Date().toISOString(),
         created_by_admin: true,
       };
-      await usersDb.setJSON(email, u);
+      const savedUser = await saveUserRecord(usersDb, u);
       await persistEvent("info", FN, "admin created user", { admin: user.email, target: email });
       log("info", FN, "admin created user", { admin: user.email, target: email });
-      return jsonResponse(201, { success: true, created: true, user: u });
+      return jsonResponse(201, { success: true, created: true, user: savedUser });
     }
   }
 
@@ -235,7 +279,7 @@ async function handleAdmin(req, context) {
     if (!target) return errorResponse(404, `User '${email}' not found.`);
 
     target.is_admin = makeAdmin;
-    await usersDb.setJSON(email, target);
+    const savedTarget = await saveUserRecord(usersDb, target);
 
     await persistEvent("warn", FN, makeAdmin ? "admin granted user admin role" : "admin revoked user admin role", {
       admin: user.email,
@@ -246,9 +290,9 @@ async function handleAdmin(req, context) {
     return jsonResponse(200, {
       success: true,
       user: {
-        ...sanitizeUser(target),
-        is_super_admin: isSuperAdminEmail(target.email),
-        is_admin: isSuperAdminEmail(target.email) || !!target.is_admin,
+        ...sanitizeUser(savedTarget),
+        is_super_admin: isSuperAdminEmail(savedTarget.email),
+        is_admin: isSuperAdminEmail(savedTarget.email) || !!savedTarget.is_admin,
       },
     });
   }
@@ -266,7 +310,7 @@ async function handleAdmin(req, context) {
     const u = await usersDb.get(email, { type: "json" }).catch(() => null);
     if (!u) return errorResponse(404, `User '${email}' not found.`);
 
-    await usersDb.delete(email);
+    await deleteUserRecord(usersDb, email);
     await persistEvent("warn", FN, "admin deleted user", { admin: user.email, target: email });
     log("info", FN, "admin deleted user", { admin: user.email, target: email });
     return jsonResponse(200, { success: true });
@@ -327,6 +371,7 @@ async function handleAdmin(req, context) {
 
   // ─── GET /api/admin/meetings ──────────────────────────────────────────────
   if (req.method === "GET" && path === "meetings") {
+    const { page, pageSize, query } = parsePagination(url);
     const meetings = getDb("meetings");
     const invites = getDb("invites");
     const index = await listMeetingIds(meetings);
@@ -362,9 +407,21 @@ async function handleAdmin(req, context) {
         };
       })
     );
-    const result = loaded.filter(Boolean);
-    result.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
-    return jsonResponse(200, { meetings: result });
+    const result = loaded
+      .filter(Boolean)
+      .filter((meeting) => {
+        if (!query) return true;
+        return [meeting.title, meeting.creator_name, meeting.timezone, meeting.meeting_type]
+          .map((value) => String(value || "").toLowerCase())
+          .some((value) => value.includes(query));
+      })
+      .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+    const pagination = buildPagination(result.length, page, pageSize);
+    const offset = (pagination.page - 1) * pagination.page_size;
+    return jsonResponse(200, {
+      meetings: result.slice(offset, offset + pagination.page_size),
+      pagination,
+    });
   }
 
   // ─── GET /api/admin/events ────────────────────────────────────────────────

@@ -68,9 +68,55 @@ function ensureNavDropdown(logoutLink, { menuId, listId, label }) {
 
     menu.append(summary, menuList);
     logoutLink.parentNode.insertBefore(menu, logoutLink);
+
+    menu.addEventListener("toggle", () => {
+      if (menu.open) {
+        document.querySelectorAll("details.nav-dropdown").forEach((other) => {
+          if (other !== menu) other.removeAttribute("open");
+        });
+      }
+    });
   }
 
   return { menu, menuList };
+}
+
+function setNavDropdownLabel(menu, label) {
+  if (!menu) return;
+  const trigger = menu.querySelector("summary.nav-dropdown-trigger");
+  if (trigger) trigger.textContent = label;
+}
+
+function getAccountShortName(user) {
+  const firstName = (user.first_name || "").trim();
+  if (firstName) return firstName;
+
+  const fullName = (user.name || "").trim();
+  if (!fullName) return "Account";
+  return fullName.split(/\s+/)[0] || fullName;
+}
+
+function applyResponsiveAccountLabel(accountMenu) {
+  if (!accountMenu) return;
+  const desktopLabel = accountMenu.dataset.desktopLabel || "Account";
+  const mobileLabel = accountMenu.dataset.mobileLabel || desktopLabel;
+  const isMobile = window.matchMedia("(max-width: 720px)").matches;
+  setNavDropdownLabel(accountMenu, isMobile ? mobileLabel : desktopLabel);
+}
+
+function bindResponsiveAccountLabelUpdates() {
+  if (window.__accountLabelResizeBound) return;
+  let resizeDebounce;
+
+  window.addEventListener("resize", () => {
+    window.clearTimeout(resizeDebounce);
+    resizeDebounce = window.setTimeout(() => {
+      const accountMenu = document.getElementById("nav-account-menu");
+      applyResponsiveAccountLabel(accountMenu);
+    }, 120);
+  });
+
+  window.__accountLabelResizeBound = true;
 }
 
 function ensureNavMenus(logoutLink) {
@@ -140,12 +186,17 @@ async function checkAuth() {
     const { ok, data: user } = await apiFetch("/api/auth/me");
     if (!ok || !user) return null;
 
+    const fullName = (user.name || "").trim() || "Account";
+    const shortName = getAccountShortName(user);
+    const displayName = user.is_impersonated ? `${fullName} (impersonated)` : fullName;
+    const shortDisplayName = user.is_impersonated ? `${shortName} (impersonated)` : shortName;
+
     // Show the authenticated nav section and display the user's name.
     const navAuth = document.getElementById("nav-auth");
     const navUser = document.getElementById("nav-username");
-    if (navAuth) navAuth.style.display = "";
+    if (navAuth) navAuth.hidden = false;
     if (navUser) {
-      navUser.textContent = user.is_impersonated ? `${user.name} (impersonated)` : user.name;
+      navUser.textContent = "";
     }
 
     const logoutLink = document.getElementById("logout-link");
@@ -153,6 +204,10 @@ async function checkAuth() {
     if (!menuState) return user;
 
     const { bookingsMenu, bookingsMenuList, accountMenu, accountMenuList } = menuState;
+    accountMenu.dataset.desktopLabel = displayName;
+    accountMenu.dataset.mobileLabel = shortDisplayName;
+    bindResponsiveAccountLabelUpdates();
+    applyResponsiveAccountLabel(accountMenu);
 
     ensureMenuLink(accountMenuList, {
       id: "profile-link",
@@ -163,7 +218,12 @@ async function checkAuth() {
     ensureMenuLink(bookingsMenuList, {
       id: "booking-setup-link",
       href: "/booking-setup.html",
-      text: "Booking Setup",
+      text: "Event Types",
+    });
+    ensureMenuLink(bookingsMenuList, {
+      id: "booking-availability-link",
+      href: "/booking-availability.html",
+      text: "Availability",
     });
     ensureMenuLink(bookingsMenuList, {
       id: "booking-links-link",

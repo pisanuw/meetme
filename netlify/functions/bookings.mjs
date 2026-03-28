@@ -35,6 +35,9 @@ import {
   sendEmail,
   persistEvent,
   escapeHtml,
+  localToUTC,
+  saveUserRecord,
+  findUserByBookingPublicSlug,
 } from "./utils.mjs";
 
 const FN = "bookings";
@@ -48,6 +51,7 @@ const MAX_DURATION_MINUTES = 180;
 const MAX_GROUP_CAPACITY = 100;
 const DEFAULT_REMINDER_WINDOW_HOURS = 24;
 const MAX_REMINDER_WINDOW_HOURS = 72;
+const ALLOWED_AVAILABILITY_MODES = new Set(["weekly", "specific_dates"]);
 
 const ALLOWED_WEEKDAYS = new Set([
   "Monday",
@@ -66,7 +70,7 @@ export default async (req, context) => {
     return await handleBookings(req, context);
   } catch (err) {
     log("error", FN, "unhandled exception", { message: err.message, stack: err.stack });
-    return errorResponse(500, `Internal server error: ${err.message}`);
+    return errorResponse(500, "Internal server error.");
   }
 };
 
@@ -81,6 +85,11 @@ function isValidTime(timeStr) {
 
 function isValidDate(dateStr) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(dateStr || ""));
+}
+
+function isDateInRange(dateStr, startDate, endDate) {
+  if (!startDate || !endDate) return true;
+  return dateStr >= startDate && dateStr <= endDate;
 }
 
 function slugify(value) {
@@ -99,30 +108,6 @@ function getWeekdayForDate(dateStr, timezone) {
   }).format(utcNoon);
 }
 
-function localToUTC(dateStr, timeStr, timezone) {
-  const localStr = `${dateStr}T${timeStr}:00`;
-  const utcCandidate = new Date(localStr + "Z");
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-  const parts = {};
-  fmt.formatToParts(utcCandidate).forEach(({ type, value }) => {
-    parts[type] = value;
-  });
-  const hour = parts.hour === "24" ? "00" : parts.hour;
-  const tzStr = `${parts.year}-${parts.month}-${parts.day}T${hour}:${parts.minute}:${parts.second}Z`;
-  const tzAsIfUtc = new Date(tzStr);
-  const offsetMs = tzAsIfUtc - utcCandidate;
-  return new Date(utcCandidate.getTime() - offsetMs);
-}
-
 function eventTypePublicView(eventType) {
   return {
     id: eventType.id,
@@ -135,33 +120,14 @@ function eventTypePublicView(eventType) {
   };
 }
 
+function getAvailabilityKey(ownerId, eventTypeId) {
+  return `owner:${ownerId}:event_type:${eventTypeId}`;
+}
+
 async function ensureUserPublicSlug(usersDb, user) {
   const dbUser = await usersDb.get(user.email, { type: "json" }).catch(() => null);
   if (!dbUser) return null;
-  if (!dbUser.booking_public_slug) {
-    const localPart = String(dbUser.email || "").split("@")[0];
-    dbUser.booking_public_slug = slugify(localPart);
-    await usersDb.setJSON(dbUser.email, dbUser);
-  }
-  return dbUser;
-}
-
-async function findUserByPublicSlug(usersDb, ownerSlug) {
-  const listing = await usersDb.list().catch(() => ({ blobs: [] }));
-  for (const entry of asArray(listing.blobs)) {
-    const key = entry?.key;
-    if (!key || key.includes(":")) continue;
-    const user = await usersDb.get(key, { type: "json" }).catch(() => null);
-    if (!user) continue;
-
-    const currentSlug = user.booking_public_slug || slugify(String(user.email || "").split("@")[0]);
-    if (!user.booking_public_slug) {
-      user.booking_public_slug = currentSlug;
-      await usersDb.setJSON(user.email, user);
-    }
-    if (currentSlug === ownerSlug) return user;
-  }
-  return null;
+  return saveUserRecord(usersDb, dbUser);
 }
 
 async function refreshGoogleAccessToken(dbUser) {
@@ -207,7 +173,7 @@ async function fetchBusyPeriodsForDate(usersDb, hostUser, timezone, dateStr, sta
     accessToken = refreshed.access_token;
     dbUser.google_access_token = encryptSecret(accessToken);
     dbUser.google_token_expiry = refreshed.expiry;
-    await usersDb.setJSON(hostUser.email, dbUser);
+    await saveUserRecord(usersDb, dbUser);
   }
 
   const timeMin = localToUTC(dateStr, startTime, timezone).toISOString();
@@ -239,10 +205,56 @@ async function fetchBusyPeriodsForDate(usersDb, hostUser, timezone, dateStr, sta
   }
 }
 
-function buildSlotCandidates(eventType, windows, dateStr) {
+function normalizeAvailabilityConfig(raw, fallbackTimezone = "UTC") {
+  if (Array.isArray(raw)) {
+    return {
+      mode: "weekly",
+      start_date: "",
+      end_date: "",
+      timezone: fallbackTimezone,
+      windows: raw,
+    };
+  }
+
+  const mode = String(raw?.mode || "weekly").trim();
+  const normalizedMode = ALLOWED_AVAILABILITY_MODES.has(mode) ? mode : "weekly";
+
+  return {
+    mode: normalizedMode,
+    start_date: String(raw?.start_date || "").trim(),
+    end_date: String(raw?.end_date || "").trim(),
+    timezone: String(raw?.timezone || fallbackTimezone).trim() || fallbackTimezone,
+    windows: asArray(raw?.windows),
+  };
+}
+
+async function loadAvailabilityConfig(availabilityDb, ownerId, eventTypeId, fallbackTimezone = "UTC") {
+  if (!eventTypeId) {
+    return normalizeAvailabilityConfig([], fallbackTimezone);
+  }
+
+  const specific = await availabilityDb
+    .get(getAvailabilityKey(ownerId, eventTypeId), { type: "json" })
+    .catch(() => null);
+  if (specific) return normalizeAvailabilityConfig(specific, fallbackTimezone);
+
+  const legacy = await availabilityDb.get(`owner:${ownerId}`, { type: "json" }).catch(() => null);
+  return normalizeAvailabilityConfig(legacy || [], fallbackTimezone);
+}
+
+function buildSlotCandidates(eventType, availabilityConfig, dateStr) {
+  const config = normalizeAvailabilityConfig(availabilityConfig, eventType.timezone || "UTC");
+  if (!isDateInRange(dateStr, config.start_date, config.end_date)) return [];
+
   const eventTz = eventType.timezone || "UTC";
-  const dayName = getWeekdayForDate(dateStr, eventTz);
-  const dayWindows = windows.filter((w) => w.day_of_week === dayName);
+  let dayWindows = [];
+
+  if (config.mode === "specific_dates") {
+    dayWindows = config.windows.filter((w) => String(w.date || "").trim() === dateStr);
+  } else {
+    const dayName = getWeekdayForDate(dateStr, eventTz);
+    dayWindows = config.windows.filter((w) => w.day_of_week === dayName);
+  }
 
   const slots = [];
   for (const window of dayWindows) {
@@ -272,8 +284,8 @@ async function listEventTypesForOwner(eventTypesDb, ownerId) {
   return results;
 }
 
-async function buildSlotsResponse({ eventType, dateStr, availabilityWindows, bookingsDb, usersDb, hostUser }) {
-  const candidates = buildSlotCandidates(eventType, availabilityWindows, dateStr);
+async function buildSlotsResponse({ eventType, dateStr, availabilityConfig, bookingsDb, usersDb, hostUser }) {
+  const candidates = buildSlotCandidates(eventType, availabilityConfig, dateStr);
   if (candidates.length === 0) return { slots: [], blocked_by_calendar: [] };
 
   const firstStart = candidates[0];
@@ -316,6 +328,28 @@ async function buildSlotsResponse({ eventType, dateStr, availabilityWindows, boo
   }
 
   return { slots: available, blocked_by_calendar: blockedByCalendar };
+}
+
+async function buildPublicEventTypes(eventTypes, availabilityDb, ownerId) {
+  const items = [];
+  for (const eventType of eventTypes) {
+    const availability = await loadAvailabilityConfig(
+      availabilityDb,
+      ownerId,
+      eventType.id,
+      eventType.timezone || "UTC"
+    );
+    items.push({
+      ...eventTypePublicView(eventType),
+      availability: {
+        mode: availability.mode,
+        start_date: availability.start_date,
+        end_date: availability.end_date,
+        window_count: availability.windows.length,
+      },
+    });
+  }
+  return items;
 }
 
 async function listBookingHostIds(bookingsDb) {
@@ -461,8 +495,9 @@ async function handleBookings(req, _context) {
     if (!currentUser) return errorResponse(404, "User record not found.");
 
     const eventTypes = await listEventTypesForOwner(eventTypesDb, authUser.id);
+    const publicEventTypes = await buildPublicEventTypes(eventTypes, availabilityDb, authUser.id);
     return jsonResponse(200, {
-      event_types: eventTypes,
+      event_types: publicEventTypes,
       public_page_slug: currentUser.booking_public_slug,
     });
   }
@@ -573,6 +608,7 @@ async function handleBookings(req, _context) {
     ).filter((id) => id !== eventTypeId);
 
     await eventTypesDb.delete(`event_type:${eventTypeId}`);
+    await availabilityDb.delete(getAvailabilityKey(authUser.id, eventTypeId)).catch(() => null);
     await eventTypesDb.setJSON(`owner:${authUser.id}`, ownerIds);
     return jsonResponse(200, { success: true });
   }
@@ -580,18 +616,82 @@ async function handleBookings(req, _context) {
   // GET /api/bookings/availability
   if (req.method === "GET" && pathname === "/api/bookings/availability") {
     if (!authUser) return errorResponse(401, "Not authenticated. Please sign in.");
-    const windows = asArray(
-      await availabilityDb.get(`owner:${authUser.id}`, { type: "json" }).catch(() => [])
+    const ownerEventTypes = await listEventTypesForOwner(eventTypesDb, authUser.id);
+    if (!ownerEventTypes.length) {
+      return jsonResponse(200, {
+        event_type_id: "",
+        mode: "weekly",
+        start_date: "",
+        end_date: "",
+        timezone: "UTC",
+        windows: [],
+      });
+    }
+
+    const eventTypeId = String(url.searchParams.get("event_type_id") || "").trim();
+    if (!eventTypeId) {
+      return errorResponse(400, "event_type_id query param is required.");
+    }
+
+    const eventType = ownerEventTypes.find((item) => item.id === eventTypeId);
+    if (!eventType) return errorResponse(404, "Event type not found.");
+
+    const config = await loadAvailabilityConfig(
+      availabilityDb,
+      authUser.id,
+      eventTypeId,
+      eventType.timezone || "UTC"
     );
-    return jsonResponse(200, { windows });
+    return jsonResponse(200, {
+      event_type_id: eventTypeId,
+      mode: config.mode,
+      start_date: config.start_date,
+      end_date: config.end_date,
+      timezone: config.timezone,
+      windows: config.windows,
+    });
   }
 
   // POST /api/bookings/availability
   if (req.method === "POST" && pathname === "/api/bookings/availability") {
     if (!authUser) return errorResponse(401, "Not authenticated. Please sign in.");
+
+    const ownerEventTypes = await listEventTypesForOwner(eventTypesDb, authUser.id);
+    if (!ownerEventTypes.length) {
+      return errorResponse(400, "Create at least one event type before setting availability.");
+    }
+
     const body = await safeJson(req);
     if (body === null) return errorResponse(400, "Request body must be valid JSON.");
 
+    const eventTypeId = String(body.event_type_id || "").trim();
+    if (!eventTypeId) {
+      return errorResponse(400, "event_type_id is required.");
+    }
+
+    const eventType = ownerEventTypes.find((item) => item.id === eventTypeId);
+    if (!eventType) {
+      return errorResponse(404, "Event type not found.");
+    }
+
+    const mode = String(body.mode || "weekly").trim();
+    if (!ALLOWED_AVAILABILITY_MODES.has(mode)) {
+      return errorResponse(400, "mode must be weekly or specific_dates.");
+    }
+
+    const startDate = String(body.start_date || "").trim();
+    const endDate = String(body.end_date || "").trim();
+    if ((startDate && !endDate) || (!startDate && endDate)) {
+      return errorResponse(400, "start_date and end_date must both be provided when using a date range.");
+    }
+    if (startDate && (!isValidDate(startDate) || !isValidDate(endDate))) {
+      return errorResponse(400, "start_date and end_date must be in YYYY-MM-DD format.");
+    }
+    if (startDate && startDate > endDate) {
+      return errorResponse(400, "start_date must be on or before end_date.");
+    }
+
+    const defaultTimezone = String(body.timezone || eventType.timezone || "UTC").trim() || "UTC";
     const windows = asArray(body.windows);
     if (windows.length > MAX_AVAIL_WINDOWS) {
       return errorResponse(400, `You can set at most ${MAX_AVAIL_WINDOWS} availability windows.`);
@@ -599,14 +699,10 @@ async function handleBookings(req, _context) {
 
     const normalized = [];
     for (const row of windows) {
-      const dayOfWeek = String(row?.day_of_week || "").trim();
       const startTime = String(row?.start_time || "").trim();
       const endTime = String(row?.end_time || "").trim();
-      const timezone = String(row?.timezone || "UTC").trim();
+      const timezone = String(row?.timezone || defaultTimezone).trim() || defaultTimezone;
 
-      if (!ALLOWED_WEEKDAYS.has(dayOfWeek)) {
-        return errorResponse(400, `Invalid day_of_week '${dayOfWeek}'.`);
-      }
       if (!isValidTime(startTime) || !isValidTime(endTime)) {
         return errorResponse(400, "start_time and end_time must use HH:MM format.");
       }
@@ -614,33 +710,67 @@ async function handleBookings(req, _context) {
         return errorResponse(400, "end_time must be after start_time.");
       }
 
-      normalized.push({
-        id: generateId(),
-        day_of_week: dayOfWeek,
-        start_time: startTime,
-        end_time: endTime,
-        timezone,
-      });
+      if (mode === "specific_dates") {
+        const date = String(row?.date || "").trim();
+        if (!isValidDate(date)) {
+          return errorResponse(400, "Each availability row must include a valid date in YYYY-MM-DD format.");
+        }
+        if (!isDateInRange(date, startDate, endDate)) {
+          return errorResponse(400, "Availability date must be within the selected date range.");
+        }
+
+        normalized.push({
+          id: generateId(),
+          date,
+          start_time: startTime,
+          end_time: endTime,
+          timezone,
+        });
+      } else {
+        const dayOfWeek = String(row?.day_of_week || "").trim();
+        if (!ALLOWED_WEEKDAYS.has(dayOfWeek)) {
+          return errorResponse(400, `Invalid day_of_week '${dayOfWeek}'.`);
+        }
+
+        normalized.push({
+          id: generateId(),
+          day_of_week: dayOfWeek,
+          start_time: startTime,
+          end_time: endTime,
+          timezone,
+        });
+      }
     }
 
-    await availabilityDb.setJSON(`owner:${authUser.id}`, normalized);
-    return jsonResponse(200, { success: true, windows: normalized });
+    const payload = {
+      event_type_id: eventTypeId,
+      mode,
+      start_date: startDate,
+      end_date: endDate,
+      timezone: defaultTimezone,
+      windows: normalized,
+      updated_at: new Date().toISOString(),
+    };
+
+    await availabilityDb.setJSON(getAvailabilityKey(authUser.id, eventTypeId), payload);
+    return jsonResponse(200, { success: true, ...payload });
   }
 
   // GET /api/bookings/page/:ownerSlug
   const pageMatch = pathname.match(/^\/api\/bookings\/page\/([^/]+)$/);
   if (req.method === "GET" && pageMatch) {
     const ownerSlug = pageMatch[1];
-    const owner = await findUserByPublicSlug(usersDb, ownerSlug);
+    const owner = await findUserByBookingPublicSlug(usersDb, ownerSlug);
     if (!owner) return errorResponse(404, "Booking page not found.");
 
     const ownerEventTypes = (await listEventTypesForOwner(eventTypesDb, owner.id)).filter(
       (eventType) => eventType.enabled !== false
     );
+    const publicEventTypes = await buildPublicEventTypes(ownerEventTypes, availabilityDb, owner.id);
 
     return jsonResponse(200, {
       owner: sanitizeUser(owner),
-      event_types: ownerEventTypes.map(eventTypePublicView),
+      event_types: publicEventTypes,
     });
   }
 
@@ -648,7 +778,7 @@ async function handleBookings(req, _context) {
   const slotsMatch = pathname.match(/^\/api\/bookings\/page\/([^/]+)\/slots$/);
   if (req.method === "GET" && slotsMatch) {
     const ownerSlug = slotsMatch[1];
-    const owner = await findUserByPublicSlug(usersDb, ownerSlug);
+    const owner = await findUserByBookingPublicSlug(usersDb, ownerSlug);
     if (!owner) return errorResponse(404, "Booking page not found.");
 
     const eventTypeId = String(url.searchParams.get("event_type_id") || "").trim();
@@ -667,15 +797,17 @@ async function handleBookings(req, _context) {
       return errorResponse(404, "Event type not found.");
     }
 
-    const allWindows = asArray(
-      await availabilityDb.get(`owner:${owner.id}`, { type: "json" }).catch(() => [])
+    const availabilityConfig = await loadAvailabilityConfig(
+      availabilityDb,
+      owner.id,
+      eventType.id,
+      eventType.timezone || "UTC"
     );
-    const windows = allWindows.filter((w) => (w.timezone || "UTC") === (eventType.timezone || "UTC"));
 
     const { slots, blocked_by_calendar: blockedByCalendar } = await buildSlotsResponse({
       eventType,
       dateStr,
-      availabilityWindows: windows,
+      availabilityConfig,
       bookingsDb,
       usersDb,
       hostUser: owner,
@@ -695,7 +827,7 @@ async function handleBookings(req, _context) {
     if (!authUser) return errorResponse(401, "Not authenticated. Please sign in.");
 
     const ownerSlug = bookMatch[1];
-    const owner = await findUserByPublicSlug(usersDb, ownerSlug);
+    const owner = await findUserByBookingPublicSlug(usersDb, ownerSlug);
     if (!owner) return errorResponse(404, "Booking page not found.");
 
     const body = await safeJson(req);
@@ -719,14 +851,16 @@ async function handleBookings(req, _context) {
       return errorResponse(404, "Event type not found.");
     }
 
-    const allWindows = asArray(
-      await availabilityDb.get(`owner:${owner.id}`, { type: "json" }).catch(() => [])
+    const availabilityConfig = await loadAvailabilityConfig(
+      availabilityDb,
+      owner.id,
+      eventType.id,
+      eventType.timezone || "UTC"
     );
-    const windows = allWindows.filter((w) => (w.timezone || "UTC") === (eventType.timezone || "UTC"));
     const { slots } = await buildSlotsResponse({
       eventType,
       dateStr,
-      availabilityWindows: windows,
+      availabilityConfig,
       bookingsDb,
       usersDb,
       hostUser: owner,
@@ -776,6 +910,22 @@ async function handleBookings(req, _context) {
 
     await bookingsDb.setJSON(`booking:${bookingId}`, booking);
     await bookingsDb.setJSON(slotKey, [...slotBookingIds, bookingId]);
+
+    // Best-effort post-write reconciliation: if concurrent writers overfill a slot,
+    // roll this booking back and return a conflict.
+    const postWriteSlotIds = asArray(await bookingsDb.get(slotKey, { type: "json" }).catch(() => []));
+    let postWriteConfirmedCount = 0;
+    for (const candidateId of postWriteSlotIds) {
+      const candidate = await bookingsDb.get(`booking:${candidateId}`, { type: "json" }).catch(() => null);
+      if (candidate?.status === "confirmed") postWriteConfirmedCount += 1;
+    }
+
+    if (postWriteConfirmedCount > (eventType.group_capacity || 1)) {
+      await bookingsDb.delete(`booking:${bookingId}`).catch(() => null);
+      const rollbackSlotIds = postWriteSlotIds.filter((id) => id !== bookingId);
+      await bookingsDb.setJSON(slotKey, rollbackSlotIds).catch(() => null);
+      return errorResponse(409, "Selected slot is no longer available.");
+    }
 
     const hostIds = asArray(
       await bookingsDb.get(`host:${owner.id}`, { type: "json" }).catch(() => [])

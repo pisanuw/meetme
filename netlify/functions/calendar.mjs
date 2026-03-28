@@ -24,6 +24,8 @@ import {
   encryptSecret,
   asArray,
   buildTimeSlots,
+  localToUTC,
+  saveUserRecord,
 } from "./utils.mjs";
 
 const FN = "calendar";
@@ -33,50 +35,9 @@ export default async (req, context) => {
     return await handleCalendar(req, context);
   } catch (err) {
     log("error", FN, "unhandled exception", { message: err.message, stack: err.stack });
-    return errorResponse(500, `Internal server error: ${err.message}`);
+    return errorResponse(500, "Internal server error.");
   }
 };
-
-// ─── Timezone helpers ─────────────────────────────────────────────────────────
-
-/**
- * Convert a local date + time string in a given timezone to a UTC Date.
- *
- * Technique: we parse the datetime as if it were UTC, then use
- * `Intl.DateTimeFormat` to find out what that UTC instant looks like in the
- * target timezone. The difference tells us the UTC offset, which we subtract.
- *
- * @param {string} dateStr - "YYYY-MM-DD"
- * @param {string} timeStr - "HH:MM"
- * @param {string} timezone - IANA timezone, e.g. "America/New_York"
- * @returns {Date}
- */
-function localToUTC(dateStr, timeStr, timezone) {
-  const localStr = `${dateStr}T${timeStr}:00`;
-  const utcCandidate = new Date(localStr + "Z");
-
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-  const parts = {};
-  fmt.formatToParts(utcCandidate).forEach(({ type, value }) => {
-    parts[type] = value;
-  });
-
-  const hour = parts.hour === "24" ? "00" : parts.hour;
-  const tzStr = `${parts.year}-${parts.month}-${parts.day}T${hour}:${parts.minute}:${parts.second}Z`;
-  const tzAsIfUtc = new Date(tzStr);
-  const offsetMs = tzAsIfUtc - utcCandidate;
-
-  return new Date(utcCandidate.getTime() - offsetMs);
-}
 
 /**
  * Convert a local date + time string to UTC, handling the "24:00" edge case
@@ -189,14 +150,14 @@ async function handleCalendar(req, context) {
         accessToken = refreshed.access_token;
         dbUser.google_access_token = encryptSecret(accessToken);
         dbUser.google_token_expiry = refreshed.expiry;
-        await usersDb.setJSON(user.email, dbUser);
+        await saveUserRecord(usersDb, dbUser);
       } else {
         // Clear stale connection so user can reconnect
         dbUser.calendar_connected = false;
         dbUser.google_access_token = "";
         dbUser.google_refresh_token = "";
         dbUser.google_token_expiry = 0;
-        await usersDb.setJSON(user.email, dbUser);
+        await saveUserRecord(usersDb, dbUser);
         return errorResponse(
           403,
           "Google Calendar session expired. Please reconnect from your profile page."
@@ -251,7 +212,7 @@ async function handleCalendar(req, context) {
         dbUser.google_access_token = "";
         dbUser.google_refresh_token = "";
         dbUser.google_token_expiry = 0;
-        await usersDb.setJSON(user.email, dbUser);
+        await saveUserRecord(usersDb, dbUser);
         return errorResponse(
           403,
           "Google Calendar access was revoked. Please reconnect from your profile page."

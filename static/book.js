@@ -8,6 +8,27 @@ const slotsGrid = document.getElementById("slots-grid");
 const bookBtn = document.getElementById("book-btn");
 
 let selectedSlot = "";
+let eventTypes = [];
+
+function getSelectedEventType() {
+  return eventTypes.find((eventType) => eventType.id === eventSelect.value) || null;
+}
+
+function applyDateBoundsForSelectedEvent() {
+  const eventType = getSelectedEventType();
+  const availability = eventType?.availability || {};
+  const minDate = availability.start_date || "";
+  const maxDate = availability.end_date || "";
+
+  dateInput.min = minDate;
+  dateInput.max = maxDate;
+
+  const today = new Date().toISOString().slice(0, 10);
+  let nextDate = dateInput.value || today;
+  if (minDate && nextDate < minDate) nextDate = minDate;
+  if (maxDate && nextDate > maxDate) nextDate = maxDate;
+  dateInput.value = nextDate;
+}
 
 function renderSlots(slots) {
   slotsGrid.innerHTML = "";
@@ -96,7 +117,7 @@ bookBtn.addEventListener("click", async () => {
   document.getElementById("book-title").textContent = `Book Time with ${data.owner?.name || data.owner?.email || hostSlug}`;
   document.getElementById("book-host").textContent = `Host: ${data.owner?.name || data.owner?.email || hostSlug}`;
 
-  const eventTypes = data.event_types || [];
+  eventTypes = data.event_types || [];
   eventSelect.innerHTML = eventTypes
     .map((eventType) => {
       const selected = eventType.id === preselectedEvent ? "selected" : "";
@@ -104,10 +125,12 @@ bookBtn.addEventListener("click", async () => {
     })
     .join("");
 
-  const today = new Date().toISOString().slice(0, 10);
-  dateInput.value = today;
+  applyDateBoundsForSelectedEvent();
 
-  eventSelect.addEventListener("change", loadSlots);
+  eventSelect.addEventListener("change", async () => {
+    applyDateBoundsForSelectedEvent();
+    await loadSlots();
+  });
   dateInput.addEventListener("change", loadSlots);
   await loadSlots();
 })();

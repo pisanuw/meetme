@@ -114,6 +114,11 @@ a:hover {
   position: relative;
 }
 .nav-dropdown-trigger {
+  display: inline-block;
+  max-width: min(38vw, 280px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   list-style: none;
   cursor: pointer;
   color: rgba(255, 255, 255, 0.85);
@@ -361,6 +366,571 @@ a:hover {
 }
 .text-muted {
   color: var(--text-muted);
+}
+
+.footer-link-inherit {
+  color: inherit;
+}
+
+.page-intro {
+  margin: 8px 0 18px;
+}
+
+.admin-page-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.admin-page-title {
+  margin: 0;
+}
+
+.admin-filter-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.admin-filter-row-aligned {
+  align-items: center;
+}
+
+.admin-search-input {
+  max-width: 320px;
+}
+
+.admin-modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.admin-modal-action {
+  flex: 1;
+}
+
+.admin-danger-zone {
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.admin-danger-copy {
+  font-size: 0.85rem;
+  margin-bottom: 10px;
+}
+
+.admin-detail-modal-card {
+  max-width: 560px;
+}
+
+.admin-access-denied {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.admin-access-denied-link {
+  margin-top: 16px;
+}
+
+.admin-cell-small {
+  font-size: 0.8rem;
+}
+
+.admin-cell-tiny {
+  font-size: 0.78rem;
+}
+
+.admin-cell-center {
+  text-align: center;
+}
+
+.admin-cell-nowrap {
+  white-space: nowrap;
+}
+
+.admin-cell-message {
+  font-size: 0.85rem;
+}
+
+.admin-cell-detail {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-table-placeholder {
+  padding: 16px;
+  text-align: center;
+}
+
+.admin-detail-table {
+  width: 100%;
+  font-size: 0.875rem;
+  border-collapse: collapse;
+}
+
+.admin-detail-label {
+  padding: 4px 8px;
+  color: var(--text-muted);
+}
+
+.admin-detail-value {
+  padding: 4px 8px;
+}
+
+.admin-detail-meetings {
+  margin-top: 14px;
+}
+
+.admin-detail-heading {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.admin-detail-list {
+  margin: 6px 0;
+  padding-left: 18px;
+  font-size: 0.85rem;
+}
+
+.admin-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.admin-pagination-summary {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.admin-pagination-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.profile-wrapper {
+  align-items: flex-start;
+  padding-top: 32px;
+}
+
+.profile-card {
+  max-width: 520px;
+}
+
+.profile-actions-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.profile-action {
+  flex: 1;
+}
+
+.profile-action-link {
+  text-align: center;
+}
+
+.profile-section {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.profile-section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.profile-section-copy {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+
+.profile-checkbox-label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.profile-checkbox-input {
+  margin-top: 3px;
+}
+
+.profile-checkbox-copy {
+  font-size: 0.9rem;
+}
+
+.profile-form-hint-tight {
+  margin-top: -4px;
+  margin-bottom: 12px;
+}
+
+.profile-form-group-tight {
+  margin-bottom: 10px;
+}
+
+.profile-form-hint-meta {
+  margin-top: 8px;
+}
+
+.profile-back-link {
+  margin-top: 20px;
+}
+
+.profile-calendar-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--green0);
+  border: 1px solid var(--green1);
+  border-radius: 8px;
+}
+
+.profile-calendar-icon {
+  font-size: 1.2rem;
+}
+
+.profile-calendar-copy {
+  flex: 1;
+}
+
+.profile-calendar-title {
+  font-size: 0.875rem;
+  color: var(--green4);
+}
+
+.profile-calendar-note {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.profile-calendar-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.profile-calendar-connect {
+  justify-content: center;
+  gap: 8px;
+}
+
+.profile-calendar-readonly {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 8px;
+}
+
+.setup-section-title {
+  margin-bottom: 12px;
+}
+
+.setup-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.setup-section-header .setup-section-title {
+  margin-bottom: 0;
+}
+
+.setup-section-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.setup-section-spaced {
+  margin-top: 30px;
+}
+
+.setup-actions-tight {
+  margin-top: 12px;
+}
+
+.availability-row-spaced {
+  margin-bottom: 8px;
+}
+
+.availability-quick-picker-wide {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+}
+
+.availability-quick-picker-summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+
+.availability-quick-picker-group {
+  margin-top: 8px;
+}
+
+.availability-quick-picker-label {
+  font-size: 0.78rem;
+}
+
+.empty-state-full {
+  grid-column: 1 / -1;
+}
+
+.booking-card-copy {
+  margin-top: 6px;
+}
+
+.booking-card-summary {
+  margin-top: 10px;
+  font-size: 0.85rem;
+}
+
+.booking-card-badges {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.booking-card-actions {
+  margin-top: 12px;
+}
+
+.empty-state-full {
+  grid-column: 1 / -1;
+}
+
+.booking-card-copy {
+  margin-top: 6px;
+}
+
+.booking-card-badges {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.booking-card-share-group {
+  margin-top: 12px;
+}
+
+.booking-card-subgroup {
+  margin-top: 8px;
+}
+
+.booking-card-actions {
+  margin-top: 12px;
+}
+
+.bookings-toolbar {
+  margin-bottom: 16px;
+}
+
+.bookings-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bookings-toolbar-label {
+  margin: 0;
+}
+
+.bookings-toolbar-select {
+  width: 120px;
+}
+
+.not-found-container {
+  max-width: 760px;
+  padding-top: 32px;
+}
+
+.not-found-card {
+  text-align: center;
+  padding: 32px 24px;
+}
+
+.not-found-title {
+  margin-bottom: 8px;
+}
+
+.not-found-copy {
+  margin-bottom: 20px;
+}
+
+.not-found-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.feedback-header {
+  margin-bottom: 20px;
+}
+
+.feedback-title {
+  font-size: 1.5rem;
+}
+
+.feedback-copy {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.feedback-sent {
+  text-align: center;
+  padding: 24px 0;
+}
+
+.feedback-sent-icon {
+  font-size: 2.5rem;
+  margin-bottom: 12px;
+}
+
+.feedback-sent-title {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+}
+
+.feedback-sent-copy {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.feedback-sent-link {
+  margin-top: 16px;
+}
+
+.email-sent-card {
+  text-align: center;
+}
+
+.email-sent-logo {
+  font-size: 2.8rem;
+  margin-bottom: 8px;
+}
+
+.email-sent-next-steps {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin: 16px 0;
+  text-align: left;
+}
+
+.email-sent-next-title {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #166534;
+}
+
+.email-sent-next-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.875rem;
+  color: #14532d;
+  line-height: 1.8;
+}
+
+.email-sent-note {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  margin-top: 16px;
+}
+
+.email-sent-actions {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.booking-confirmation-details {
+  margin-top: 18px;
+}
+
+.booking-confirmation-actions {
+  margin-top: 8px;
+}
+
+.booking-confirmation-detail-row {
+  margin-bottom: 10px;
+}
+
+.pref-page-body {
+  margin: 0;
+  color-scheme: light;
+}
+
+.pref-page-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.pref-page-card {
+  width: 100%;
+  max-width: 560px;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+  padding: 28px;
+}
+
+.pref-page-card h1 {
+  margin: 0 0 10px;
+  font-size: 1.3rem;
+}
+
+.pref-page-card p {
+  margin: 10px 0;
+  line-height: 1.5;
+}
+
+.pref-page-muted {
+  color: #6b7280;
+  font-size: 0.92rem;
+}
+
+.pref-page-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.pref-page-link-button {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
 }
 
 /* ────────────────────────────────────────────
@@ -728,6 +1298,24 @@ a:hover {
   margin-top: 8px;
 }
 
+.availability-row {
+  background: var(--gray-100);
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.availability-quick-picker {
+  border-top: 1px dashed var(--gray-300);
+  padding-top: 8px;
+}
+
+.availability-time-chips {
+  max-height: 120px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
 /* Day checkboxes */
 .day-checkboxes {
   display: grid;
@@ -813,6 +1401,139 @@ a:hover {
   font-size: 0.85rem;
   color: #2e7d32;
   margin-bottom: 12px;
+}
+
+.meeting-finalized-tz {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.meeting-tz-bar {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.meeting-tz-label {
+  font-weight: 600;
+}
+
+.meeting-tz-toggle {
+  padding: 2px 8px;
+  font-size: 0.75rem;
+}
+
+.meeting-inline-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.meeting-inline-actions-wide {
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.meeting-share-controls {
+  margin-top: 10px;
+}
+
+.meeting-share-label {
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.meeting-share-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.meeting-share-input {
+  min-width: 280px;
+  max-width: 520px;
+}
+
+.meeting-gcal-btn {
+  gap: 6px;
+  display: flex;
+  align-items: center;
+}
+
+.meeting-gcal-icon {
+  flex-shrink: 0;
+}
+
+.legend-swatch-level-1 {
+  background: #edfaed;
+}
+
+.legend-swatch-level-2 {
+  background: #a5d6a7;
+}
+
+.legend-swatch-level-3 {
+  background: #4caf50;
+}
+
+.legend-swatch-level-4 {
+  background: #1b5e20;
+}
+
+.slot-detail-panel {
+  margin-top: 14px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.875rem;
+}
+
+.slot-detail-heading {
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: var(--text);
+}
+
+.slot-detail-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.slot-detail-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+.slot-detail-label-available {
+  color: #2e7d32;
+}
+
+.slot-detail-label-unavailable {
+  color: #c62828;
+}
+
+.slot-detail-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.slot-detail-empty {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  margin-top: 2px;
 }
 
 /* Toolbar */
@@ -1046,10 +1767,14 @@ a:hover {
   gap: 12px;
   padding: 10px 12px;
   border-radius: 8px;
-  cursor: pointer;
   transition: background 0.12s;
 }
-.participant-row:hover {
+
+.participant-row-clickable {
+  cursor: pointer;
+}
+
+.participant-row-clickable:hover {
   background: var(--gray-100);
 }
 .participant-avatar {
@@ -1283,6 +2008,9 @@ a:hover {
   align-items: center;
   justify-content: center;
   padding: 16px;
+}
+.modal-backdrop[hidden] {
+  display: none;
 }
 .modal-card {
   background: white;

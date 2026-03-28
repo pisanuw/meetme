@@ -78,6 +78,7 @@ test("booking host can create event type and publish slots", async () => {
     method: "POST",
     headers: { cookie: authCookie(host) },
     body: {
+      event_type_id: eventTypeId,
       windows: [
         {
           day_of_week: "Monday",
@@ -99,6 +100,10 @@ test("booking host can create event type and publish slots", async () => {
   assert.equal(pageRes.status, 200);
   assert.equal(pageBody.event_types.length, 1);
   assert.equal(pageBody.event_types[0].id, eventTypeId);
+  assert.equal(pageBody.event_types[0].availability.start_date, "");
+
+  const slugIndex = await store("users").get("booking_public_slug:host", { type: "json" });
+  assert.equal(slugIndex.email, "host@example.com");
 
   const slotsReq = new Request(
     `http://localhost:8888/api/bookings/page/host/slots?event_type_id=${encodeURIComponent(eventTypeId)}&date=2026-03-30`,
@@ -109,6 +114,106 @@ test("booking host can create event type and publish slots", async () => {
   assert.equal(slotsRes.status, 200);
   assert.equal(Array.isArray(slotsBody.slots), true);
   assert.equal(slotsBody.slots.includes("09:00"), true);
+});
+
+test("legacy booking slug lookup backfills slug index on first access", async () => {
+  await store("users").setJSON("legacy@example.com", {
+    id: "legacy-user",
+    email: "legacy@example.com",
+    name: "Legacy User",
+    first_name: "Legacy",
+    last_name: "User",
+    profile_complete: true,
+    timezone: "UTC",
+    calendar_connected: false,
+    created_at: new Date().toISOString(),
+  });
+
+  const pageReq = new Request("http://localhost:8888/api/bookings/page/legacy", { method: "GET" });
+  const pageRes = await bookingsHandler(pageReq, {});
+  const pageBody = await responseJson(pageRes);
+  assert.equal(pageRes.status, 200);
+  assert.equal(pageBody.owner.email, "legacy@example.com");
+
+  const slugIndex = await store("users").get("booking_public_slug:legacy", { type: "json" });
+  assert.equal(slugIndex.email, "legacy@example.com");
+});
+
+test("availability cannot be saved before creating an event type", async () => {
+  const host = { id: "host-no-event", email: "host-no-event@example.com", name: "Host No Event" };
+  await seedUser(host);
+
+  const setAvailReq = makeJsonRequest("http://localhost:8888/api/bookings/availability", {
+    method: "POST",
+    headers: { cookie: authCookie(host) },
+    body: {
+      event_type_id: "missing-event-type",
+      mode: "weekly",
+      start_date: "2026-03-01",
+      end_date: "2026-03-31",
+      windows: [{ day_of_week: "Monday", start_time: "09:00", end_time: "10:00", timezone: "UTC" }],
+    },
+  });
+
+  const setAvailRes = await bookingsHandler(setAvailReq, {});
+  const setAvailBody = await responseJson(setAvailRes);
+  assert.equal(setAvailRes.status, 400);
+  assert.match(setAvailBody.error, /Create at least one event type/i);
+});
+
+test("specific-dates availability mode only returns slots on configured dates", async () => {
+  const host = { id: "host-specific", email: "host-specific@example.com", name: "Host Specific" };
+  await seedUser(host);
+
+  const createEventReq = makeJsonRequest("http://localhost:8888/api/bookings/event-types", {
+    method: "POST",
+    headers: { cookie: authCookie(host) },
+    body: {
+      title: "Specific Date Consult",
+      description: "Only some dates",
+      event_type: "one_on_one",
+      duration_minutes: 30,
+      timezone: "UTC",
+    },
+  });
+  const createEventRes = await bookingsHandler(createEventReq, {});
+  const createEventBody = await responseJson(createEventRes);
+  assert.equal(createEventRes.status, 200);
+  const eventTypeId = createEventBody.event_type.id;
+
+  const setAvailReq = makeJsonRequest("http://localhost:8888/api/bookings/availability", {
+    method: "POST",
+    headers: { cookie: authCookie(host) },
+    body: {
+      event_type_id: eventTypeId,
+      mode: "specific_dates",
+      start_date: "2026-03-01",
+      end_date: "2026-03-31",
+      windows: [
+        { date: "2026-03-18", start_time: "09:00", end_time: "10:00", timezone: "UTC" },
+      ],
+    },
+  });
+  const setAvailRes = await bookingsHandler(setAvailReq, {});
+  assert.equal(setAvailRes.status, 200);
+
+  const matchingDateReq = new Request(
+    `http://localhost:8888/api/bookings/page/host-specific/slots?event_type_id=${encodeURIComponent(eventTypeId)}&date=2026-03-18`,
+    { method: "GET" }
+  );
+  const matchingDateRes = await bookingsHandler(matchingDateReq, {});
+  const matchingDateBody = await responseJson(matchingDateRes);
+  assert.equal(matchingDateRes.status, 200);
+  assert.equal(matchingDateBody.slots.includes("09:00"), true);
+
+  const otherDateReq = new Request(
+    `http://localhost:8888/api/bookings/page/host-specific/slots?event_type_id=${encodeURIComponent(eventTypeId)}&date=2026-03-19`,
+    { method: "GET" }
+  );
+  const otherDateRes = await bookingsHandler(otherDateReq, {});
+  const otherDateBody = await responseJson(otherDateRes);
+  assert.equal(otherDateRes.status, 200);
+  assert.equal(otherDateBody.slots.length, 0);
 });
 
 test("authenticated user can book slot and host can view it", async () => {
@@ -137,6 +242,7 @@ test("authenticated user can book slot and host can view it", async () => {
       method: "POST",
       headers: { cookie: authCookie(host) },
       body: {
+        event_type_id: eventTypeId,
         windows: [
           { day_of_week: "Monday", start_time: "09:00", end_time: "11:00", timezone: "UTC" },
         ],
@@ -196,6 +302,7 @@ test("host or attendee can cancel booking but unrelated user cannot", async () =
       method: "POST",
       headers: { cookie: authCookie(host) },
       body: {
+        event_type_id: eventTypeId,
         windows: [
           { day_of_week: "Monday", start_time: "09:00", end_time: "10:00", timezone: "UTC" },
         ],
@@ -299,6 +406,7 @@ test("booking detail endpoint allows host/attendee and denies unrelated user", a
       method: "POST",
       headers: { cookie: authCookie(host) },
       body: {
+        event_type_id: eventTypeId,
         windows: [
           { day_of_week: "Monday", start_time: "09:00", end_time: "10:00", timezone: "UTC" },
         ],
@@ -349,6 +457,109 @@ test("booking detail endpoint allows host/attendee and denies unrelated user", a
     {}
   );
   assert.equal(otherDetailRes.status, 403);
+});
+
+test("different event types can expose different availability schedules", async () => {
+  const host = { id: "host-per-event", email: "host-per-event@example.com", name: "Host Per Event" };
+  await seedUser(host);
+
+  const officeHoursBody = await responseJson(
+    await bookingsHandler(
+      makeJsonRequest("http://localhost:8888/api/bookings/event-types", {
+        method: "POST",
+        headers: { cookie: authCookie(host) },
+        body: {
+          title: "Office Hours",
+          event_type: "one_on_one",
+          duration_minutes: 30,
+          timezone: "UTC",
+        },
+      }),
+      {}
+    )
+  );
+  const socializingBody = await responseJson(
+    await bookingsHandler(
+      makeJsonRequest("http://localhost:8888/api/bookings/event-types", {
+        method: "POST",
+        headers: { cookie: authCookie(host) },
+        body: {
+          title: "Socializing",
+          event_type: "one_on_one",
+          duration_minutes: 30,
+          timezone: "UTC",
+        },
+      }),
+      {}
+    )
+  );
+
+  const officeHoursId = officeHoursBody.event_type.id;
+  const socializingId = socializingBody.event_type.id;
+
+  const officeAvailRes = await bookingsHandler(
+    makeJsonRequest("http://localhost:8888/api/bookings/availability", {
+      method: "POST",
+      headers: { cookie: authCookie(host) },
+      body: {
+        event_type_id: officeHoursId,
+        mode: "weekly",
+        start_date: "2026-03-01",
+        end_date: "2026-03-31",
+        windows: [{ day_of_week: "Monday", start_time: "09:00", end_time: "11:00", timezone: "UTC" }],
+      },
+    }),
+    {}
+  );
+  assert.equal(officeAvailRes.status, 200);
+
+  const socialAvailRes = await bookingsHandler(
+    makeJsonRequest("http://localhost:8888/api/bookings/availability", {
+      method: "POST",
+      headers: { cookie: authCookie(host) },
+      body: {
+        event_type_id: socializingId,
+        mode: "weekly",
+        start_date: "2026-03-01",
+        end_date: "2026-03-31",
+        windows: [{ day_of_week: "Monday", start_time: "14:00", end_time: "17:00", timezone: "UTC" }],
+      },
+    }),
+    {}
+  );
+  assert.equal(socialAvailRes.status, 200);
+
+  const officeSlotsRes = await bookingsHandler(
+    new Request(
+      `http://localhost:8888/api/bookings/page/host-per-event/slots?event_type_id=${encodeURIComponent(officeHoursId)}&date=2026-03-30`,
+      { method: "GET" }
+    ),
+    {}
+  );
+  const officeSlotsBody = await responseJson(officeSlotsRes);
+  assert.equal(officeSlotsRes.status, 200);
+  assert.equal(officeSlotsBody.slots.includes("09:00"), true);
+  assert.equal(officeSlotsBody.slots.includes("14:00"), false);
+
+  const socialSlotsRes = await bookingsHandler(
+    new Request(
+      `http://localhost:8888/api/bookings/page/host-per-event/slots?event_type_id=${encodeURIComponent(socializingId)}&date=2026-03-30`,
+      { method: "GET" }
+    ),
+    {}
+  );
+  const socialSlotsBody = await responseJson(socialSlotsRes);
+  assert.equal(socialSlotsRes.status, 200);
+  assert.equal(socialSlotsBody.slots.includes("14:00"), true);
+  assert.equal(socialSlotsBody.slots.includes("09:00"), false);
+
+  const pageBody = await responseJson(
+    await bookingsHandler(new Request("http://localhost:8888/api/bookings/page/host-per-event", { method: "GET" }), {})
+  );
+  const officePublic = pageBody.event_types.find((item) => item.id === officeHoursId);
+  const socialPublic = pageBody.event_types.find((item) => item.id === socializingId);
+  assert.equal(officePublic.availability.start_date, "2026-03-01");
+  assert.equal(socialPublic.availability.end_date, "2026-03-31");
 });
 
 test("reminder sending is host-only and idempotent", async () => {

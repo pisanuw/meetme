@@ -10,7 +10,7 @@ let currentBooking = null;
 
 function renderDetail(label, value) {
   return `
-    <div class="form-group" style="margin-bottom: 10px;">
+    <div class="form-group booking-confirmation-detail-row">
       <label>${escapeHtml(label)}</label>
       <div class="text-muted">${escapeHtml(value || "-")}</div>
     </div>
@@ -32,7 +32,7 @@ function renderDetail(label, value) {
     if (!ok) {
       subtitleEl.textContent = "Could not load booking details.";
       showFlash(data.error || "Could not load booking details.", "danger");
-      actionsEl.style.display = "none";
+      actionsEl.hidden = true;
       return;
     }
 
@@ -48,10 +48,10 @@ function renderDetail(label, value) {
       renderDetail("Attendee", booking.attendee_name || booking.attendee_email),
       renderDetail("Status", booking.status),
     ].join("");
-    detailsEl.style.display = "block";
+    detailsEl.hidden = false;
 
     const canCancel = booking.status !== "cancelled";
-    actionsEl.style.display = canCancel ? "flex" : "none";
+    actionsEl.hidden = !canCancel;
   }
 
   cancelBtn.addEventListener("click", async () => {

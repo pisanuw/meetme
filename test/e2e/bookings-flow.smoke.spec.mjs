@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 test("book flow redirects to confirmation with booking detail", async ({ page }) => {
   let capturedBookingPayload = null;
   let bookingStatus = "confirmed";
+  let slotRequestCount = 0;
 
   await page.route("**/api/auth/me", async (route) => {
     await route.fulfill({
@@ -25,6 +26,23 @@ test("book flow redirects to confirmation with booking detail", async ({ page })
             duration_minutes: 30,
             event_type: "one_on_one",
             timezone: "UTC",
+            availability: {
+              mode: "weekly",
+              start_date: "2026-04-01",
+              end_date: "2026-04-30",
+            },
+          },
+          {
+            id: "evt-social",
+            title: "Social Chat",
+            duration_minutes: 60,
+            event_type: "one_on_one",
+            timezone: "UTC",
+            availability: {
+              mode: "weekly",
+              start_date: "2026-04-10",
+              end_date: "2026-05-10",
+            },
           },
         ],
       }),
@@ -32,10 +50,16 @@ test("book flow redirects to confirmation with booking detail", async ({ page })
   });
 
   await page.route("**/api/bookings/page/host-smoke/slots**", async (route) => {
+    slotRequestCount += 1;
+    const url = new URL(route.request().url());
+    const eventTypeId = url.searchParams.get("event_type_id");
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ slots: ["09:00"], blocked_by_calendar: [] }),
+      body: JSON.stringify({
+        slots: eventTypeId === "evt-social" ? ["14:00"] : ["09:00"],
+        blocked_by_calendar: [],
+      }),
     });
   });
 
@@ -87,6 +111,14 @@ test("book flow redirects to confirmation with booking detail", async ({ page })
 
   await page.goto("/book.html?host=host-smoke&event=evt-smoke");
   await expect(page.getByRole("heading", { name: /Book Time with Host Smoke/ })).toBeVisible();
+  await expect(page.locator("#book-date")).toHaveValue("2026-04-01");
+
+  await page.selectOption("#event-select", "evt-social");
+  await expect(page.locator("#book-date")).toHaveValue("2026-04-10");
+  await expect(page.getByRole("button", { name: "14:00" })).toBeVisible();
+
+  await page.selectOption("#event-select", "evt-smoke");
+  await expect(page.getByRole("button", { name: "09:00" })).toBeVisible();
 
   await page.getByRole("button", { name: "09:00" }).click();
   await page.getByRole("button", { name: "Book Selected Slot" }).click();
@@ -103,6 +135,7 @@ test("book flow redirects to confirmation with booking detail", async ({ page })
   expect(capturedBookingPayload).toBeTruthy();
   expect(capturedBookingPayload.event_type_id).toBe("evt-smoke");
   expect(capturedBookingPayload.start_time).toBe("09:00");
+  expect(slotRequestCount).toBeGreaterThanOrEqual(3);
 });
 
 test("host reminders action posts selected reminder window", async ({ page }) => {
