@@ -62,6 +62,7 @@ function bindUi() {
     if (action === "view") viewUserDetail(email);
     if (action === "edit") openUserModal(email);
     if (action === "act") impersonateUser(email);
+    if (action === "admin-toggle") toggleAdminRole(email, btn.dataset.nextAdmin === "true");
   });
 }
 
@@ -102,6 +103,9 @@ function renderUsers(users) {
     <tr>
       <td>${escapeHtml(u.email)}</td>
       <td>${escapeHtml(u.first_name || "")} ${escapeHtml(u.last_name || "")}</td>
+      <td>
+        ${u.is_super_admin ? '<span class="badge badge-green">super admin</span>' : u.is_admin ? '<span class="badge badge-gray">admin</span>' : '<span class="text-muted">member</span>'}
+      </td>
       <td style="font-size:0.8rem;">${escapeHtml(u.timezone || "—")}</td>
       <td style="font-size:0.8rem;">${u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}</td>
       <td style="text-align:center;">${u.calendar_connected ? "✅" : "—"}</td>
@@ -109,10 +113,30 @@ function renderUsers(users) {
         <button class="btn btn-xs btn-ghost" data-action="view" data-email="${escapeHtml(u.email)}">View</button>
         <button class="btn btn-xs btn-ghost" data-action="edit" data-email="${escapeHtml(u.email)}">Edit</button>
         <button class="btn btn-xs btn-ghost" data-action="act" data-email="${escapeHtml(u.email)}">Act as</button>
+        ${u.is_super_admin ? "" : `<button class="btn btn-xs btn-ghost" data-action="admin-toggle" data-next-admin="${u.is_admin ? "false" : "true"}" data-email="${escapeHtml(u.email)}">${u.is_admin ? "Revoke Admin" : "Make Admin"}</button>`}
       </td>
     </tr>`
     )
     .join("");
+}
+
+async function toggleAdminRole(email, makeAdmin) {
+  const actionLabel = makeAdmin ? "grant admin" : "revoke admin";
+  if (!confirm(`Are you sure you want to ${actionLabel} for ${email}?`)) return;
+
+  const { ok, data } = await apiFetch("/api/admin/users/admin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, is_admin: makeAdmin }),
+  });
+
+  if (!ok) {
+    showFlash(data.error || "Failed to update admin role.", "danger");
+    return;
+  }
+
+  showFlash(makeAdmin ? "Admin role granted." : "Admin role revoked.", "success");
+  await loadUsers();
 }
 
 async function impersonateUser(email) {

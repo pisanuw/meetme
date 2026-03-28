@@ -415,12 +415,26 @@ export function getAppUrl(req) {
  * @returns {boolean}
  */
 export function isAdmin(user) {
-  if (!user || !user.email) return false;
+  if (!user) return false;
+  if (isSuperAdminEmail(user.email || "")) return true;
+  return Boolean(user.is_admin);
+}
+
+/**
+ * Return true if the email belongs to an environment-configured super admin.
+ * These users are sourced from ADMIN_EMAILS and should not be removed through UI.
+ *
+ * @param {string} email
+ * @returns {boolean}
+ */
+export function isSuperAdminEmail(email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  if (!normalized) return false;
   const adminEmails = getEnv("ADMIN_EMAILS", "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
-  return adminEmails.includes((user.email || "").toLowerCase());
+  return adminEmails.includes(normalized);
 }
 
 /**

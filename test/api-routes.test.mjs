@@ -251,6 +251,32 @@ test("meetings create/list/detail/leave lifecycle works", async () => {
   assert.equal(leaveBody.success, true);
 });
 
+test("meeting creation does not send invite email to creator", async () => {
+  const creator = { id: "u1a", email: "creator-self@example.com", name: "Creator Self" };
+
+  const req = makeJsonRequest("http://localhost:8888/api/meetings", {
+    method: "POST",
+    headers: { cookie: authCookie(creator) },
+    body: {
+      title: "No Self Invite",
+      description: "Creator should not receive invite email",
+      meeting_type: "days_of_week",
+      dates_or_days: ["Monday"],
+      start_time: "09:00",
+      end_time: "10:00",
+      invite_emails: "creator-self@example.com,friend@example.com",
+      timezone: "UTC",
+    },
+  });
+  const res = await meetingsHandler(req, {});
+  const body = await responseJson(res);
+
+  assert.equal(res.status, 200);
+  assert.equal(body.success, true);
+  assert.equal(body.invite_results.length, 1);
+  assert.equal(body.invite_results[0].email, "friend@example.com");
+});
+
 test("meeting actions availability/finalize/unfinalize/reminder flows", async () => {
   const creator = { id: "u10", email: "creator10@example.com", name: "Creator 10" };
   const invitee = { id: "u11", email: "friend@example.com", name: "Friend" };
@@ -377,6 +403,46 @@ test("admin user create/update/delete + impersonation", async () => {
   const deleteBody = await responseJson(deleteRes);
   assert.equal(deleteRes.status, 200);
   assert.equal(deleteBody.success, true);
+});
+
+test("admin can grant and revoke additional admins but not super admins", async () => {
+  const token = createToken({ id: "a3", email: "admin@example.com", name: "Admin" });
+
+  const createReq = makeJsonRequest("http://localhost:8888/api/admin/users", {
+    method: "POST",
+    headers: { cookie: `token=${token}` },
+    body: { email: "extra-admin@example.com", first_name: "Extra", last_name: "Admin" },
+  });
+  const createRes = await adminHandler(createReq, { params: { 0: "users" } });
+  assert.equal(createRes.status, 201);
+
+  const grantReq = makeJsonRequest("http://localhost:8888/api/admin/users/admin", {
+    method: "POST",
+    headers: { cookie: `token=${token}` },
+    body: { email: "extra-admin@example.com", is_admin: true },
+  });
+  const grantRes = await adminHandler(grantReq, { params: { 0: "users/admin" } });
+  const grantBody = await responseJson(grantRes);
+  assert.equal(grantRes.status, 200);
+  assert.equal(grantBody.user.is_admin, true);
+
+  const revokeReq = makeJsonRequest("http://localhost:8888/api/admin/users/admin", {
+    method: "POST",
+    headers: { cookie: `token=${token}` },
+    body: { email: "extra-admin@example.com", is_admin: false },
+  });
+  const revokeRes = await adminHandler(revokeReq, { params: { 0: "users/admin" } });
+  const revokeBody = await responseJson(revokeRes);
+  assert.equal(revokeRes.status, 200);
+  assert.equal(revokeBody.user.is_admin, false);
+
+  const superRevokeReq = makeJsonRequest("http://localhost:8888/api/admin/users/admin", {
+    method: "POST",
+    headers: { cookie: `token=${token}` },
+    body: { email: "admin@example.com", is_admin: false },
+  });
+  const superRevokeRes = await adminHandler(superRevokeReq, { params: { 0: "users/admin" } });
+  assert.equal(superRevokeRes.status, 400);
 });
 
 test("admin stats and events routes work for admins", async () => {

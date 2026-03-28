@@ -337,8 +337,10 @@ async function handleAuth(req, context) {
   }
 
   if (req.method === "GET" && (path === "me" || path === "")) {
-    const user = getUserFromRequest(req);
-    if (!user) return errorResponse(401, "Not authenticated. Please sign in.");
+    const tokenUser = getUserFromRequest(req);
+    if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
+    const users = getDb("users");
+    const user = (await users.get(tokenUser.email, { type: "json" }).catch(() => null)) || tokenUser;
     return jsonResponse(200, {
       id: user.id,
       email: user.email,

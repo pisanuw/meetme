@@ -19,6 +19,7 @@ import {
   jsonResponse,
   errorResponse,
   isAdmin,
+  isSuperAdminEmail,
   persistEvent,
   log,
   logRequest,
@@ -46,8 +47,11 @@ export default async (req, context) => {
 async function handleAdmin(req, context) {
   logRequest(FN, req);
 
-  const user = getUserFromRequest(req);
-  if (!user) return errorResponse(401, "Not authenticated. Please sign in.");
+  const tokenUser = getUserFromRequest(req);
+  if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
+  const usersDb = getDb("users");
+  const dbUser = await usersDb.get(tokenUser.email, { type: "json" }).catch(() => null);
+  const user = dbUser || tokenUser;
   if (!isAdmin(user)) return errorResponse(403, "Admin access required.");
 
   const url = new URL(req.url);
@@ -70,7 +74,6 @@ async function handleAdmin(req, context) {
 
   // ─── GET /api/admin/users ────────────────────────────────────────────────
   if (req.method === "GET" && path === "users") {
-    const usersDb = getDb("users");
     const list = await usersDb.list().catch(() => ({ blobs: [] }));
     const users = (
       await Promise.all(
@@ -78,7 +81,14 @@ async function handleAdmin(req, context) {
           usersDb.get(email, { type: "json" }).catch(() => null)
         )
       )
-    ).filter(Boolean);
+    )
+      .filter(Boolean)
+      .map((u) => {
+        const safe = sanitizeUser(u);
+        safe.is_super_admin = isSuperAdminEmail(u.email);
+        safe.is_admin = safe.is_super_admin || !!u.is_admin;
+        return safe;
+      });
     users.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
     return jsonResponse(200, { users });
   }
@@ -89,13 +99,16 @@ async function handleAdmin(req, context) {
     const email = decodeURIComponent(userPathMatch[1]).toLowerCase();
     if (!email) return errorResponse(400, "email is required.");
 
-    const usersDb = getDb("users");
     const invites = getDb("invites");
     const meetings = getDb("meetings");
     const availability = getDb("availability");
 
     const u = await usersDb.get(email, { type: "json" }).catch(() => null);
     if (!u) return errorResponse(404, `User '${email}' not found.`);
+
+    const safeUser = sanitizeUser(u);
+    safeUser.is_super_admin = isSuperAdminEmail(u.email);
+    safeUser.is_admin = safeUser.is_super_admin || !!u.is_admin;
 
     const index = await listMeetingIds(meetings);
     const createdMeetings = [];
@@ -143,7 +156,7 @@ async function handleAdmin(req, context) {
 
     // Remove sensitive fields like tokens before returning
     return jsonResponse(200, {
-      user: sanitizeUser(u),
+      user: safeUser,
       created_meetings: createdMeetings,
       invited_meetings: invitedMeetings,
     });
@@ -157,7 +170,6 @@ async function handleAdmin(req, context) {
     const email = validateEmail(body.email || "");
     if (!email) return errorResponse(400, "A valid email address is required.");
 
-    const usersDb = getDb("users");
     let u = await usersDb.get(email, { type: "json" }).catch(() => null);
 
     if (u) {
@@ -195,6 +207,7 @@ async function handleAdmin(req, context) {
         first_name: firstName,
         last_name: lastName,
         profile_complete: !!firstName,
+        is_admin: false,
         created_at: new Date().toISOString(),
         created_by_admin: true,
       };
@@ -205,15 +218,51 @@ async function handleAdmin(req, context) {
     }
   }
 
+  // ─── POST /api/admin/users/admin ─────────────────────────────────────────
+  if (req.method === "POST" && path === "users/admin") {
+    const body = await safeJson(req);
+    if (!body) return errorResponse(400, "Request body must be valid JSON.");
+
+    const email = validateEmail(body.email || "");
+    if (!email) return errorResponse(400, "A valid email address is required.");
+
+    const makeAdmin = body.is_admin !== false;
+    if (isSuperAdminEmail(email) && !makeAdmin) {
+      return errorResponse(400, "Super admins defined in ADMIN_EMAILS cannot be removed.");
+    }
+
+    const target = await usersDb.get(email, { type: "json" }).catch(() => null);
+    if (!target) return errorResponse(404, `User '${email}' not found.`);
+
+    target.is_admin = makeAdmin;
+    await usersDb.setJSON(email, target);
+
+    await persistEvent("warn", FN, makeAdmin ? "admin granted user admin role" : "admin revoked user admin role", {
+      admin: user.email,
+      target: email,
+      is_admin: makeAdmin,
+    });
+
+    return jsonResponse(200, {
+      success: true,
+      user: {
+        ...sanitizeUser(target),
+        is_super_admin: isSuperAdminEmail(target.email),
+        is_admin: isSuperAdminEmail(target.email) || !!target.is_admin,
+      },
+    });
+  }
+
   // ─── POST /api/admin/users/delete ────────────────────────────────────────
   if (req.method === "POST" && path === "users/delete") {
     const body = await safeJson(req);
     if (!body) return errorResponse(400, "Request body must be valid JSON.");
     const email = (body.email || "").trim().toLowerCase();
     if (!email) return errorResponse(400, "email is required.");
-    if (isAdmin({ email })) return errorResponse(400, "Cannot delete an admin account.");
+    if (isSuperAdminEmail(email)) {
+      return errorResponse(400, "Cannot delete a super admin account.");
+    }
 
-    const usersDb = getDb("users");
     const u = await usersDb.get(email, { type: "json" }).catch(() => null);
     if (!u) return errorResponse(404, `User '${email}' not found.`);
 
@@ -237,7 +286,6 @@ async function handleAdmin(req, context) {
       return errorResponse(400, "You are already signed in as this user.");
     }
 
-    const usersDb = getDb("users");
     const targetUser = await usersDb.get(targetEmail, { type: "json" }).catch(() => null);
     if (!targetUser) return errorResponse(404, `User '${targetEmail}' not found.`);
 
