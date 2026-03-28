@@ -108,6 +108,7 @@ and in your local `.env` file for development:
 | `RESEND_API_KEY`        | _(required for email)_ | API key from [resend.com](https://resend.com)                                              |
 | `AUTH_FROM_EMAIL`       | _(required for email)_ | Verified sender address, e.g. `MeetMe <noreply@yourdomain.com>`                            |
 | `RESEND_WEBHOOK_SECRET` | _(optional)_           | Shared secret for the Resend bounce/complaint webhook                                      |
+| `BOOKING_REMINDERS_RUN_SECRET` | _(recommended)_   | Shared secret required for manual calls to `/api/bookings/reminders/run`                    |
 | `ADMIN_EMAILS`          | _(optional)_           | Comma-separated admin addresses, e.g. `alice@example.com,bob@example.com`                  |
 | `GOOGLE_CLIENT_ID`      | _(optional)_           | OAuth 2.0 client ID (required for Google sign-in and Calendar)                             |
 | `GOOGLE_CLIENT_SECRET`  | _(optional)_           | OAuth 2.0 client secret                                                                    |
@@ -133,7 +134,12 @@ Use `.env.example` as the template for local development values.
 - Header: `x-webhook-secret: <RESEND_WEBHOOK_SECRET>`
 - Subscribe to: `email.bounced`, `email.complained`
 
-5. Deploy and test:
+5. Configure booking reminder scheduler secret:
+  - Set `BOOKING_REMINDERS_RUN_SECRET` in Netlify.
+  - Hourly cron runs execute automatically.
+  - Manual runs must include header `x-booking-reminders-secret: <BOOKING_REMINDERS_RUN_SECRET>`.
+
+6. Deploy and test:
    - Request a magic link from `/`
    - Open `/api/auth/health` to verify all env vars are detected
 

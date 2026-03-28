@@ -72,3 +72,28 @@ test("scheduled reminders process host keys and remain idempotent", async () => 
   assert.equal(secondBody.sent_count, 0);
   assert.equal(secondBody.failed_count, 0);
 });
+
+test("manual reminders run is rejected when secret is not configured", async () => {
+  const res = await remindersHandler(new Request("http://localhost:8888/api/bookings/reminders/run"), {});
+  assert.equal(res.status, 500);
+});
+
+test("manual reminders run requires valid secret", async () => {
+  process.env.BOOKING_REMINDERS_RUN_SECRET = "reminders-secret";
+
+  const denied = await remindersHandler(
+    new Request("http://localhost:8888/api/bookings/reminders/run", {
+      headers: { "x-booking-reminders-secret": "wrong-secret" },
+    }),
+    {}
+  );
+  assert.equal(denied.status, 403);
+
+  const allowed = await remindersHandler(
+    new Request("http://localhost:8888/api/bookings/reminders/run", {
+      headers: { "x-booking-reminders-secret": "reminders-secret" },
+    }),
+    {}
+  );
+  assert.equal(allowed.status, 200);
+});

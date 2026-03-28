@@ -2,13 +2,36 @@
  * bookings-reminders.mjs
  * Scheduled reminder sender for upcoming bookings.
  */
-import { getDb, jsonResponse, log, persistEvent } from "./utils.mjs";
+import { errorResponse, getDb, getEnv, jsonResponse, log, persistEvent, secretsEqual } from "./utils.mjs";
 import { sendUpcomingRemindersForHost } from "./bookings.mjs";
 
 const FN = "bookings-reminders";
 const DEFAULT_WINDOW_HOURS = 24;
 
-export default async function handler(_req, context) {
+function getProvidedSecret(req) {
+  return (
+    req.headers.get("x-booking-reminders-secret") ||
+    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
+    ""
+  );
+}
+
+export default async function handler(req, context) {
+  const isCronTrigger = Boolean(context?.cron);
+  if (!isCronTrigger) {
+    const expectedSecret = getEnv("BOOKING_REMINDERS_RUN_SECRET", "");
+    if (!expectedSecret) {
+      log("warn", FN, "manual reminders run rejected: BOOKING_REMINDERS_RUN_SECRET missing");
+      return errorResponse(500, "Booking reminder run secret is not configured.");
+    }
+
+    const providedSecret = getProvidedSecret(req);
+    if (!secretsEqual(providedSecret, expectedSecret)) {
+      log("warn", FN, "manual reminders run rejected: secret mismatch");
+      return errorResponse(403, "Invalid reminder run secret.");
+    }
+  }
+
   const bookingsDb = getDb("bookings");
 
   const listing = await bookingsDb.list().catch(() => ({ blobs: [] }));
@@ -40,7 +63,7 @@ export default async function handler(_req, context) {
     sent_count: totalSent,
     skipped_count: totalSkipped,
     failed_count: totalFailed,
-    trigger: context?.cron ? "cron" : "manual",
+    trigger: isCronTrigger ? "cron" : "manual",
   });
 
   log("info", FN, "scheduled reminders complete", {
