@@ -1,5 +1,5 @@
 function renderSharedNav() {
-  document.querySelectorAll("nav[data-shared-nav]").forEach((nav) => {
+  document.querySelectorAll("nav[data-shared-nav]:not([data-rendered])").forEach((nav) => {
     nav.innerHTML = `
       <div class="nav-inner">
         <a href="/dashboard.html" class="nav-brand"><span class="brand-icon">&#x27F3;</span> MeetMe</a>
@@ -9,11 +9,12 @@ function renderSharedNav() {
           <a href="#" class="nav-link" id="logout-link">Log out</a>
         </div>
       </div>`;
+    nav.dataset.rendered = "true";
   });
 }
 
 function renderSharedFooter() {
-  const footers = document.querySelectorAll("footer[data-shared-footer]");
+  const footers = document.querySelectorAll("footer[data-shared-footer]:not([data-rendered])");
   footers.forEach((footer) => {
     const variant = footer.dataset.footerVariant || "default";
     const topLine =
@@ -25,8 +26,13 @@ function renderSharedFooter() {
       <p>${topLine}</p>
       <p><a href="https://buymeacoffee.com/yusufpisanh" target="_blank" rel="noopener noreferrer" class="footer-link-inherit">&#x2615; Buy me a coffee</a></p>
     `;
+    footer.dataset.rendered = "true";
   });
 }
+
+// Run immediately for elements already in the DOM (since script is at the end of <body>)
+renderSharedNav();
+renderSharedFooter();
 
 document.addEventListener("DOMContentLoaded", () => {
   renderSharedNav();
