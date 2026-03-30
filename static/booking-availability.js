@@ -11,10 +11,10 @@ const saveAvailabilityBtn = document.getElementById("save-availability-btn");
 
 const params = new URLSearchParams(window.location.search);
 const requestedEventTypeId = params.get("eventType") || "";
+const isNewEventType = params.get("new") === "1";
 
 let userProfileTimezone = "UTC";
 let hasEventTypes = false;
-let eventTypes = [];
 
 function redirectToSetupIfNoEventType() {
   if (!requestedEventTypeId) {
@@ -212,9 +212,7 @@ function renderAvailabilityRow(window = {}, mode = currentAvailabilityMode()) {
 
 function renderAvailabilityRows(windows = [], mode = currentAvailabilityMode()) {
   availabilityRows.innerHTML = "";
-  if (!windows.length) {
-    renderAvailabilityRow({}, mode);
-  } else {
+  if (windows && windows.length > 0) {
     windows.forEach((w) => renderAvailabilityRow(w, mode));
   }
   setAvailabilityGate();
@@ -245,7 +243,8 @@ function normalizeAvailabilityResponse(data = {}) {
 
 async function loadAvailability() {
   const profile = await apiFetch("/api/auth/profile");
-  userProfileTimezone = profile.ok ? profile.data.timezone || "UTC" : "UTC";
+  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  userProfileTimezone = profile.ok ? profile.data.timezone || browserTz : browserTz;
 
   const eventTypesRes = await apiFetch("/api/bookings/event-types");
   if (!eventTypesRes.ok) {
@@ -256,6 +255,19 @@ async function loadAvailability() {
 
   redirectToSetupIfNoEventType();
   const eventTypeId = requestedEventTypeId;
+
+  if (isNewEventType) {
+    availabilityModeSelect.value = "weekly";
+    availabilityStartDateInput.value = todayIso();
+    availabilityEndDateInput.value = plusDaysIso(30);
+    updateAvailabilityModeHelp();
+    renderAvailabilityRows([], "weekly");
+    // Clean the URL so a refresh doesn't look like a new event
+    const cleanUrl = window.location.pathname + `?eventType=${encodeURIComponent(eventTypeId)}`;
+    window.history.replaceState({}, document.title, cleanUrl);
+    return;
+  }
+
   const windowsRes = await apiFetch(`/api/bookings/availability?event_type_id=${encodeURIComponent(eventTypeId)}`);
   if (!windowsRes.ok) {
     showFlash(windowsRes.data.error || "Could not load availability.", "danger");

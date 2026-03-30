@@ -181,7 +181,8 @@ function renderEventTypes(items = []) {
 
 async function loadEventTypes() {
   const profile = await apiFetch("/api/auth/profile");
-  userProfileTimezone = profile.ok ? profile.data.timezone || "UTC" : "UTC";
+  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  userProfileTimezone = profile.ok ? profile.data.timezone || browserTz : browserTz;
   document.getElementById("event-timezone").value = userProfileTimezone;
 
   const eventTypesResponse = await apiFetch("/api/bookings/event-types");
@@ -226,7 +227,7 @@ document.getElementById("event-type-form").addEventListener("submit", async (e) 
 
   if (isNew) {
     // Redirect to the availability page for the new event type
-    window.location.href = `/booking-availability.html?eventType=${encodeURIComponent(data.event_type.id)}`;
+    window.location.href = `/booking-availability.html?eventType=${encodeURIComponent(data.event_type.id)}&new=1`;
   } else {
     showFlash("Event type updated.", "success");
   }

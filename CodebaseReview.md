@@ -1,6 +1,6 @@
 # MeetMe - Codebase Review
 
-Last reviewed: 2026-03-29
+Last reviewed: 2026-03-30
 
 This document is an engineering handoff snapshot of the current repository state.
 It focuses on architecture, behavior, quality signals, and concrete risks.
@@ -248,67 +248,23 @@ Tradeoff:
 ### Actual local command results (2026-03-29)
 
 - `npm test`: pass (54/54).
-- `npm run test:e2e:smoke`: pass (5/5).
-- `npm run lint`: fail.
-
-Current lint blockers:
-
-- Parsing error in `static/booking-setup.js` due duplicate function declarations.
-- Unused vars warnings in `static/booking-availability.js` indicating incomplete or unused event type selection plumbing.
+- `npm run test:e2e:smoke`: pass (7/7).
+- `npm run lint`: pass.
 
 ## 9. Current Risks and Gaps
 
-Priority order reflects impact plus likelihood.
+The high-impact risks identified in the previous review (frontend parsing errors, API contract mismatches, and test coverage gaps) have been resolved. The primary remaining risk is related to frontend code maintainability.
 
-1. Frontend parse error in booking setup (high)
-
-- `static/booking-setup.js` declares `resetEventForm` and `renderEventTypes` twice.
-- ESLint reports a hard parsing error; this can block script execution depending on browser parse behavior.
-
-2. Booking availability API contract mismatch risk (high)
-
-- Backend requires `GET /api/bookings/availability?event_type_id=...`.
-- `static/booking-availability.js` currently calls `GET /api/bookings/availability` without `event_type_id`.
-- `static/booking-setup.js` also contains availability fetches without that query param.
-- Expected runtime outcome: 400 responses and broken availability loading in booking screens.
-
-3. Frontend coverage gap (medium)
-
-- Current Playwright smoke does not exercise `booking-setup.html` and `booking-availability.html`.
-- This likely allowed the parse error plus contract drift to land undetected.
-
-4. Local quality gate inconsistency (medium)
-
-- Docs and scripts present robust checks, but `predeploy-check` currently fails due the lint blocker above.
-- Team should treat lint as required before merge and deploy.
-
-5. Large single-file frontend scripts (medium, maintainability)
-
-- `static/meeting.js`, `static/admin.js`, and `static/booking-setup.js` are large and multi-responsibility.
-- This increases merge conflict probability and regression risk.
+1.  **Large single-file frontend scripts (Medium, Maintainability)**
+    -   `static/meeting.js` (~800 lines), `static/admin.js` (~600 lines), and `static/booking-setup.js` (~250 lines) are large and handle multiple responsibilities.
+    -   This increases the cognitive load for new developers, raises the probability of merge conflicts, and elevates regression risk when making changes.
 
 ## 10. Recommended Immediate Work Plan
 
-1. Fix booking setup script integrity
+With all critical pre-launch and high-priority items addressed, the focus should now shift to improving long-term maintainability.
 
-- Remove duplicate section in `static/booking-setup.js`.
-- Re-run `npm run lint` until clean.
-
-2. Align booking availability client-server contract
-
-- Ensure all GET calls to `/api/bookings/availability` include a selected `event_type_id`.
-- Use query param from selected event type or URL `eventType` value.
-
-3. Expand smoke coverage
-
-- Add Playwright smoke spec for:
-  - `booking-setup.html` load plus event type CRUD path stubs.
-  - `booking-availability.html` load plus fetch with event type query.
-
-4. Add a simple frontend syntax gate in CI
-
-- Keep lint as a required status check.
-- Optionally add a script to parse all `static/*.js` to fail on syntax errors before e2e.
+1.  **Refactor large frontend scripts**
+    -   Break down `static/meeting.js` and `static/admin.js` into smaller, more focused modules. For example, `meeting.js` could be split into modules for grid rendering, event handling, and API interactions. This will make the code easier to understand, test, and modify safely.
 
 ## 11. Developer Onboarding Notes
 
@@ -339,7 +295,6 @@ Debug tip:
 
 ## 12. Bottom Line
 
-Backend architecture is cohesive and test-backed, with significant hardening already in place.
-The highest-risk issues are currently in booking frontend scripts (duplicate code and API drift), and those are not yet covered by smoke tests.
+The codebase is in a stable and secure state. All critical pre-launch and high-priority items from the March 2026 review have been addressed, including significant hardening of the backend, resolution of frontend parsing errors, alignment of API contracts, and expansion of test coverage.
 
-If you are taking over this repository, start by making booking setup and booking availability lint-clean and green under smoke tests, then continue feature work.
+The primary remaining technical debt is the size and complexity of some frontend JavaScript files. The recommended next step is to refactor these large files to improve long-term maintainability before adding significant new features.

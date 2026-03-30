@@ -478,10 +478,17 @@ async function loadEvents() {
 function renderEvents(events) {
   const tbody = document.getElementById("events-tbody");
   const formatEventTime = (isoTs) => {
-    if (!isoTs) return "—";
+    if (!isoTs) return { short: "—", full: "" };
     const d = new Date(isoTs);
-    if (Number.isNaN(d.getTime())) return isoTs;
-    return `${d.toLocaleString()} (${d.toISOString().replace("T", " ").slice(0, 19)} UTC)`;
+    if (Number.isNaN(d.getTime())) return { short: isoTs, full: isoTs };
+    const full = `${d.toLocaleString()} (${d.toISOString().replace("T", " ").slice(0, 19)} UTC)`;
+    const short = d.toLocaleString([], {
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    return { short, full };
   };
 
   const extractDetails = (ev) => {
@@ -506,7 +513,9 @@ function renderEvents(events) {
 
       let td = document.createElement("td");
       td.className = "admin-cell-tiny admin-cell-nowrap";
-      td.textContent = formatEventTime(ev.ts || ev.timestamp || "");
+      const timeInfo = formatEventTime(ev.ts || ev.timestamp || "");
+      td.textContent = timeInfo.short;
+      td.title = timeInfo.full;
       tr.appendChild(td);
 
       td = document.createElement("td");
