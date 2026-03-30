@@ -113,44 +113,113 @@ async function loadUsers() {
 
 function renderUsers(users) {
   const tbody = document.getElementById("users-tbody");
-  tbody.innerHTML = users
-    .map(
-      (u) => `
-    <tr>
-      <td>${escapeHtml(u.email)}</td>
-      <td>${escapeHtml(u.first_name || "")} ${escapeHtml(u.last_name || "")}</td>
-      <td>
-        ${u.is_super_admin ? '<span class="badge badge-green">super admin</span>' : u.is_admin ? '<span class="badge badge-gray">admin</span>' : '<span class="text-muted">member</span>'}
-      </td>
-      <td class="admin-cell-small">${escapeHtml(u.timezone || "—")}</td>
-      <td class="admin-cell-small">${u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}</td>
-      <td class="admin-cell-center">${u.calendar_connected ? "✅" : "—"}</td>
-      <td class="admin-cell-nowrap">
-        <button class="btn btn-xs btn-ghost" data-action="view" data-email="${escapeHtml(u.email)}">View</button>
-        <button class="btn btn-xs btn-ghost" data-action="edit" data-email="${escapeHtml(u.email)}">Edit</button>
-        <button class="btn btn-xs btn-ghost" data-action="act" data-email="${escapeHtml(u.email)}">Act as</button>
-        ${u.is_super_admin ? "" : `<button class="btn btn-xs btn-ghost" data-action="admin-toggle" data-next-admin="${u.is_admin ? "false" : "true"}" data-email="${escapeHtml(u.email)}">${u.is_admin ? "Revoke Admin" : "Make Admin"}</button>`}
-      </td>
-    </tr>`
-    )
-    .join("");
+  tbody.innerHTML = ""; // Clear existing content
+  const fragment = document.createDocumentFragment();
+
+  users.forEach((u) => {
+    const tr = document.createElement("tr");
+
+    let td = document.createElement("td");
+    td.textContent = u.email;
+    tr.appendChild(td);
+
+    td = document.createElement("td");
+    td.textContent = `${u.first_name || ""} ${u.last_name || ""}`.trim();
+    tr.appendChild(td);
+
+    td = document.createElement("td");
+    const badge = document.createElement("span");
+    if (u.is_super_admin) {
+      badge.className = "badge badge-green";
+      badge.textContent = "super admin";
+    } else if (u.is_admin) {
+      badge.className = "badge badge-gray";
+      badge.textContent = "admin";
+    } else {
+      badge.className = "text-muted";
+      badge.textContent = "member";
+    }
+    td.appendChild(badge);
+    tr.appendChild(td);
+
+    td = document.createElement("td");
+    td.className = "admin-cell-small";
+    td.textContent = u.timezone || "—";
+    tr.appendChild(td);
+
+    td = document.createElement("td");
+    td.className = "admin-cell-small";
+    td.textContent = u.created_at ? new Date(u.created_at).toLocaleDateString() : "—";
+    tr.appendChild(td);
+
+    td = document.createElement("td");
+    td.className = "admin-cell-center";
+    td.textContent = u.calendar_connected ? "✅" : "—";
+    tr.appendChild(td);
+
+    td = document.createElement("td");
+    td.className = "admin-cell-nowrap";
+
+    const createButton = (action, text) => {
+      const btn = document.createElement("button");
+      btn.className = "btn btn-xs btn-ghost";
+      btn.dataset.action = action;
+      btn.dataset.email = u.email;
+      btn.textContent = text;
+      return btn;
+    };
+
+    td.appendChild(createButton("view", "View"));
+    td.appendChild(createButton("edit", "Edit"));
+    td.appendChild(createButton("act", "Act as"));
+
+    if (!u.is_super_admin) {
+      const toggleAdminBtn = createButton("admin-toggle", u.is_admin ? "Revoke Admin" : "Make Admin");
+      toggleAdminBtn.dataset.nextAdmin = u.is_admin ? "false" : "true";
+      td.appendChild(toggleAdminBtn);
+    }
+    tr.appendChild(td);
+
+    fragment.appendChild(tr);
+  });
+
+  tbody.appendChild(fragment);
 }
 
 function renderPagination(containerId, pagination, kind) {
   const container = document.getElementById(containerId);
   if (!container) return;
+  container.innerHTML = "";
+
   if (!pagination || pagination.total <= pagination.page_size) {
-    container.innerHTML = "";
     return;
   }
 
-  container.innerHTML = `
-    <div class="admin-pagination-summary">Page ${pagination.page} of ${pagination.total_pages} · ${pagination.total} total</div>
-    <div class="admin-pagination-controls">
-      <button class="btn btn-ghost btn-sm" type="button" data-kind="${kind}" data-page="${pagination.page - 1}" ${pagination.has_prev ? "" : "disabled"}>Previous</button>
-      <button class="btn btn-ghost btn-sm" type="button" data-kind="${kind}" data-page="${pagination.page + 1}" ${pagination.has_next ? "" : "disabled"}>Next</button>
-    </div>
-  `;
+  const summary = document.createElement("div");
+  summary.className = "admin-pagination-summary";
+  summary.textContent = `Page ${pagination.page} of ${pagination.total_pages} · ${pagination.total} total`;
+
+  const controls = document.createElement("div");
+  controls.className = "admin-pagination-controls";
+
+  const prevBtn = document.createElement("button");
+  prevBtn.className = "btn btn-ghost btn-sm";
+  prevBtn.type = "button";
+  prevBtn.dataset.kind = kind;
+  prevBtn.dataset.page = pagination.page - 1;
+  prevBtn.disabled = !pagination.has_prev;
+  prevBtn.textContent = "Previous";
+
+  const nextBtn = document.createElement("button");
+  nextBtn.className = "btn btn-ghost btn-sm";
+  nextBtn.type = "button";
+  nextBtn.dataset.kind = kind;
+  nextBtn.dataset.page = pagination.page + 1;
+  nextBtn.disabled = !pagination.has_next;
+  nextBtn.textContent = "Next";
+
+  controls.append(prevBtn, nextBtn);
+  container.append(summary, controls);
 }
 
 function onUsersPaginationClick(e) {
@@ -229,13 +298,13 @@ async function saveUser(e) {
     first_name: document.getElementById("modal-first").value.trim(),
     last_name: document.getElementById("modal-last").value.trim(),
   };
-  const { ok, data } = await apiFetch("/api/admin/users", {
+  const { ok, status, data } = await apiFetch("/api/admin/users", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (ok) {
-    showFlash(data.created ? "User created." : "User updated.", "success");
+    showFlash(status === 201 ? "User created." : "User updated.", "success");
     closeUserModal();
     await loadUsers();
   } else {
@@ -273,27 +342,53 @@ async function viewUserDetail(email) {
   }
 
   const u = data.user;
-  document.getElementById("detail-body").innerHTML = `
-    <table class="admin-detail-table">
-      <tr><td class="admin-detail-label">Email</td><td class="admin-detail-value">${escapeHtml(u.email)}</td></tr>
-      <tr><td class="admin-detail-label">Name</td><td class="admin-detail-value">${escapeHtml((u.first_name || "") + " " + (u.last_name || ""))}</td></tr>
-      <tr><td class="admin-detail-label">Timezone</td><td class="admin-detail-value">${escapeHtml(u.timezone || "—")}</td></tr>
-      <tr><td class="admin-detail-label">Joined</td><td class="admin-detail-value">${u.created_at ? new Date(u.created_at).toLocaleString() : "—"}</td></tr>
-      <tr><td class="admin-detail-label">Calendar</td><td class="admin-detail-value">${u.calendar_connected ? "✅ Connected" : "—"}</td></tr>
-      <tr><td class="admin-detail-label">Meetings created</td><td class="admin-detail-value">${data.created_meetings?.length ?? 0}</td></tr>
-      <tr><td class="admin-detail-label">Meetings invited</td><td class="admin-detail-value">${data.invited_meetings?.length ?? 0}</td></tr>
-    </table>
-    ${
-      data.created_meetings?.length
-        ? `
-    <div class="admin-detail-meetings">
-      <strong class="admin-detail-heading">CREATED MEETINGS</strong>
-      <ul class="admin-detail-list">
-        ${data.created_meetings.map((m) => `<li><a href="/meeting.html?id=${escapeHtml(m.id)}" target="_blank">${escapeHtml(m.title)}</a>${m.is_finalized ? " ✅" : ""}</li>`).join("")}
-      </ul>
-    </div>`
-        : ""
-    }`;
+  const detailBody = document.getElementById("detail-body");
+  detailBody.innerHTML = "";
+
+  const table = document.createElement("table");
+  table.className = "admin-detail-table";
+  const addRow = (lbl, val) => {
+    const tr = document.createElement("tr");
+    const th = document.createElement("td"); th.className = "admin-detail-label"; th.textContent = lbl;
+    const td = document.createElement("td"); td.className = "admin-detail-value"; td.textContent = val;
+    tr.append(th, td);
+    table.appendChild(tr);
+  };
+
+  addRow("Email", u.email);
+  addRow("Name", `${u.first_name || ""} ${u.last_name || ""}`.trim());
+  addRow("Timezone", u.timezone || "—");
+  addRow("Joined", u.created_at ? new Date(u.created_at).toLocaleString() : "—");
+  addRow("Calendar", u.calendar_connected ? "✅ Connected" : "—");
+  addRow("Meetings created", data.created_meetings?.length ?? 0);
+  addRow("Meetings invited", data.invited_meetings?.length ?? 0);
+
+  detailBody.appendChild(table);
+
+  if (data.created_meetings?.length) {
+    const meetingsDiv = document.createElement("div");
+    meetingsDiv.className = "admin-detail-meetings";
+
+    const strong = document.createElement("strong");
+    strong.className = "admin-detail-heading";
+    strong.textContent = "CREATED MEETINGS";
+    meetingsDiv.appendChild(strong);
+
+    const ul = document.createElement("ul");
+    ul.className = "admin-detail-list";
+    data.created_meetings.forEach(m => {
+      const li = document.createElement("li");
+      const a = document.createElement("a");
+      a.href = `/meeting.html?id=${encodeURIComponent(m.id)}`;
+      a.target = "_blank";
+      a.textContent = m.title;
+      li.appendChild(a);
+      if (m.is_finalized) li.appendChild(document.createTextNode(" ✅"));
+      ul.appendChild(li);
+    });
+    meetingsDiv.appendChild(ul);
+    detailBody.appendChild(meetingsDiv);
+  }
 }
 
 function closeDetailModal() {
@@ -302,8 +397,7 @@ function closeDetailModal() {
 
 async function loadMeetings() {
   const tbody = document.getElementById("meetings-tbody");
-  tbody.innerHTML =
-    '<tr><td colspan="7" class="text-muted admin-table-placeholder">Loading…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" class="text-muted admin-table-placeholder">Loading…</td></tr>';
   const params = new URLSearchParams({
     page: String(meetingsPage),
     page_size: String(ADMIN_PAGE_SIZE),
@@ -315,29 +409,63 @@ async function loadMeetings() {
   }
   const meetings = data.meetings || [];
   meetingsPagination = data.pagination || null;
-  tbody.innerHTML =
-    meetings
-      .map(
-        (m) => `
-    <tr>
-      <td><a href="/meeting.html?id=${escapeHtml(m.id)}" target="_blank">${escapeHtml(m.title)}</a></td>
-      <td class="admin-cell-small">${escapeHtml(m.creator_name || "—")}</td>
-      <td class="admin-cell-small">${(m.meeting_type || "").replace("_", " ")}</td>
-      <td class="admin-cell-tiny">${escapeHtml(m.timezone || "UTC")}</td>
-      <td class="admin-cell-small">${(m.invitees || []).length}</td>
-      <td class="admin-cell-center">${m.is_finalized ? "✅" : "—"}</td>
-      <td class="admin-cell-tiny">${m.created_at ? new Date(m.created_at).toLocaleDateString() : "—"}</td>
-    </tr>`
-      )
-      .join("") ||
-    '<tr><td colspan="7" class="text-muted admin-table-placeholder">No meetings found.</td></tr>';
+
+  tbody.innerHTML = "";
+  if (meetings.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-muted admin-table-placeholder">No meetings found.</td></tr>';
+  } else {
+    const fragment = document.createDocumentFragment();
+    meetings.forEach(m => {
+      const tr = document.createElement("tr");
+
+      let td = document.createElement("td");
+      const a = document.createElement("a");
+      a.href = `/meeting.html?id=${encodeURIComponent(m.id)}`;
+      a.target = "_blank";
+      a.textContent = m.title;
+      td.appendChild(a);
+      tr.appendChild(td);
+
+      td = document.createElement("td");
+      td.className = "admin-cell-small";
+      td.textContent = m.creator_name || "—";
+      tr.appendChild(td);
+
+      td = document.createElement("td");
+      td.className = "admin-cell-small";
+      td.textContent = (m.meeting_type || "").replace("_", " ");
+      tr.appendChild(td);
+
+      td = document.createElement("td");
+      td.className = "admin-cell-tiny";
+      td.textContent = m.timezone || "UTC";
+      tr.appendChild(td);
+
+      td = document.createElement("td");
+      td.className = "admin-cell-small";
+      td.textContent = (m.invitees || []).length;
+      tr.appendChild(td);
+
+      td = document.createElement("td");
+      td.className = "admin-cell-center";
+      td.textContent = m.is_finalized ? "✅" : "—";
+      tr.appendChild(td);
+
+      td = document.createElement("td");
+      td.className = "admin-cell-tiny";
+      td.textContent = m.created_at ? new Date(m.created_at).toLocaleDateString() : "—";
+      tr.appendChild(td);
+
+      fragment.appendChild(tr);
+    });
+    tbody.appendChild(fragment);
+  }
   renderPagination("meetings-pagination", meetingsPagination, "meetings");
 }
 
 async function loadEvents() {
   const tbody = document.getElementById("events-tbody");
-  tbody.innerHTML =
-    '<tr><td colspan="5" class="text-muted admin-table-placeholder">Loading…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="5" class="text-muted admin-table-placeholder">Loading…</td></tr>';
   const { ok, data } = await apiFetch("/api/admin/events");
   if (!ok) {
     tbody.innerHTML = `<tr><td colspan="5">${escapeHtml(data.error || "Failed")}</td></tr>`;
@@ -367,21 +495,47 @@ function renderEvents(events) {
     return JSON.stringify(detailObj);
   };
 
-  tbody.innerHTML =
-    events
-      .map((ev) => {
-        const extra = extractDetails(ev);
-        return `<tr>
-      <td class="admin-cell-tiny admin-cell-nowrap">${escapeHtml(formatEventTime(ev.ts || ev.timestamp || ""))}</td>
-      <td><span class="log-level log-level-${ev.level || "info"}">${escapeHtml(ev.level || "info")}</span></td>
-      <td class="admin-cell-small">${escapeHtml(ev.fn || "")}</td>
-      <td class="admin-cell-message">${escapeHtml(ev.message || "")}</td>
-      <td class="admin-cell-detail"
-          title="${escapeHtml(extra)}">${escapeHtml(extra)}</td>
-    </tr>`;
-      })
-      .join("") ||
-    '<tr><td colspan="5" class="text-muted admin-table-placeholder">No events found.</td></tr>';
+  tbody.innerHTML = "";
+  if (events.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-muted admin-table-placeholder">No events found.</td></tr>';
+  } else {
+    const fragment = document.createDocumentFragment();
+    events.forEach(ev => {
+      const tr = document.createElement("tr");
+      const extra = extractDetails(ev);
+
+      let td = document.createElement("td");
+      td.className = "admin-cell-tiny admin-cell-nowrap";
+      td.textContent = formatEventTime(ev.ts || ev.timestamp || "");
+      tr.appendChild(td);
+
+      td = document.createElement("td");
+      const span = document.createElement("span");
+      span.className = `log-level log-level-${ev.level || "info"}`;
+      span.textContent = ev.level || "info";
+      td.appendChild(span);
+      tr.appendChild(td);
+
+      td = document.createElement("td");
+      td.className = "admin-cell-small";
+      td.textContent = ev.fn || "";
+      tr.appendChild(td);
+
+      td = document.createElement("td");
+      td.className = "admin-cell-message";
+      td.textContent = ev.message || "";
+      tr.appendChild(td);
+
+      td = document.createElement("td");
+      td.className = "admin-cell-detail";
+      td.title = extra;
+      td.textContent = extra;
+      tr.appendChild(td);
+
+      fragment.appendChild(tr);
+    });
+    tbody.appendChild(fragment);
+  }
 }
 
 function filterEvents() {

@@ -26,11 +26,10 @@ import {
   getAppUrl,
   createToken,
   generateId,
+  LIMITS,
 } from "./utils.mjs";
 
 const FN = "meeting-actions";
-const MIN_DURATION_MINUTES = 15;
-const MAX_DURATION_MINUTES = 24 * 60;
 
 function buildEmailPreferenceLinks(appUrl, recipientEmail, organizerEmail, meetingId) {
   const token = createToken(
@@ -171,12 +170,12 @@ async function handleMeetingActions(req, _context) {
     const durationMinutes = Number.parseInt(body.duration_minutes || 60, 10);
     if (
       !Number.isFinite(durationMinutes) ||
-      durationMinutes < MIN_DURATION_MINUTES ||
-      durationMinutes > MAX_DURATION_MINUTES
+      durationMinutes < LIMITS.DURATION_MIN ||
+      durationMinutes > LIMITS.DURATION_MAX
     ) {
       return errorResponse(
         400,
-        `duration_minutes must be between ${MIN_DURATION_MINUTES} and ${MAX_DURATION_MINUTES}.`
+        `duration_minutes must be between ${LIMITS.DURATION_MIN} and ${LIMITS.DURATION_MAX}.`
       );
     }
 

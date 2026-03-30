@@ -1,3 +1,7 @@
+/* Hide the event types header if there are no event types */
+.no-event-types .setup-section-header {
+  display: none !important;
+}
 /* ────────────────────────────────────────────
    RESET & BASE
 ──────────────────────────────────────────── */

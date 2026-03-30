@@ -21,42 +21,27 @@ import {
   createToken,
   verifyToken,
   getUserFromRequest,
+  jsonResponse,
+  errorResponse,
   setCookie,
   generateId,
   log,
+  logRequest,
   persistEvent,
   validateEmail,
   encryptSecret,
   decryptSecret,
   isRateLimitEnabled,
+  checkRateLimit,
   saveUserRecord,
 } from "./utils.mjs";
+import { sanitizeNextPath, redirectResponse, getClientIp, getGoogleRedirectUri, getOrCreateUser } from "./auth-helpers.mjs";
 
-function redirectResponse(location, extraHeaders = {}) {
-  return new Response("", {
-    status: 302,
-    headers: { Location: location, ...extraHeaders },
-  });
-}
+const FN = "auth-google";
 
-function sanitizeNextPath(raw) {
-  const value = String(raw || "").trim();
-  if (!value.startsWith("/")) return "";
-  if (value.startsWith("//")) return "";
-  if (value.includes("\n") || value.includes("\r")) return "";
-  return value;
-}
+export default async function handleGoogleAuthRoute(req, context) {
+  const path = context.params["0"] || "";
 
-export async function handleGoogleAuthRoute({
-  req,
-  path,
-  fnName,
-  getAppUrl,
-  getGoogleRedirectUri,
-  getClientIp,
-  checkRateLimit,
-  getOrCreateUser,
-}) {
   if (req.method === "GET" && path === "google/start") {
     const url = new URL(req.url);
     const next = sanitizeNextPath(url.searchParams.get("next") || "");
@@ -76,7 +61,7 @@ export async function handleGoogleAuthRoute({
 
     const googleClientId = getEnv("GOOGLE_CLIENT_ID");
     if (!googleClientId) {
-      log("error", fnName, "GOOGLE_CLIENT_ID is not set");
+      log("error", FN, "GOOGLE_CLIENT_ID is not set");
       return redirectResponse("/?error=google-not-configured");
     }
 
@@ -101,7 +86,7 @@ export async function handleGoogleAuthRoute({
     authUrl.searchParams.set("prompt", "select_account");
     authUrl.searchParams.set("state", stateToken);
 
-    log("info", fnName, "google oauth start", { redirect_uri: redirectUri });
+    log("info", FN, "google oauth start", { redirect_uri: redirectUri });
     return redirectResponse(authUrl.toString(), {
       "Set-Cookie": setCookie("oauth_state", stateToken, 10 * 60),
     });
@@ -111,7 +96,7 @@ export async function handleGoogleAuthRoute({
     const googleClientId = getEnv("GOOGLE_CLIENT_ID");
     const googleClientSecret = getEnv("GOOGLE_CLIENT_SECRET");
     if (!googleClientId || !googleClientSecret) {
-      log("error", fnName, "Google env vars missing in callback");
+      log("error", FN, "Google env vars missing in callback");
       return redirectResponse("/?error=google-not-configured");
     }
 
@@ -121,11 +106,11 @@ export async function handleGoogleAuthRoute({
     const googleError = url.searchParams.get("error") || "";
 
     if (googleError) {
-      log("warn", fnName, "Google returned error param", { google_error: googleError });
+      log("warn", FN, "Google returned error param", { google_error: googleError });
       return redirectResponse("/?error=google-denied");
     }
     if (!code) {
-      log("warn", fnName, "Google callback missing code");
+      log("warn", FN, "Google callback missing code");
       return redirectResponse("/?error=google-auth-failed");
     }
 
@@ -136,19 +121,19 @@ export async function handleGoogleAuthRoute({
     if (!stateFromCookie) {
       log(
         "warn",
-        fnName,
+        FN,
         "oauth_state cookie missing — possible CSRF or cookie blocked by browser"
       );
       return redirectResponse("/?error=google-state-missing");
     }
     if (state !== stateFromCookie) {
-      log("warn", fnName, "oauth state mismatch — possible CSRF");
+      log("warn", FN, "oauth state mismatch — possible CSRF");
       return redirectResponse("/?error=google-auth-failed");
     }
 
     const statePayload = verifyToken(state);
     if (!statePayload || statePayload.purpose !== "google_oauth_state") {
-      log("warn", fnName, "oauth state JWT invalid or expired");
+      log("warn", FN, "oauth state JWT invalid or expired");
       return redirectResponse("/?error=google-state-expired");
     }
 
@@ -167,20 +152,20 @@ export async function handleGoogleAuthRoute({
         }),
       });
     } catch (err) {
-      log("error", fnName, "google token exchange fetch threw", { error: err.message });
+      log("error", FN, "google token exchange fetch threw", { error: err.message });
       return redirectResponse("/?error=google-auth-failed");
     }
 
     if (!tokenRes.ok) {
       const body = await tokenRes.text().catch(() => "");
-      log("error", fnName, "google token exchange failed", { status: tokenRes.status, body });
+      log("error", FN, "google token exchange failed", { status: tokenRes.status, body });
       return redirectResponse("/?error=google-auth-failed");
     }
 
     const tokenData = await tokenRes.json().catch(() => ({}));
     const accessToken = tokenData.access_token;
     if (!accessToken) {
-      log("error", fnName, "google token exchange returned no access_token", {
+      log("error", FN, "google token exchange returned no access_token", {
         keys: Object.keys(tokenData),
       });
       return redirectResponse("/?error=google-auth-failed");
@@ -192,12 +177,12 @@ export async function handleGoogleAuthRoute({
         headers: { Authorization: `Bearer ${accessToken}` },
       });
     } catch (err) {
-      log("error", fnName, "google userinfo fetch threw", { error: err.message });
+      log("error", FN, "google userinfo fetch threw", { error: err.message });
       return redirectResponse("/?error=google-auth-failed");
     }
 
     if (!userInfoRes.ok) {
-      log("error", fnName, "google userinfo failed", { status: userInfoRes.status });
+      log("error", FN, "google userinfo failed", { status: userInfoRes.status });
       return redirectResponse("/?error=google-auth-failed");
     }
 
@@ -206,23 +191,23 @@ export async function handleGoogleAuthRoute({
     const isVerified = !!googleUser.email_verified;
 
     if (!email) {
-      log("warn", fnName, "google user has no valid email", { sub: googleUser.sub });
+      log("warn", FN, "google user has no valid email", { sub: googleUser.sub });
       return redirectResponse("/?error=google-email-missing");
     }
     if (!isVerified) {
-      log("warn", fnName, "google user email not verified", { email });
+      log("warn", FN, "google user email not verified", { email });
       return redirectResponse("/?error=google-email-not-verified");
     }
 
     const { user, isNew } = await getOrCreateUser(email, googleUser.name || "");
     if (!user) {
-      log("error", fnName, "getOrCreateUser returned null during google callback", { email });
+      log("error", FN, "getOrCreateUser returned null during google callback", { email });
       return redirectResponse("/?error=google-auth-failed");
     }
 
     const appToken = createToken(user);
-    log("info", fnName, "google sign-in successful", { email: user.email, isNew });
-    await persistEvent("info", fnName, "sign-in", {
+    log("info", FN, "google sign-in successful", { email: user.email, isNew });
+    await persistEvent("info", FN, "sign-in", {
       sign_in_method: "google",
       email: user.email,
       name: user.name || user.email,
@@ -254,7 +239,7 @@ export async function handleGoogleAuthRoute({
     const googleClientId = getEnv("GOOGLE_CLIENT_ID");
     if (!googleClientId) return redirectResponse("/profile.html?error=google-not-configured");
 
-    const redirectUri = `${getAppUrl(req)}/api/auth/google/calendar-callback`;
+    const redirectUri = getGoogleRedirectUri(req).replace("/callback", "/calendar-callback");
     const stateToken = createToken(
       {
         id: "oauth-state",
@@ -277,7 +262,7 @@ export async function handleGoogleAuthRoute({
     authUrl.searchParams.set("state", stateToken);
     authUrl.searchParams.set("login_hint", calUser.email);
 
-    log("info", fnName, "google calendar connect start", {
+    log("info", FN, "google calendar connect start", {
       email: calUser.email,
       redirect_uri: redirectUri,
     });
@@ -315,7 +300,7 @@ export async function handleGoogleAuthRoute({
       return redirectResponse("/profile.html?error=calendar-state-expired");
     }
 
-    const redirectUri = `${getAppUrl(req)}/api/auth/google/calendar-callback`;
+    const redirectUri = getGoogleRedirectUri(req).replace("/callback", "/calendar-callback");
     let tokenRes;
     try {
       tokenRes = await fetch("https://oauth2.googleapis.com/token", {
@@ -330,12 +315,12 @@ export async function handleGoogleAuthRoute({
         }),
       });
     } catch (err) {
-      log("error", fnName, "calendar token exchange threw", { error: err.message });
+      log("error", FN, "calendar token exchange threw", { error: err.message });
       return redirectResponse("/profile.html?error=calendar-auth-failed");
     }
 
     if (!tokenRes.ok) {
-      log("error", fnName, "calendar token exchange failed", { status: tokenRes.status });
+      log("error", FN, "calendar token exchange failed", { status: tokenRes.status });
       return redirectResponse("/profile.html?error=calendar-auth-failed");
     }
 
@@ -352,9 +337,42 @@ export async function handleGoogleAuthRoute({
     dbUser.calendar_connected = true;
     await saveUserRecord(usersDb, dbUser);
 
-    await persistEvent("info", fnName, "calendar connected", { email: calUser.email });
-    log("info", fnName, "google calendar connected", { email: calUser.email });
+    await persistEvent("info", FN, "calendar connected", { email: calUser.email });
+    log("info", FN, "google calendar connected", { email: calUser.email });
     return redirectResponse("/profile.html?calendar=connected");
+  }
+
+  if (req.method === "POST" && path === "google/calendar-disconnect") {
+    const tokenUser = getUserFromRequest(req);
+    if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
+
+    const users = getDb("users");
+    const user = await users.get(tokenUser.email, { type: "json" }).catch(() => null);
+    if (!user) return errorResponse(404, "User record not found.");
+
+    const refreshToken = decryptSecret(user.google_refresh_token);
+    const accessToken = decryptSecret(user.google_access_token);
+    const tokenToRevoke = refreshToken || accessToken;
+    if (tokenToRevoke) {
+      try {
+        await fetch("https://oauth2.googleapis.com/revoke", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ token: tokenToRevoke }),
+        });
+      } catch (err) {
+        log("warn", FN, "google revoke request failed", { email: user.email, error: err.message });
+      }
+    }
+
+    user.calendar_connected = false;
+    user.google_access_token = "";
+    user.google_refresh_token = "";
+    user.google_token_expiry = 0;
+    await saveUserRecord(users, user);
+
+    await persistEvent("info", FN, "calendar disconnected", { email: user.email });
+    return jsonResponse(200, { success: true, message: "Google Calendar disconnected." });
   }
 
   return null;

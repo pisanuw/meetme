@@ -45,6 +45,30 @@ jobs:
       - name: Run production dependency audit
         run: npm audit --omit=dev
 
+  lint:
+    name: Lint & Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Ensure npm >=10.8 (optional deps bugfix)
+        run: npm install -g npm@^10.8.0
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint & frontend JS syntax check
+        run: |
+          npm run lint
+          for file in static/*.js; do node -c "$file"; done
+
   test-default:
     name: Test (default mode)
     runs-on: ubuntu-latest

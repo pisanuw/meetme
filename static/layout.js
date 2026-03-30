@@ -1,3 +1,17 @@
+function renderSharedNav() {
+  document.querySelectorAll("nav[data-shared-nav]").forEach((nav) => {
+    nav.innerHTML = `
+      <div class="nav-inner">
+        <a href="/dashboard.html" class="nav-brand"><span class="brand-icon">&#x27F3;</span> MeetMe</a>
+        <div class="nav-links" id="nav-auth" hidden>
+          <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
+          <span class="nav-user" id="nav-username"></span>
+          <a href="#" class="nav-link" id="logout-link">Log out</a>
+        </div>
+      </div>`;
+  });
+}
+
 function renderSharedFooter() {
   const footers = document.querySelectorAll("footer[data-shared-footer]");
   footers.forEach((footer) => {
@@ -15,5 +29,6 @@ function renderSharedFooter() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  renderSharedNav();
   renderSharedFooter();
 });

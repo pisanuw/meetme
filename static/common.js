@@ -220,11 +220,7 @@ async function checkAuth() {
       href: "/booking-setup.html",
       text: "Event Types",
     });
-    ensureMenuLink(bookingsMenuList, {
-      id: "booking-availability-link",
-      href: "/booking-availability.html",
-      text: "Availability",
-    });
+    // Availability is always tied to a specific event type, so remove the general link
     ensureMenuLink(bookingsMenuList, {
       id: "booking-links-link",
       href: "/booking-links.html",

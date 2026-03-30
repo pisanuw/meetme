@@ -10,7 +10,12 @@ import {
   setCookie,
   clearCookie,
   isRateLimitEnabled,
+  isAdmin,
+  isSuperAdminEmail,
+  generateId,
+  checkRateLimit
 } from "../netlify/functions/utils.mjs";
+import { installInMemoryDb, uninstallInMemoryDb } from "./test-helpers.mjs";
 
 test("buildTimeSlots creates 15-minute slots excluding end time", () => {
   const slots = buildTimeSlots("09:00", "10:00");
@@ -38,6 +43,14 @@ test("validateEmail normalizes valid email", () => {
 test("validateEmail rejects clearly invalid values", () => {
   assert.equal(validateEmail("no-at-symbol"), null);
   assert.equal(validateEmail("user@nodot"), null);
+});
+
+test("validateEmail handles edge cases", () => {
+  assert.equal(validateEmail("user@domain"), null);
+  assert.equal(validateEmail("user@domain.c"), null);
+  assert.equal(validateEmail("user@domain.com"), "user@domain.com");
+  assert.equal(validateEmail("us er@domain.com"), null);
+  assert.equal(validateEmail("a".repeat(260) + "@domain.com"), null);
 });
 
 test("encryptSecret/decryptSecret round-trip works", () => {
@@ -76,4 +89,35 @@ test("clearCookie keeps same security mode behavior", () => {
   const cookie = clearCookie("token");
   assert.match(cookie, /Max-Age=0/);
   assert.doesNotMatch(cookie, /; Secure/);
+});
+
+test("isAdmin and isSuperAdminEmail checks", () => {
+  process.env.ADMIN_EMAILS = "Admin@example.com, bob@example.com ";
+  assert.equal(isSuperAdminEmail("admin@example.com"), true);
+  assert.equal(isSuperAdminEmail("bob@example.com"), true);
+  assert.equal(isSuperAdminEmail("charlie@example.com"), false);
+
+  assert.equal(isAdmin({ email: "admin@example.com" }), true);
+  assert.equal(isAdmin({ email: "charlie@example.com", is_admin: true }), true);
+  assert.equal(isAdmin({ email: "charlie@example.com" }), false);
+});
+
+test("generateId produces correct format and is collision resistant", () => {
+  const id1 = generateId();
+  const id2 = generateId();
+  assert.equal(typeof id1, "string");
+  assert.ok(id1.length > 5);
+  assert.notEqual(id1, id2);
+});
+
+test("checkRateLimit allows and denies correctly", async () => {
+  const dbBackend = installInMemoryDb();
+  const opts = { bucket: "test", key: "127.0.0.1", limit: 2, windowMs: 10000 };
+  const r1 = await checkRateLimit(opts);
+  assert.equal(r1.ok, true);
+  const r2 = await checkRateLimit(opts);
+  assert.equal(r2.ok, true);
+  const r3 = await checkRateLimit(opts);
+  assert.equal(r3.ok, false);
+  uninstallInMemoryDb();
 });

@@ -16,67 +16,116 @@
 
 function renderMeetings(containerId, meetings, isOwner) {
   const container = document.getElementById(containerId);
+  container.innerHTML = "";
 
   if (!meetings || meetings.length === 0) {
+    const emptyState = document.createElement("div");
+    emptyState.className = "empty-state";
+
     if (isOwner) {
-      container.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">📅</div>
-          <p>You haven't created any meetings yet.</p>
-          <a href="/create-meeting.html" class="btn btn-primary">Create your first meeting</a>
-        </div>`;
+      emptyState.innerHTML = `
+        <div class="empty-icon">📅</div>
+        <p>You haven't created any meetings yet.</p>
+        <a href="/create-meeting.html" class="btn btn-primary">Create your first meeting</a>
+      `;
     } else {
-      container.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">✉️</div>
-          <p>You haven't been invited to any meetings yet.</p>
-        </div>`;
+      emptyState.innerHTML = `
+        <div class="empty-icon">✉️</div>
+        <p>You haven't been invited to any meetings yet.</p>
+      `;
     }
+    container.appendChild(emptyState);
     return;
   }
 
-  let html = '<div class="meeting-grid">';
-  for (const m of meetings) {
-    const dates = m.dates_or_days || [];
-    const datesHtml = dates
-      .slice(0, 4)
-      .map((d) => `<span class="date-chip">${escapeHtml(d)}</span>`)
-      .join("");
-    const moreHtml =
-      dates.length > 4 ? `<span class="date-chip muted">+${dates.length - 4} more</span>` : "";
+  const grid = document.createElement("div");
+  grid.className = "meeting-grid";
 
-    html += `
-    <div class="meeting-card ${m.is_finalized ? "finalized" : ""}">
-      <div class="meeting-card-top">
-        <div>
-          <h3 class="meeting-title">
-            <a href="/meeting.html?id=${m.id}">${escapeHtml(m.title)}</a>
-          </h3>
-          <span class="meeting-meta">
-            ${escapeHtml((m.meeting_type || "").replace("_", " "))} &middot;
-            ${m.respond_count || 0}/${m.invite_count || 0} responded
-            ${!isOwner && m.creator_name ? "&middot; Organized by " + escapeHtml(m.creator_name) : ""}
-          </span>
-        </div>
-        ${
-          m.is_finalized
-            ? '<span class="badge badge-green">Finalized</span>'
-            : isOwner
-              ? '<span class="badge badge-blue">Open</span>'
-              : '<span class="badge badge-orange">Needs your input</span>'
-        }
-      </div>
-      ${m.description ? `<p class="meeting-desc">${escapeHtml(m.description)}</p>` : ""}
-      <div class="meeting-dates">${datesHtml}${moreHtml}</div>
-      ${m.is_finalized ? `<div class="finalized-info">📅 <strong>${escapeHtml(m.finalized_date || "")}</strong> at <strong>${escapeHtml(m.finalized_slot || "")}</strong> (${m.duration_minutes} min)</div>` : ""}
-      <div class="meeting-actions">
-        <a href="/meeting.html?id=${m.id}" class="btn btn-sm btn-primary">${m.is_finalized ? "View" : isOwner ? "View" : "Add Availability"}</a>
-        <button class="btn btn-sm btn-danger" data-action="${isOwner ? "delete" : "leave"}" data-meeting-id="${m.id}">${isOwner ? "Delete" : "Remove"}</button>
-      </div>
-    </div>`;
+  for (const m of meetings) {
+    const card = document.createElement("div");
+    card.className = `meeting-card ${m.is_finalized ? "finalized" : ""}`;
+
+    const top = document.createElement("div");
+    top.className = "meeting-card-top";
+
+    const titleDiv = document.createElement("div");
+    const h3 = document.createElement("h3");
+    h3.className = "meeting-title";
+    const a = document.createElement("a");
+    a.href = `/meeting.html?id=${encodeURIComponent(m.id)}`;
+    a.textContent = m.title;
+    h3.appendChild(a);
+
+    const meta = document.createElement("span");
+    meta.className = "meeting-meta";
+    let metaText = `${(m.meeting_type || "").replace("_", " ")} · ${m.respond_count || 0}/${m.invite_count || 0} responded`;
+    if (!isOwner && m.creator_name) metaText += ` · Organized by ${m.creator_name}`;
+    meta.textContent = metaText;
+    titleDiv.append(h3, meta);
+
+    const badge = document.createElement("span");
+    if (m.is_finalized) {
+      badge.className = "badge badge-green";
+      badge.textContent = "Finalized";
+    } else if (isOwner) {
+      badge.className = "badge badge-blue";
+      badge.textContent = "Open";
+    } else {
+      badge.className = "badge badge-orange";
+      badge.textContent = "Needs your input";
+    }
+    top.append(titleDiv, badge);
+    card.appendChild(top);
+
+    if (m.description) {
+      const desc = document.createElement("p");
+      desc.className = "meeting-desc";
+      desc.textContent = m.description;
+      card.appendChild(desc);
+    }
+
+    const datesDiv = document.createElement("div");
+    datesDiv.className = "meeting-dates";
+    const dates = m.dates_or_days || [];
+    dates.slice(0, 4).forEach(d => {
+      const s = document.createElement("span");
+      s.className = "date-chip";
+      s.textContent = d;
+      datesDiv.appendChild(s);
+    });
+    if (dates.length > 4) {
+      const s = document.createElement("span");
+      s.className = "date-chip muted";
+      s.textContent = `+${dates.length - 4} more`;
+      datesDiv.appendChild(s);
+    }
+    card.appendChild(datesDiv);
+
+    if (m.is_finalized) {
+      const finInfo = document.createElement("div");
+      finInfo.className = "finalized-info";
+      finInfo.innerHTML = `📅 <strong>${escapeHtml(m.finalized_date || "")}</strong> at <strong>${escapeHtml(m.finalized_slot || "")}</strong> (${m.duration_minutes} min)`;
+      card.appendChild(finInfo);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "meeting-actions";
+    const btnView = document.createElement("a");
+    btnView.href = `/meeting.html?id=${encodeURIComponent(m.id)}`;
+    btnView.className = "btn btn-sm btn-primary";
+    btnView.textContent = m.is_finalized ? "View" : isOwner ? "View" : "Add Availability";
+
+    const btnAction = document.createElement("button");
+    btnAction.className = "btn btn-sm btn-danger";
+    btnAction.dataset.action = isOwner ? "delete" : "leave";
+    btnAction.dataset.meetingId = m.id;
+    btnAction.textContent = isOwner ? "Delete" : "Remove";
+
+    actions.append(btnView, btnAction);
+    card.appendChild(actions);
+    grid.appendChild(card);
   }
-  html += "</div>";
-  container.innerHTML = html;
+  container.appendChild(grid);
 }
 
 document.addEventListener("click", async (e) => {

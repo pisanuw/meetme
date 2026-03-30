@@ -233,6 +233,48 @@ test("auth magic-link request is rate-limited when limits are enabled", async ()
   assert.match(body.error, /Too many sign-in links requested/i);
 });
 
+test("meeting creation with pending invite links to new user upon magic link verify", async () => {
+  const creator = { id: "u-creator", email: "creator@example.com", name: "Creator" };
+  const newEmail = "pending-user@example.com";
+
+  const req = makeJsonRequest("http://localhost:8888/api/meetings", {
+    method: "POST",
+    headers: { cookie: authCookie(creator) },
+    body: {
+      title: "Pending Test",
+      description: "Test pending invites",
+      meeting_type: "specific_dates",
+      dates_or_days: ["2026-05-01"],
+      start_time: "09:00",
+      end_time: "10:00",
+      invite_emails: newEmail,
+      timezone: "UTC",
+    },
+  });
+  const res = await meetingsHandler(req, {});
+  const body = await responseJson(res);
+  assert.equal(res.status, 200);
+  const meetingId = body.meeting_id;
+
+  const pending = await store("invites").get(`pending:${newEmail}`, { type: "json" });
+  assert.deepEqual(pending, [meetingId]);
+
+  const jti = "jti-pending-1";
+  await store("login_tokens").setJSON(jti, { email: newEmail, used: false, created_at: new Date().toISOString() });
+  const magicToken = createToken({ id: "magic-link", email: newEmail, name: "Pending User", purpose: "magic_link", jti }, "15m");
+
+  const verifyReq = new Request(`http://localhost:8888/api/auth/magic-link/verify?token=${encodeURIComponent(magicToken)}`, { method: "GET" });
+  const verifyRes = await authHandler(verifyReq, { params: { 0: "magic-link/verify" } });
+  assert.equal(verifyRes.status, 302);
+
+  const pendingAfter = await store("invites").get(`pending:${newEmail}`, { type: "json" });
+  assert.equal(pendingAfter, null);
+
+  const meetingInvites = await store("invites").get(`meeting:${meetingId}`, { type: "json" });
+  const invite = meetingInvites.find(i => i.email === newEmail);
+  assert.ok(invite.user_id !== null);
+});
+
 test("auth google callback succeeds with valid state and google responses", async () => {
   process.env.GOOGLE_CLIENT_ID = "google-client-id";
   process.env.GOOGLE_CLIENT_SECRET = "google-client-secret";
@@ -907,6 +949,39 @@ test("calendar busy route enforces auth and calendar connection", async () => {
   const body = await responseJson(res);
   assert.equal(res.status, 403);
   assert.match(body.error, /not connected/i);
+});
+
+test("calendar busy route handles 24:00 end time", async () => {
+  const user = { id: "u25", email: "cal24@example.com", name: "Cal User 24" };
+  await store("meetings").setJSON("m24", {
+    id: "m24",
+    meeting_type: "specific_dates",
+    dates_or_days: ["2026-04-01"],
+    start_time: "09:00",
+    end_time: "24:00",
+    timezone: "UTC",
+  });
+  await store("users").setJSON("cal24@example.com", {
+    ...user,
+    calendar_connected: true,
+    google_access_token: encryptSecret("access-token"),
+  });
+
+  let fetchBody = "";
+  global.fetch = async (url, opts) => {
+    if (opts && opts.body) fetchBody = opts.body;
+    return new Response(JSON.stringify({ calendars: { primary: { busy: [] } } }), { status: 200 });
+  };
+
+  const req = new Request("http://localhost:8888/api/calendar/busy?meeting_id=m24", {
+    method: "GET",
+    headers: { cookie: authCookie(user) },
+  });
+
+  const res = await calendarHandler(req, { params: { 0: "busy" } });
+  assert.equal(res.status, 200);
+  const payload = JSON.parse(fetchBody);
+  assert.equal(payload.timeMax, "2026-04-02T00:00:00.000Z");
 });
 
 test("calendar status route returns connection state", async () => {

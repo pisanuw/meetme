@@ -34,13 +34,11 @@ import {
   buildTimeSlots,
   listMeetingIds,
   createToken,
+  LIMITS,
 } from "./utils.mjs";
 import meetingActionsHandler from "./meeting-actions.mjs";
 
 const FN = "meetings";
-const MAX_TITLE_LENGTH = 200;
-const MAX_DESCRIPTION_LENGTH = 2000;
-const MAX_INVITEES = 50;
 const ALLOWED_MEETING_TYPES = new Set(["specific_dates", "days_of_week"]);
 const ALLOWED_DAY_NAMES = new Set([
   "Monday",
@@ -162,13 +160,13 @@ async function handleRequest(req, _context) {
     const creatorEmail = (user.email || "").toLowerCase();
 
     if (!normalizedTitle) return errorResponse(400, "Meeting title is required.");
-    if (normalizedTitle.length > MAX_TITLE_LENGTH) {
-      return errorResponse(400, `Meeting title must be ${MAX_TITLE_LENGTH} characters or fewer.`);
+    if (normalizedTitle.length > LIMITS.TITLE_MAX) {
+      return errorResponse(400, `Meeting title must be ${LIMITS.TITLE_MAX} characters or fewer.`);
     }
-    if (normalizedDescription.length > MAX_DESCRIPTION_LENGTH) {
+    if (normalizedDescription.length > LIMITS.DESCRIPTION_MAX) {
       return errorResponse(
         400,
-        `Description must be ${MAX_DESCRIPTION_LENGTH} characters or fewer.`
+        `Description must be ${LIMITS.DESCRIPTION_MAX} characters or fewer.`
       );
     }
     if (!ALLOWED_MEETING_TYPES.has(normalizedMeetingType)) {
@@ -242,8 +240,8 @@ async function handleRequest(req, _context) {
       const emails = [
         ...new Set(rawEmails.map((e) => validateEmail(e)).filter((e) => e && e !== creatorEmail)),
       ];
-      if (emails.length > MAX_INVITEES) {
-        return errorResponse(400, `You can invite at most ${MAX_INVITEES} people to one meeting.`);
+      if (emails.length > LIMITS.MAX_INVITEES) {
+        return errorResponse(400, `You can invite at most ${LIMITS.MAX_INVITEES} people to one meeting.`);
       }
       const users = getDb("users");
       for (const email of emails) {

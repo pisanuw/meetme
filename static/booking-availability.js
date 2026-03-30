@@ -1,8 +1,6 @@
 const weekdayOptions = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 const availabilityRows = document.getElementById("availability-rows");
-const availabilityEventTypeSelect = document.getElementById("availability-event-type");
-const availabilityEventTypeHelp = document.getElementById("availability-event-type-help");
 const availabilityModeSelect = document.getElementById("availability-mode");
 const availabilityStartDateInput = document.getElementById("availability-start-date");
 const availabilityEndDateInput = document.getElementById("availability-end-date");
@@ -17,6 +15,16 @@ const requestedEventTypeId = params.get("eventType") || "";
 let userProfileTimezone = "UTC";
 let hasEventTypes = false;
 let eventTypes = [];
+
+function redirectToSetupIfNoEventType() {
+  if (!requestedEventTypeId) {
+    showFlash("No event type selected. Please create or select an event type first.", "danger");
+    setTimeout(() => {
+      window.location.href = "/booking-setup.html";
+    }, 1200);
+    throw new Error("No event type selected");
+  }
+}
 const TIME_STEP_MINUTES = 15;
 const DAY_MINUTES = 24 * 60;
 const QUICK_TIME_OPTIONS = buildTimeOptions();
@@ -124,13 +132,16 @@ function currentAvailabilityMode() {
 }
 
 function updateAvailabilityModeHelp() {
+  const dateRow = document.getElementById("availability-date-row");
   if (currentAvailabilityMode() === "specific_dates") {
     availabilityModeHelp.textContent = "Specific dates mode applies only to the exact dates and times listed below.";
     addWindowBtn.textContent = "+ Add Date Window";
+    if (dateRow) dateRow.style.display = "none";
     return;
   }
   availabilityModeHelp.textContent = "Weekly mode repeats selected weekdays within the date range.";
   addWindowBtn.textContent = "+ Add Weekly Window";
+  if (dateRow) dateRow.style.display = "";
 }
 
 function setAvailabilityGate() {
@@ -243,7 +254,9 @@ async function loadAvailability() {
   }
   hasEventTypes = (eventTypesRes.data.event_types || []).length > 0;
 
-  const windowsRes = await apiFetch("/api/bookings/availability");
+  redirectToSetupIfNoEventType();
+  const eventTypeId = requestedEventTypeId;
+  const windowsRes = await apiFetch(`/api/bookings/availability?event_type_id=${encodeURIComponent(eventTypeId)}`);
   if (!windowsRes.ok) {
     showFlash(windowsRes.data.error || "Could not load availability.", "danger");
     return;
@@ -287,7 +300,7 @@ saveAvailabilityBtn.addEventListener("click", async () => {
   const mode = currentAvailabilityMode();
   const windows = collectAvailabilityWindows(mode);
 
-  const { ok, data } = await apiFetch("/api/bookings/availability", {
+  const { ok, data } = await apiFetch(`/api/bookings/availability?event_type_id=${encodeURIComponent(requestedEventTypeId)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -309,6 +322,7 @@ saveAvailabilityBtn.addEventListener("click", async () => {
 (async () => {
   const user = await requireAuth();
   if (!user) return;
+  redirectToSetupIfNoEventType();
   updateAvailabilityModeHelp();
   await loadAvailability();
 })();

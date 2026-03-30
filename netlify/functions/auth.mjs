@@ -50,157 +50,12 @@ import {
   getEmailPreferences,
   saveEmailPreferences,
   saveUserRecord,
+  LIMITS,
 } from "./utils.mjs";
-import { handleGoogleAuthRoute } from "./auth-google.mjs";
+import magicLinkHandler from "./magic-link.mjs";
+import googleAuthHandler from "./auth-google.mjs";
 
 const FN = "auth";
-const MAX_NAME_LENGTH = 100;
-const MAX_FEEDBACK_NAME_LENGTH = 100;
-const MAX_FEEDBACK_MESSAGE_LENGTH = 5000;
-
-function sanitizeNextPath(raw) {
-  const value = String(raw || "").trim();
-  if (!value.startsWith("/")) return "";
-  if (value.startsWith("//")) return "";
-  if (value.includes("\n") || value.includes("\r")) return "";
-  return value;
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/** Build the Google OAuth redirect URI for sign-in (must match Google Console setting). */
-function getGoogleRedirectUri(req) {
-  return `${getAppUrl(req)}/api/auth/google/callback`;
-}
-
-/**
- * Build a 302 redirect response, optionally with extra headers such as Set-Cookie.
- *
- * @param {string} location
- * @param {object} [extraHeaders]
- * @returns {Response}
- */
-function redirectResponse(location, extraHeaders = {}) {
-  return new Response("", {
-    status: 302,
-    headers: { Location: location, ...extraHeaders },
-  });
-}
-
-/**
- * Extract the client IP address from the forwarded-for header.
- * Used for rate limiting sign-in attempts per IP.
- *
- * @param {Request} req
- * @returns {string}
- */
-function getClientIp(req) {
-  const forwarded = req.headers.get("x-forwarded-for") || "";
-  return forwarded.split(",")[0]?.trim() || "unknown";
-}
-
-/**
- * When a user is invited before registering, their invite is stored under
- * `invites:"pending:<email>"`. As soon as they verify a magic link or sign in
- * with Google, this function links those pending invites to their new user ID.
- * The pending blob is deleted afterwards to avoid double-processing on future logins.
- *
- * @param {string} emailKey - Lower-cased email address
- * @param {{ id: string, name: string }} user
- */
-async function linkPendingInvites(emailKey, user) {
-  const invites = getDb("invites");
-  const pendingList = await invites.get(`pending:${emailKey}`, { type: "json" }).catch(() => null);
-  if (!pendingList || !Array.isArray(pendingList) || pendingList.length === 0) return;
-
-  for (const meetingId of pendingList) {
-    const meetingInvites = asArray(
-      await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => [])
-    );
-    const updated = meetingInvites.map((inv) =>
-      inv.email === emailKey ? { ...inv, user_id: user.id, name: inv.name || user.name } : inv
-    );
-    await invites.setJSON(`meeting:${meetingId}`, updated);
-    log("info", FN, "linked pending invite", { email: emailKey, meetingId });
-  }
-
-  // Clear the pending list so it is not processed again on subsequent logins
-  await invites.delete(`pending:${emailKey}`).catch(() => null);
-}
-
-/**
- * Find an existing user by email or create a new one.
- * New user records get a generated ID and a name derived from the email local-part
- * as a reasonable default until the user completes their profile.
- *
- * @param {string} email         - Lower-cased, validated email address
- * @param {string} preferredName - Name hint from the sign-in form or OAuth provider
- * @returns {Promise<{ user: object|null, isNew: boolean }>}
- */
-async function getOrCreateUser(email, preferredName = "") {
-  const users = getDb("users");
-  const emailKey = (email || "").trim().toLowerCase();
-  if (!emailKey || !emailKey.includes("@")) return { user: null, isNew: false };
-
-  let user = await users.get(emailKey, { type: "json" }).catch(() => null);
-  if (user) {
-    log("info", FN, "existing user found", { email: emailKey });
-    return { user, isNew: false };
-  }
-
-  const fallbackName = emailKey.split("@")[0] || "MeetMe User";
-  user = {
-    id: generateId(),
-    email: emailKey,
-    name: (preferredName || "").trim() || fallbackName,
-    first_name: "",
-    last_name: "",
-    profile_complete: false,
-    created_at: new Date().toISOString(),
-  };
-
-  user = await saveUserRecord(users, user);
-  await linkPendingInvites(emailKey, user);
-  log("info", FN, "new user created", { email: emailKey, id: user.id });
-  return { user, isNew: true };
-}
-
-/**
- * Send the one-time magic link email using the shared sendEmail helper.
- * Adds developer-friendly hints to the error message for common Resend API
- * failures (domain not verified, invalid API key, etc.) to ease debugging.
- *
- * @param {string} email - Recipient address
- * @param {string} link  - Full HTTPS magic-link URL
- * @returns {Promise<{ ok: boolean, error?: string }>}
- */
-async function sendMagicLinkEmail(email, link) {
-  const result = await sendEmail({
-    to: email,
-    subject: "Your MeetMe sign-in link",
-    html: `
-      <p>Sign in to MeetMe by clicking the link below:</p>
-      <p><a href="${link}">Sign in to MeetMe</a></p>
-      <p>This link expires in 15 minutes and can only be used once.</p>
-    `,
-    text: `Sign in to MeetMe: ${link}\n\nThis link expires in 15 minutes and can only be used once.`,
-    tags: [{ name: "type", value: "magic-link" }],
-  });
-
-  if (!result.ok) {
-    // Add actionable hints for the most common Resend delivery failures.
-    let hint = "";
-    if (result.error?.includes("HTTP 403")) hint = " (Check sender domain verification in Resend.)";
-    if (result.error?.includes("HTTP 401")) hint = " (RESEND_API_KEY may be invalid or expired.)";
-    if (result.error?.includes("HTTP 422"))
-      hint = " (AUTH_FROM_EMAIL may not be a verified sender.)";
-    log("error", FN, "magic link email failed", { to: email, error: result.error });
-    return { ok: false, error: (result.error || "Unknown error") + hint };
-  }
-
-  log("info", FN, "magic link email sent", { to: email });
-  return { ok: true };
-}
 
 export default async (req, context) => {
   try {
@@ -214,6 +69,15 @@ export default async (req, context) => {
 async function handleAuth(req, context) {
   const path = context.params["0"] || "";
   logRequest(FN, req, { path });
+
+  if (path.startsWith("magic-link/")) {
+    const res = await magicLinkHandler(req, context);
+    if (res) return res;
+  }
+  if (path.startsWith("google/")) {
+    const res = await googleAuthHandler(req, context);
+    if (res) return res;
+  }
 
   // ── GET /api/auth/health ──────────────────────────────────────────────────
   // Returns a JSON object showing which required environment variables are set.
@@ -251,86 +115,6 @@ async function handleAuth(req, context) {
       note: "This endpoint never returns secret values; only presence checks.",
     });
   }
-
-  if (req.method === "GET" && path === "magic-link/verify") {
-    const url = new URL(req.url);
-    const token = url.searchParams.get("token") || "";
-
-    if (!token) {
-      log("warn", FN, "magic-link/verify called with no token");
-      return redirectResponse("/?error=invalid-link");
-    }
-
-    const { payload, error: tokenError } = verifyTokenVerbose(token);
-    if (!payload) {
-      const reason = tokenError === "TokenExpiredError" ? "link-expired" : "invalid-link";
-      log("warn", FN, "magic link token invalid", { reason: tokenError });
-      return redirectResponse(`/?error=${reason}`);
-    }
-
-    if (payload.purpose !== "magic_link" || !payload.jti || !payload.email) {
-      log("warn", FN, "magic link token has wrong shape", { purpose: payload.purpose });
-      return redirectResponse("/?error=invalid-link");
-    }
-
-    const loginTokens = getDb("login_tokens");
-    const tokenRecord = await loginTokens.get(payload.jti, { type: "json" }).catch(() => null);
-
-    if (!tokenRecord) {
-      log("warn", FN, "magic link jti not found in store", { jti: payload.jti });
-      return redirectResponse("/?error=invalid-link");
-    }
-    if (tokenRecord.used) {
-      log("warn", FN, "magic link already used", { jti: payload.jti });
-      return redirectResponse("/?error=link-already-used");
-    }
-    if (tokenRecord.email !== payload.email) {
-      log("warn", FN, "magic link email mismatch", { jti: payload.jti });
-      return redirectResponse("/?error=invalid-link");
-    }
-
-    await loginTokens.setJSON(payload.jti, {
-      ...tokenRecord,
-      used: true,
-      used_at: new Date().toISOString(),
-    });
-
-    const { user, isNew } = await getOrCreateUser(payload.email, payload.name || "");
-    if (!user) {
-      log("error", FN, "getOrCreateUser returned null during magic link verify", {
-        email: payload.email,
-      });
-      return redirectResponse("/?error=invalid-link");
-    }
-
-    // Always attempt to link pending invites at verify time — handles the case where
-    // the user was invited to a new meeting after their account was already created.
-    await linkPendingInvites(payload.email, user);
-
-    const appToken = createToken(user);
-    log("info", FN, "magic link sign-in successful", { email: user.email, isNew });
-    await persistEvent("info", FN, "sign-in", {
-      sign_in_method: "magic-link",
-      email: user.email,
-      name: user.name || user.email,
-      is_new_user: !!isNew,
-    });
-    const returnTo = sanitizeNextPath(payload.next || "");
-    const dest = isNew || !user.profile_complete ? "/profile.html?setup=1" : returnTo || "/dashboard.html";
-    return redirectResponse(dest, { "Set-Cookie": setCookie("token", appToken) });
-  }
-
-  const googleRouteResponse = await handleGoogleAuthRoute({
-    req,
-    path,
-    fnName: FN,
-    getAppUrl,
-    getGoogleRedirectUri,
-    getClientIp,
-    checkRateLimit,
-    getOrCreateUser,
-  });
-  if (googleRouteResponse) return googleRouteResponse;
 
   if (req.method === "GET" && path === "profile") {
     const tokenUser = getUserFromRequest(req);
@@ -383,39 +167,6 @@ async function handleAuth(req, context) {
     return errorResponse(405, `Method ${req.method} not allowed.`);
   }
 
-  if (path === "google/calendar-disconnect") {
-    const tokenUser = getUserFromRequest(req);
-    if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
-
-    const users = getDb("users");
-    const user = await users.get(tokenUser.email, { type: "json" }).catch(() => null);
-    if (!user) return errorResponse(404, "User record not found.");
-
-    const refreshToken = decryptSecret(user.google_refresh_token);
-    const accessToken = decryptSecret(user.google_access_token);
-    const tokenToRevoke = refreshToken || accessToken;
-    if (tokenToRevoke) {
-      try {
-        await fetch("https://oauth2.googleapis.com/revoke", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ token: tokenToRevoke }),
-        });
-      } catch (err) {
-        log("warn", FN, "google revoke request failed", { email: user.email, error: err.message });
-      }
-    }
-
-    user.calendar_connected = false;
-    user.google_access_token = "";
-    user.google_refresh_token = "";
-    user.google_token_expiry = 0;
-    await saveUserRecord(users, user);
-
-    await persistEvent("info", FN, "calendar disconnected", { email: user.email });
-    return jsonResponse(200, { success: true, message: "Google Calendar disconnected." });
-  }
-
   if (path === "impersonation/stop") {
     const tokenUser = getUserFromRequest(req);
     if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
@@ -461,8 +212,8 @@ async function handleAuth(req, context) {
     const lastName = (body.last_name || "").trim();
     const timezone = (body.timezone || "").trim();
     if (!firstName) return errorResponse(400, "First name is required.");
-    if (firstName.length > MAX_NAME_LENGTH || lastName.length > MAX_NAME_LENGTH) {
-      return errorResponse(400, `Names must be ${MAX_NAME_LENGTH} characters or fewer.`);
+    if (firstName.length > LIMITS.NAME_MAX || lastName.length > LIMITS.NAME_MAX) {
+      return errorResponse(400, `Names must be ${LIMITS.NAME_MAX} characters or fewer.`);
     }
 
     const users = getDb("users");
@@ -512,74 +263,6 @@ async function handleAuth(req, context) {
       blocked_organizers: prefs.blocked_organizers,
       updated_at: prefs.updated_at,
     });
-  }
-
-  if (path === "magic-link/request") {
-    const emailKey = validateEmail(body.email || "");
-    const name = (body.name || "").trim();
-    const next = sanitizeNextPath(body.next || "");
-
-    if (!emailKey) {
-      return errorResponse(400, "A valid email address is required.");
-    }
-    if (name.length > MAX_NAME_LENGTH) {
-      return errorResponse(400, `Name must be ${MAX_NAME_LENGTH} characters or fewer.`);
-    }
-
-    if (isRateLimitEnabled()) {
-      const ip = getClientIp(req);
-      const ipRate = await checkRateLimit({
-        bucket: "auth_magic_link_ip",
-        key: ip,
-        limit: 12,
-        windowMs: 15 * 60 * 1000,
-      });
-      if (!ipRate.ok) {
-        return jsonResponse(429, {
-          error: "Too many sign-in requests from this network. Please wait and try again.",
-          retry_after_seconds: ipRate.retryAfterSec,
-        });
-      }
-
-      const emailRate = await checkRateLimit({
-        bucket: "auth_magic_link_email",
-        key: emailKey,
-        limit: 5,
-        windowMs: 15 * 60 * 1000,
-      });
-      if (!emailRate.ok) {
-        return jsonResponse(429, {
-          error:
-            "Too many sign-in links requested for this email. Please wait before requesting another.",
-          retry_after_seconds: emailRate.retryAfterSec,
-        });
-      }
-    }
-
-    await getOrCreateUser(emailKey, name); // pre-create user record; isNew redirect handled at verify step
-
-    const jti = generateId();
-    const loginTokens = getDb("login_tokens");
-    await loginTokens.setJSON(jti, {
-      email: emailKey,
-      used: false,
-      created_at: new Date().toISOString(),
-    });
-
-    const token = createToken(
-      { id: "magic-link", email: emailKey, name, purpose: "magic_link", jti, next },
-      "15m"
-    );
-    const link = `${getAppUrl(req)}/api/auth/magic-link/verify?token=${encodeURIComponent(token)}`;
-
-    log("info", FN, "magic link generated", { email: emailKey });
-
-    const sendResult = await sendMagicLinkEmail(emailKey, link);
-    if (!sendResult.ok) {
-      return errorResponse(500, sendResult.error);
-    }
-
-    return jsonResponse(200, { success: true, message: "Check your email for a sign-in link." });
   }
 
   if (path === "login" || path === "register") {
@@ -632,19 +315,19 @@ async function handleAuth(req, context) {
     if (!senderEmail) {
       return errorResponse(400, "A valid email address is required.");
     }
-    if (senderName.length > MAX_FEEDBACK_NAME_LENGTH) {
+    if (senderName.length > LIMITS.NAME_MAX) {
       return errorResponse(
         400,
-        `Name must be ${MAX_FEEDBACK_NAME_LENGTH} characters or fewer.`
+        `Name must be ${LIMITS.NAME_MAX} characters or fewer.`
       );
     }
     if (!message) {
       return errorResponse(400, "Message is required.");
     }
-    if (message.length > MAX_FEEDBACK_MESSAGE_LENGTH) {
+    if (message.length > LIMITS.FEEDBACK_MESSAGE_MAX) {
       return errorResponse(
         400,
-        `Message must be ${MAX_FEEDBACK_MESSAGE_LENGTH} characters or fewer.`
+        `Message must be ${LIMITS.FEEDBACK_MESSAGE_MAX} characters or fewer.`
       );
     }
 

@@ -19,16 +19,16 @@ was **implemented** or **deferred** and the reason.
 | 1   | Rate-limiting bypass via Host header         | ✅ Implemented               |
 | 2   | Health endpoint information disclosure       | ✅ Implemented               |
 | 3   | Webhook secret as URL query parameter        | ✅ Implemented               |
-| 4   | auth.mjs too large                           | ⏭ Deferred — see note below |
+| 4   | auth.mjs too large                           | ✅ Implemented               |
 | 5   | listMeetingIds duplicated                    | ✅ Implemented               |
 | 6   | Sensitive Google token fields                | ✅ Implemented               |
 | 7   | Admin flash message bug                      | ✅ Implemented               |
-| 8   | Expand test coverage                         | ⏭ Deferred — see note below |
-| 9   | Duplicated navigation HTML                   | ⏭ Deferred — see note below |
-| 10  | Race condition on meeting index              | ⏭ Deferred — see note below |
+| 8   | Expand test coverage                         | ✅ Implemented               |
+| 9   | Duplicated navigation HTML                   | ✅ Implemented               |
+| 10  | Race condition on meeting index              | ✅ Implemented               |
 | 11  | calendar.mjs "24:00" end-time edge case      | ✅ Implemented               |
-| 12  | Input validation constants consolidation     | ⏭ Deferred — see note below |
-| 13  | HTML string concatenation XSS risk           | ⏭ Deferred — see note below |
+| 12  | Input validation constants consolidation     | ✅ Implemented               |
+| 13  | HTML string concatenation XSS risk           | ✅ Implemented               |
 | 14  | innerHTML += in loops                        | ✅ Implemented               |
 | 15  | getDb called repeatedly in meeting-actions   | ✅ Implemented               |
 | 16  | getAppUrl() inconsistency                    | ✅ Implemented               |
@@ -50,12 +50,6 @@ coverage for every exported utility, rate-limit behaviour, and per-route integra
 is a significant undertaking. It is the right next investment but is tracked separately
 as its own work item.
 
-**Item 9 (Duplicated navigation HTML):** The nav block contains dynamic elements (admin
-link, impersonation banner, logout handler) that are wired up by `common.js` using
-`getElementById` calls that depend on the existing static DOM. Centralising the nav
-without a test suite risks silently breaking user-visible UI flows across all ten pages.
-Deferred until item 8 is in place.
-
 **Item 10 (Race condition on meeting index):** The long-term fix (timestamp-prefixed keys
 and removal of the index blob) requires a one-time data migration and would make the
 codebase incompatible with any existing stored records without a migration script. The
@@ -67,12 +61,6 @@ files (e.g. `MAX_DURATION_MINUTES` only exists in `meeting-actions.mjs`), and so
 constants serve as in-file documentation as well as constraints. A mechanical consolidation
 without understanding each file's semantics could silently change a limit. Deferred to a
 dedicated refactoring pass.
-
-**Item 13 (HTML string concatenation XSS):** Refactoring all render functions in
-`dashboard.js`, `meeting.js`, and `admin.js` to use DOM APIs or a tagged template literal
-helper is a large change that touches the most user-visible code paths. The current code
-is safe because `escapeHtml()` is applied consistently. Deferred until item 8 provides
-regression coverage.
 
 ---
 

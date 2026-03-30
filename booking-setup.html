@@ -7,16 +7,7 @@
     <link rel="stylesheet" href="/static/style.css" />
   </head>
   <body>
-    <nav class="navbar">
-      <div class="nav-inner">
-        <a href="/dashboard.html" class="nav-brand"><span class="brand-icon">&#x27F3;</span> MeetMe</a>
-        <div class="nav-links" id="nav-auth" hidden>
-          <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
-          <span class="nav-user" id="nav-username"></span>
-          <a href="#" class="nav-link" id="logout-link">Log out</a>
-        </div>
-      </div>
-    </nav>
+    <nav class="navbar" data-shared-nav></nav>
 
     <div id="flash-container" class="flash-container"></div>
 
@@ -24,7 +15,7 @@
       <div class="form-page">
         <div class="form-card">
           <h1>Event Types</h1>
-          <p class="text-muted">Define the meeting types people can book with you. After creating event types, set your availability so bookers can see open time slots.</p>
+          <p class="text-muted">Define the meeting types people can book with you. After creating event types, set your availability for each event type so bookers can see open time slots.</p>
 
           <section id="event-type-panel" class="form-group">
             <h2 class="setup-section-title" id="event-form-heading">New Event Type</h2>
@@ -75,13 +66,6 @@
           </section>
 
           <section class="form-group setup-section-spaced" id="event-types-section">
-            <div class="setup-section-header">
-              <h2 class="setup-section-title">Your Event Types</h2>
-              <div class="setup-section-header-actions">
-                <a href="/booking-availability.html" class="btn btn-ghost">Set Availability</a>
-                <button type="button" class="btn btn-primary" id="new-event-type-btn" hidden>+ New Event Type</button>
-              </div>
-            </div>
             <div id="event-types-list" class="meeting-grid"></div>
           </section>
         </div>
@@ -92,6 +76,11 @@
 
     <script src="/static/layout.js"></script>
     <script src="/static/common.js"></script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        if (window.checkAuth) window.checkAuth();
+      });
+    </script>
     <script src="/static/booking-setup.js" defer></script>
   </body>
 </html>

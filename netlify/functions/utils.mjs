@@ -1046,3 +1046,13 @@ export async function sendEmail({ to, subject, html, text, replyTo, tags, suppre
     return { ok: false, error: `Email send failed: ${err.message}` };
   }
 }
+
+export const LIMITS = {
+  TITLE_MAX: 200,
+  DESCRIPTION_MAX: 2000,
+  MAX_INVITEES: 50,
+  NAME_MAX: 100,
+  DURATION_MIN: 15,
+  DURATION_MAX: 24 * 60,
+  FEEDBACK_MESSAGE_MAX: 5000,
+};

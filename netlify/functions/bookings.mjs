@@ -607,9 +607,35 @@ async function handleBookings(req, _context) {
       await eventTypesDb.get(`owner:${authUser.id}`, { type: "json" }).catch(() => [])
     ).filter((id) => id !== eventTypeId);
 
+    // Delete the event type
     await eventTypesDb.delete(`event_type:${eventTypeId}`);
     await availabilityDb.delete(getAvailabilityKey(authUser.id, eventTypeId)).catch(() => null);
     await eventTypesDb.setJSON(`owner:${authUser.id}`, ownerIds);
+
+    // Clean up all bookings and slot keys for this event type
+    try {
+      const bookingsDb = getDb("bookings");
+      // Find all slot keys and booking keys for this event type
+      const allKeys = await bookingsDb.list({ prefix: "" });
+      const slotKeys = allKeys.keys.filter((k) => k.startsWith(`slot:${eventTypeId}:`));
+      const bookingKeys = allKeys.keys.filter((k) => {
+        // Booking keys are booking:<id>, need to check event_type_id
+        return k.startsWith("booking:");
+      });
+      // For each booking, check if it matches this event type
+      for (const bookingKey of bookingKeys) {
+        const booking = await bookingsDb.get(bookingKey, { type: "json" }).catch(() => null);
+        if (booking && booking.event_type_id === eventTypeId) {
+          await bookingsDb.delete(bookingKey).catch(() => null);
+        }
+      }
+      // Delete all slot keys for this event type
+      for (const slotKey of slotKeys) {
+        await bookingsDb.delete(slotKey).catch(() => null);
+      }
+    } catch (cleanupErr) {
+      log("warn", FN, "cleanup failed after event type delete", { eventTypeId, error: cleanupErr.message });
+    }
     return jsonResponse(200, { success: true });
   }
 

@@ -138,11 +138,29 @@ function bindAvailabilityPersistenceLifecycle() {
   }
 
   const tabsContainer = document.getElementById("view-tabs");
-  tabsContainer.innerHTML = `
-    <button class="view-tab active" data-view="heatmap">&#x1F321; Group availability</button>
-    ${!M.isFinalized ? '<button class="view-tab" data-view="mine">&#x270F; My availability</button>' : ""}
-    ${M.isCreator && M.participants.length ? '<button class="view-tab" data-view="person">&#x1F464; By person</button>' : ""}
-  `;
+  tabsContainer.innerHTML = "";
+
+  const btnHeatmap = document.createElement("button");
+  btnHeatmap.className = "view-tab active";
+  btnHeatmap.dataset.view = "heatmap";
+  btnHeatmap.textContent = "\uD83C\uDF21 Group availability";
+  tabsContainer.appendChild(btnHeatmap);
+
+  if (!M.isFinalized) {
+    const btnMine = document.createElement("button");
+    btnMine.className = "view-tab";
+    btnMine.dataset.view = "mine";
+    btnMine.textContent = "\u270F My availability";
+    tabsContainer.appendChild(btnMine);
+  }
+  if (M.isCreator && M.participants.length) {
+    const btnPerson = document.createElement("button");
+    btnPerson.className = "view-tab";
+    btnPerson.dataset.view = "person";
+    btnPerson.textContent = "\uD83D\uDC64 By person";
+    tabsContainer.appendChild(btnPerson);
+  }
+
   tabsContainer.addEventListener("click", (e) => {
     const tab = e.target.closest(".view-tab[data-view]");
     if (!tab) return;
@@ -151,11 +169,12 @@ function bindAvailabilityPersistenceLifecycle() {
 
   if (M.isCreator && M.participants.length) {
     const sel = document.getElementById("person-select");
-    const optParts = M.participants.map(
-      (p, i) =>
-        `<option value="${i}">${escapeHtml(p.name)} (${p.slot_count} slot${p.slot_count !== 1 ? "s" : ""})${!p.responded ? " \u2013 no response" : ""}</option>`
-    );
-    sel.innerHTML += optParts.join("");
+    M.participants.forEach((p, i) => {
+      const opt = document.createElement("option");
+      opt.value = i;
+      opt.textContent = `${p.name} (${p.slot_count} slot${p.slot_count !== 1 ? "s" : ""})${!p.responded ? " \u2013 no response" : ""}`;
+      sel.appendChild(opt);
+    });
     sel.addEventListener("change", (e) => filterPerson(e.target.value));
   }
 
@@ -163,27 +182,13 @@ function bindAvailabilityPersistenceLifecycle() {
     document.getElementById("participants-panel").hidden = false;
     document.getElementById("participant-count").textContent = `(${data.invite_count})`;
     const list = document.getElementById("participants-list");
-    const rowParts = M.participants.map((p, i) => {
-      const clickableAttrs = M.isCreator
-        ? `data-participant-index="${i}" class="participant-row participant-row-clickable"`
-        : "";
-      return `
-        <div ${clickableAttrs || 'class="participant-row"'}>
-          <div class="participant-avatar">${escapeHtml((p.name || "?")[0].toUpperCase())}</div>
-          <div class="participant-info">
-            <div class="participant-name">${escapeHtml(p.name)}</div>
-            ${M.isCreator && p.email ? `<div class="participant-email text-muted">${escapeHtml(p.email)}</div>` : ""}
-          </div>
-          <div class="participant-slots">
-            ${
-              p.responded
-                ? `<span class="badge badge-green">${p.slot_count} slot${p.slot_count !== 1 ? "s" : ""}</span>`
-                : '<span class="badge badge-gray">No response</span>'
-            }
-          </div>
-        </div>`;
+    list.innerHTML = "";
+    const fragment = document.createDocumentFragment();
+    M.participants.forEach((p, i) => {
+      fragment.appendChild(createParticipantRow(p, i));
     });
-    list.innerHTML += rowParts.join("");
+    list.appendChild(fragment);
+
     list.addEventListener("click", (e) => {
       if (!M.isCreator) return;
       const row = e.target.closest(".participant-row[data-participant-index]");
@@ -226,6 +231,43 @@ function bindAvailabilityPersistenceLifecycle() {
     if (mineTab) setView("mine", mineTab);
   }
 })();
+
+function createParticipantRow(p, i) {
+  const row = document.createElement("div");
+  row.className = "participant-row";
+  if (M.isCreator) {
+    row.dataset.participantIndex = i;
+    row.classList.add("participant-row-clickable");
+  }
+
+  const avatar = document.createElement("div");
+  avatar.className = "participant-avatar";
+  avatar.textContent = (p.name || "?")[0].toUpperCase();
+
+  const info = document.createElement("div");
+  info.className = "participant-info";
+  const nameDiv = document.createElement("div");
+  nameDiv.className = "participant-name";
+  nameDiv.textContent = p.name;
+  info.appendChild(nameDiv);
+
+  if (M.isCreator && p.email) {
+    const emailDiv = document.createElement("div");
+    emailDiv.className = "participant-email text-muted";
+    emailDiv.textContent = p.email;
+    info.appendChild(emailDiv);
+  }
+
+  const slots = document.createElement("div");
+  slots.className = "participant-slots";
+  const badge = document.createElement("span");
+  badge.className = p.responded ? "badge badge-green" : "badge badge-gray";
+  badge.textContent = p.responded ? `${p.slot_count} slot${p.slot_count !== 1 ? "s" : ""}` : "No response";
+  slots.appendChild(badge);
+
+  row.append(avatar, info, slots);
+  return row;
+}
 
 function heatColor(count) {
   if (!count || count === 0) return "#f5f5f5";
@@ -396,7 +438,9 @@ function buildGrid() {
   M.dates.forEach((d) => {
     const hdr = mkEl("div", "ag-col-header");
     if (M.isFinalized && d === M.finalizedDate) hdr.classList.add("is-finalized");
-    hdr.innerHTML = `<div>${fmtDate(d)}</div>`;
+    const inner = document.createElement("div");
+    inner.textContent = fmtDate(d);
+    hdr.appendChild(inner);
     grid.appendChild(hdr);
   });
 
@@ -675,28 +719,10 @@ function showSavedIndicator() {
 function refreshParticipantsPanel() {
   const list = document.getElementById("participants-list");
   if (!list || !M.participants || M.participants.length === 0) return;
-  let html = "";
-  M.participants.forEach((p, i) => {
-    const clickableAttrs = M.isCreator
-      ? `data-participant-index="${i}" class="participant-row participant-row-clickable"`
-      : "";
-    html += `
-      <div ${clickableAttrs || 'class="participant-row"'}>
-        <div class="participant-avatar">${escapeHtml((p.name || "?")[0].toUpperCase())}</div>
-        <div class="participant-info">
-          <div class="participant-name">${escapeHtml(p.name)}</div>
-          ${M.isCreator && p.email ? `<div class="participant-email text-muted">${escapeHtml(p.email)}</div>` : ""}
-        </div>
-        <div class="participant-slots">
-          ${
-            p.responded
-              ? `<span class="badge badge-green">${p.slot_count} slot${p.slot_count !== 1 ? "s" : ""}</span>`
-              : '<span class="badge badge-gray">No response</span>'
-          }
-        </div>
-      </div>`;
-  });
-  list.innerHTML = html;
+  list.innerHTML = "";
+  const fragment = document.createDocumentFragment();
+  M.participants.forEach((p, i) => fragment.appendChild(createParticipantRow(p, i)));
+  list.appendChild(fragment);
 }
 
 function setView(view, btn) {
