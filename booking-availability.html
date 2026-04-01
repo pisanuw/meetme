@@ -14,7 +14,7 @@
     <main class="main-content">
       <div class="form-page">
         <div class="form-card">
-          <p class="text-muted"><a href="/booking-setup.html">&#x2190; Event Types</a></p>
+          <p class="text-muted"><a href="/booking-links.html">&#x2190; Booking Links</a></p>
           <h1>Availability</h1>
           <p class="text-muted">Set the time windows for one event type at a time. Office hours, social chats, and longer sessions can each have their own schedule.</p>
 
@@ -44,14 +44,28 @@
               </div>
             </div>
 
+            <div class="form-row" id="availability-timezone-row">
+              <div class="form-group">
+                <label for="availability-timezone">Timezone</label>
+                <input id="availability-timezone" class="form-control" value="UTC" />
+              </div>
+            </div>
+
             <p class="text-muted" id="availability-mode-help">
               Weekly mode repeats selected weekdays within the date range.
             </p>
 
-            <div id="availability-rows"></div>
+            <div class="instructions" id="availability-grid-instructions">
+              Click or click-and-drag to select your available times.
+            </div>
+
+            <div class="grid-scroll-wrapper">
+              <div class="av-grid" id="availability-grid" data-editing="true"></div>
+            </div>
+
+            <p class="text-muted" id="availability-selection-summary">No slots selected yet.</p>
 
             <div class="form-actions setup-actions-tight">
-              <button type="button" class="btn btn-ghost" id="add-window-btn">+ Add Window</button>
               <button type="button" class="btn btn-primary" id="save-availability-btn">Save Availability</button>
             </div>
           </section>

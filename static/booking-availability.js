@@ -1,33 +1,29 @@
 const weekdayOptions = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
-const availabilityRows = document.getElementById("availability-rows");
+const availabilityGrid = document.getElementById("availability-grid");
 const availabilityModeSelect = document.getElementById("availability-mode");
 const availabilityStartDateInput = document.getElementById("availability-start-date");
 const availabilityEndDateInput = document.getElementById("availability-end-date");
+const availabilityTimezoneInput = document.getElementById("availability-timezone");
 const availabilityModeHelp = document.getElementById("availability-mode-help");
 const availabilityGateMessage = document.getElementById("availability-gate-message");
-const addWindowBtn = document.getElementById("add-window-btn");
+const availabilitySelectionSummary = document.getElementById("availability-selection-summary");
 const saveAvailabilityBtn = document.getElementById("save-availability-btn");
 
 const params = new URLSearchParams(window.location.search);
 const requestedEventTypeId = params.get("eventType") || "";
 const isNewEventType = params.get("new") === "1";
 
-let userProfileTimezone = "UTC";
-let hasEventTypes = false;
-
-function redirectToSetupIfNoEventType() {
-  if (!requestedEventTypeId) {
-    showFlash("No event type selected. Please create or select an event type first.", "danger");
-    setTimeout(() => {
-      window.location.href = "/booking-setup.html";
-    }, 1200);
-    throw new Error("No event type selected");
-  }
-}
 const TIME_STEP_MINUTES = 15;
 const DAY_MINUTES = 24 * 60;
-const QUICK_TIME_OPTIONS = buildTimeOptions();
+
+let userProfileTimezone = "UTC";
+let hasEventTypes = false;
+let allEventTypes = [];
+let selectedSlots = new Set();
+let gridColumns = [];
+let isDragging = false;
+let dragAction = null;
 
 function buildTimeOptions() {
   const out = [];
@@ -38,6 +34,8 @@ function buildTimeOptions() {
   }
   return out;
 }
+
+const QUICK_TIME_OPTIONS = buildTimeOptions();
 
 function toMinutes(timeStr) {
   const [h, m] = String(timeStr || "00:00").split(":").map(Number);
@@ -51,72 +49,6 @@ function fromMinutes(mins) {
   return `${hh}:${mm}`;
 }
 
-function buildTimeChipsHtml(kind) {
-  return QUICK_TIME_OPTIONS.map(
-    (time) =>
-      `<button type="button" class="date-chip removable js-time-chip" data-kind="${kind}" data-time="${time}">${time}</button>`
-  ).join("");
-}
-
-function syncActiveTimeChips(row) {
-  const startValue = row.querySelector(".js-start")?.value || "";
-  const endValue = row.querySelector(".js-end")?.value || "";
-  row.querySelectorAll('.js-time-chip[data-kind="start"]').forEach((chip) => {
-    chip.classList.toggle("active", chip.dataset.time === startValue);
-  });
-  row.querySelectorAll('.js-time-chip[data-kind="end"]').forEach((chip) => {
-    chip.classList.toggle("active", chip.dataset.time === endValue);
-  });
-}
-
-function clampTimeRange(row, changedKind) {
-  const startInput = row.querySelector(".js-start");
-  const endInput = row.querySelector(".js-end");
-  if (!startInput || !endInput) return;
-
-  const startMins = toMinutes(startInput.value);
-  const endMins = toMinutes(endInput.value);
-  if (startMins < endMins) return;
-
-  if (changedKind === "start") {
-    endInput.value = fromMinutes(startMins + TIME_STEP_MINUTES);
-  } else {
-    startInput.value = fromMinutes(endMins - TIME_STEP_MINUTES);
-  }
-}
-
-function bindTimePickerRow(row) {
-  const startInput = row.querySelector(".js-start");
-  const endInput = row.querySelector(".js-end");
-  if (!startInput || !endInput) return;
-
-  row.querySelectorAll(".js-time-chip").forEach((chip) => {
-    chip.addEventListener("click", () => {
-      const { kind, time } = chip.dataset;
-      if (kind === "start") {
-        startInput.value = time;
-        clampTimeRange(row, "start");
-      } else {
-        endInput.value = time;
-        clampTimeRange(row, "end");
-      }
-      syncActiveTimeChips(row);
-    });
-  });
-
-  startInput.addEventListener("change", () => {
-    clampTimeRange(row, "start");
-    syncActiveTimeChips(row);
-  });
-
-  endInput.addEventListener("change", () => {
-    clampTimeRange(row, "end");
-    syncActiveTimeChips(row);
-  });
-
-  syncActiveTimeChips(row);
-}
-
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -127,32 +59,77 @@ function plusDaysIso(days) {
   return base.toISOString().slice(0, 10);
 }
 
+function fmtTime(time) {
+  const [h, m] = time.split(":").map(Number);
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+}
+
+function fmtDate(isoDate) {
+  const [y, mo, d] = isoDate.split("-").map(Number);
+  const dt = new Date(y, mo - 1, d);
+  return dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
 function currentAvailabilityMode() {
   return availabilityModeSelect.value === "specific_dates" ? "specific_dates" : "weekly";
 }
 
+function slotKey(columnKey, time) {
+  return `${columnKey}|${time}`;
+}
+
+function splitSlotKey(key) {
+  const i = key.lastIndexOf("|");
+  if (i === -1) return { columnKey: "", time: "" };
+  return {
+    columnKey: key.slice(0, i),
+    time: key.slice(i + 1),
+  };
+}
+
+function buildDateColumns(startDate, endDate) {
+  if (!startDate || !endDate || startDate > endDate) return [];
+  const out = [];
+  const cursor = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+
+  while (cursor <= end) {
+    const iso = cursor.toISOString().slice(0, 10);
+    out.push({ key: iso, label: fmtDate(iso) });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return out;
+}
+
+function buildColumns() {
+  if (currentAvailabilityMode() === "weekly") {
+    return weekdayOptions.map((day) => ({ key: day, label: day.slice(0, 3) }));
+  }
+  return buildDateColumns(availabilityStartDateInput.value, availabilityEndDateInput.value);
+}
+
 function updateAvailabilityModeHelp() {
-  const dateRow = document.getElementById("availability-date-row");
   if (currentAvailabilityMode() === "specific_dates") {
-    availabilityModeHelp.textContent = "Specific dates mode applies only to the exact dates and times listed below.";
-    addWindowBtn.textContent = "+ Add Date Window";
-    if (dateRow) dateRow.style.display = "none";
+    availabilityModeHelp.textContent = "Specific dates mode uses the date range columns below; click slots on exact dates and times.";
     return;
   }
   availabilityModeHelp.textContent = "Weekly mode repeats selected weekdays within the date range.";
-  addWindowBtn.textContent = "+ Add Weekly Window";
-  if (dateRow) dateRow.style.display = "";
 }
 
 function setAvailabilityGate() {
-  const controls = [availabilityModeSelect, availabilityStartDateInput, availabilityEndDateInput, addWindowBtn, saveAvailabilityBtn];
+  const controls = [
+    availabilityModeSelect,
+    availabilityStartDateInput,
+    availabilityEndDateInput,
+    availabilityTimezoneInput,
+    saveAvailabilityBtn,
+  ];
   const disabled = !hasEventTypes;
 
   controls.forEach((el) => {
-    el.disabled = disabled;
-  });
-
-  availabilityRows.querySelectorAll("input, select, button").forEach((el) => {
     el.disabled = disabled;
   });
 
@@ -160,75 +137,68 @@ function setAvailabilityGate() {
     availabilityGateMessage.hidden = false;
     availabilityGateMessage.textContent =
       "You need at least one event type before setting availability. Create one on the Event Types page.";
+    availabilityGrid.dataset.editing = "false";
   } else {
     availabilityGateMessage.hidden = true;
     availabilityGateMessage.textContent = "";
+    availabilityGrid.dataset.editing = "true";
   }
 }
 
-function renderAvailabilityRow(window = {}, mode = currentAvailabilityMode()) {
-  const row = document.createElement("div");
-  row.className = "form-row availability-row availability-row-spaced";
+function updateSelectionSummary() {
+  const total = selectedSlots.size;
+  if (!total) {
+    availabilitySelectionSummary.textContent = "No slots selected yet.";
+    return;
+  }
+  availabilitySelectionSummary.textContent = `${total} slot${total === 1 ? "" : "s"} selected.`;
+}
 
-  const firstField =
-    mode === "specific_dates"
-      ? `<input class="form-control js-date" type="date" value="${window.date || ""}" />`
-      : `<select class="form-control js-day">${weekdayOptions
-          .map((d) => `<option value="${d}" ${window.day_of_week === d ? "selected" : ""}>${d}</option>`)
-          .join("")}</select>`;
+function paintCell(cell) {
+  const selected = selectedSlots.has(cell.dataset.key);
+  cell.classList.remove("mine-selected");
+  cell.style.background = selected ? "#bbdefb" : "#f5f5f5";
+  if (selected) cell.classList.add("mine-selected");
+}
 
-  row.innerHTML = `
-    ${firstField}
-    <input class="form-control js-start" type="time" value="${window.start_time || "09:00"}" />
-    <input class="form-control js-end" type="time" value="${window.end_time || "17:00"}" />
-    <input class="form-control js-timezone" value="${window.timezone || userProfileTimezone || "UTC"}" placeholder="Timezone" />
-    <button type="button" class="btn btn-ghost js-remove">Remove</button>
-    <details class="availability-quick-picker availability-quick-picker-wide">
-      <summary class="text-muted availability-quick-picker-summary">Quick pick in 15-minute slots</summary>
-      <div class="availability-quick-picker-group">
-        <label class="text-muted availability-quick-picker-label">Start</label>
-        <div class="chips-row availability-time-chips js-start-chips">
-          ${buildTimeChipsHtml("start")}
-        </div>
-      </div>
-      <div class="availability-quick-picker-group">
-        <label class="text-muted availability-quick-picker-label">End</label>
-        <div class="chips-row availability-time-chips js-end-chips">
-          ${buildTimeChipsHtml("end")}
-        </div>
-      </div>
-    </details>
-  `;
+function repaintAllCells() {
+  availabilityGrid.querySelectorAll(".ag-cell").forEach(paintCell);
+}
 
-  row.querySelector(".js-remove").addEventListener("click", () => {
-    row.remove();
-    setAvailabilityGate();
+function buildGrid() {
+  gridColumns = buildColumns();
+  availabilityGrid.innerHTML = "";
+  availabilityGrid.style.setProperty("--cols", String(gridColumns.length));
+
+  const corner = document.createElement("div");
+  corner.className = "ag-corner ag-col-header";
+  availabilityGrid.appendChild(corner);
+
+  gridColumns.forEach((col) => {
+    const header = document.createElement("div");
+    header.className = "ag-col-header";
+    header.textContent = col.label;
+    availabilityGrid.appendChild(header);
   });
 
-  bindTimePickerRow(row);
+  QUICK_TIME_OPTIONS.forEach((time) => {
+    const [, minute] = time.split(":").map(Number);
+    const isHour = minute === 0;
 
-  availabilityRows.appendChild(row);
-}
+    const lbl = document.createElement("div");
+    lbl.className = `ag-time-label${isHour ? " hour-boundary" : ""}`;
+    lbl.textContent = isHour ? fmtTime(time) : "";
+    availabilityGrid.appendChild(lbl);
 
-function renderAvailabilityRows(windows = [], mode = currentAvailabilityMode()) {
-  availabilityRows.innerHTML = "";
-  if (windows && windows.length > 0) {
-    windows.forEach((w) => renderAvailabilityRow(w, mode));
-  }
-  setAvailabilityGate();
-}
-
-function collectAvailabilityWindows(mode = currentAvailabilityMode()) {
-  return [...availabilityRows.children].map((row) => {
-    const base = {
-      start_time: row.querySelector(".js-start")?.value || "",
-      end_time: row.querySelector(".js-end")?.value || "",
-      timezone: row.querySelector(".js-timezone")?.value.trim() || "UTC",
-    };
-    if (mode === "specific_dates") {
-      return { ...base, date: row.querySelector(".js-date")?.value || "" };
-    }
-    return { ...base, day_of_week: row.querySelector(".js-day")?.value || "" };
+    gridColumns.forEach((col) => {
+      const cell = document.createElement("div");
+      cell.className = `ag-cell${isHour ? " hour-boundary" : ""}`;
+      cell.dataset.column = col.key;
+      cell.dataset.time = time;
+      cell.dataset.key = slotKey(col.key, time);
+      paintCell(cell);
+      availabilityGrid.appendChild(cell);
+    });
   });
 }
 
@@ -241,7 +211,106 @@ function normalizeAvailabilityResponse(data = {}) {
   };
 }
 
-async function loadAvailability() {
+function applyWindowsToSelectedSlots(windows, mode) {
+  selectedSlots.clear();
+
+  const columnSet = new Set(gridColumns.map((c) => c.key));
+  windows.forEach((windowItem) => {
+    const columnKey = mode === "specific_dates" ? windowItem.date : windowItem.day_of_week;
+    if (!columnKey || !columnSet.has(columnKey)) return;
+
+    const start = Math.max(0, Math.min(DAY_MINUTES, toMinutes(windowItem.start_time || "00:00")));
+    const end = Math.max(0, Math.min(DAY_MINUTES, toMinutes(windowItem.end_time || "00:00")));
+    if (end <= start) return;
+
+    for (let mins = start; mins < end; mins += TIME_STEP_MINUTES) {
+      selectedSlots.add(slotKey(columnKey, fromMinutes(mins)));
+    }
+  });
+}
+
+function collectWindowsFromSelectedSlots(mode) {
+  const byColumn = new Map();
+  selectedSlots.forEach((key) => {
+    const { columnKey, time } = splitSlotKey(key);
+    if (!columnKey || !time) return;
+    if (!byColumn.has(columnKey)) byColumn.set(columnKey, []);
+    byColumn.get(columnKey).push(toMinutes(time));
+  });
+
+  const timezone = (availabilityTimezoneInput.value || userProfileTimezone || "UTC").trim() || "UTC";
+  const windows = [];
+
+  byColumn.forEach((minuteList, columnKey) => {
+    minuteList.sort((a, b) => a - b);
+    if (!minuteList.length) return;
+
+    let runStart = minuteList[0];
+    let runEnd = runStart + TIME_STEP_MINUTES;
+
+    for (let i = 1; i < minuteList.length; i += 1) {
+      const current = minuteList[i];
+      if (current === runEnd) {
+        runEnd += TIME_STEP_MINUTES;
+      } else {
+        const windowPayload = {
+          start_time: fromMinutes(runStart),
+          end_time: fromMinutes(runEnd),
+          timezone,
+        };
+        if (mode === "specific_dates") windowPayload.date = columnKey;
+        else windowPayload.day_of_week = columnKey;
+        windows.push(windowPayload);
+
+        runStart = current;
+        runEnd = current + TIME_STEP_MINUTES;
+      }
+    }
+
+    const lastWindow = {
+      start_time: fromMinutes(runStart),
+      end_time: fromMinutes(runEnd),
+      timezone,
+    };
+    if (mode === "specific_dates") lastWindow.date = columnKey;
+    else lastWindow.day_of_week = columnKey;
+    windows.push(lastWindow);
+  });
+
+  return windows;
+}
+
+function pruneSlotsOutsideColumns() {
+  const validColumns = new Set(gridColumns.map((c) => c.key));
+  const next = new Set();
+  selectedSlots.forEach((key) => {
+    const { columnKey } = splitSlotKey(key);
+    if (validColumns.has(columnKey)) next.add(key);
+  });
+  selectedSlots = next;
+}
+
+function redirectToSetupIfNoEventType() {
+  if (requestedEventTypeId) return false;
+  window.location.href = "/booking-setup.html?error=no-event-type-selected";
+  return true;
+}
+
+function setupForNewEventType() {
+  availabilityModeSelect.value = "weekly";
+  availabilityStartDateInput.value = todayIso();
+  availabilityEndDateInput.value = plusDaysIso(30);
+  availabilityTimezoneInput.value = userProfileTimezone || "UTC";
+  selectedSlots.clear();
+  updateAvailabilityModeHelp();
+  buildGrid();
+  updateSelectionSummary();
+
+  const cleanUrl = `${window.location.pathname}?eventType=${encodeURIComponent(requestedEventTypeId)}`;
+  window.history.replaceState({}, document.title, cleanUrl);
+}
+
+async function loadInitialData() {
   const profile = await apiFetch("/api/auth/profile");
   const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   userProfileTimezone = profile.ok ? profile.data.timezone || browserTz : browserTz;
@@ -249,25 +318,15 @@ async function loadAvailability() {
   const eventTypesRes = await apiFetch("/api/bookings/event-types");
   if (!eventTypesRes.ok) {
     showFlash(eventTypesRes.data.error || "Could not load event types.", "danger");
-    return;
+    return false;
   }
-  hasEventTypes = (eventTypesRes.data.event_types || []).length > 0;
+  allEventTypes = eventTypesRes.data.event_types || [];
+  hasEventTypes = allEventTypes.length > 0;
+  if (!availabilityTimezoneInput.value) availabilityTimezoneInput.value = userProfileTimezone || "UTC";
+  return true;
+}
 
-  redirectToSetupIfNoEventType();
-  const eventTypeId = requestedEventTypeId;
-
-  if (isNewEventType) {
-    availabilityModeSelect.value = "weekly";
-    availabilityStartDateInput.value = todayIso();
-    availabilityEndDateInput.value = plusDaysIso(30);
-    updateAvailabilityModeHelp();
-    renderAvailabilityRows([], "weekly");
-    // Clean the URL so a refresh doesn't look like a new event
-    const cleanUrl = window.location.pathname + `?eventType=${encodeURIComponent(eventTypeId)}`;
-    window.history.replaceState({}, document.title, cleanUrl);
-    return;
-  }
-
+async function loadAndRenderExistingAvailability(eventTypeId) {
   const windowsRes = await apiFetch(`/api/bookings/availability?event_type_id=${encodeURIComponent(eventTypeId)}`);
   if (!windowsRes.ok) {
     showFlash(windowsRes.data.error || "Could not load availability.", "danger");
@@ -278,21 +337,18 @@ async function loadAvailability() {
   availabilityModeSelect.value = availability.mode;
   availabilityStartDateInput.value = availability.start_date || todayIso();
   availabilityEndDateInput.value = availability.end_date || plusDaysIso(30);
+
+  const firstTz = availability.windows.find((w) => w.timezone)?.timezone;
+  availabilityTimezoneInput.value = firstTz || userProfileTimezone || "UTC";
+
   updateAvailabilityModeHelp();
-  renderAvailabilityRows(availability.windows, availability.mode);
+  buildGrid();
+  applyWindowsToSelectedSlots(availability.windows, availability.mode);
+  repaintAllCells();
+  updateSelectionSummary();
 }
 
-addWindowBtn.addEventListener("click", () => {
-  renderAvailabilityRow({}, currentAvailabilityMode());
-  setAvailabilityGate();
-});
-
-availabilityModeSelect.addEventListener("change", () => {
-  updateAvailabilityModeHelp();
-  renderAvailabilityRows([], currentAvailabilityMode());
-});
-
-saveAvailabilityBtn.addEventListener("click", async () => {
+async function saveAvailability() {
   if (!hasEventTypes) {
     showFlash("Create at least one event type before setting availability.", "danger");
     return;
@@ -310,16 +366,23 @@ saveAvailabilityBtn.addEventListener("click", async () => {
   }
 
   const mode = currentAvailabilityMode();
-  const windows = collectAvailabilityWindows(mode);
+  const windows = collectWindowsFromSelectedSlots(mode);
+  if (!windows.length) {
+    showFlash("Select at least one available time slot.", "danger");
+    return;
+  }
+
+  const timezone = (availabilityTimezoneInput.value || userProfileTimezone || "UTC").trim() || "UTC";
 
   const { ok, data } = await apiFetch(`/api/bookings/availability?event_type_id=${encodeURIComponent(requestedEventTypeId)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      event_type_id: requestedEventTypeId,
       mode,
       start_date: startDate,
       end_date: endDate,
-      timezone: userProfileTimezone || "UTC",
+      timezone,
       windows,
     }),
   });
@@ -328,13 +391,138 @@ saveAvailabilityBtn.addEventListener("click", async () => {
     showFlash(data.error || "Could not save availability.", "danger");
     return;
   }
-  showFlash("Availability saved.", "success");
-});
+  window.location.href = "/booking-links.html";
+}
 
-(async () => {
+function startDrag(cell) {
+  if (!cell || !cell.classList.contains("ag-cell")) return;
+  if (!hasEventTypes) return;
+  isDragging = true;
+  dragAction = selectedSlots.has(cell.dataset.key) ? "remove" : "add";
+  applyDrag(cell);
+}
+
+function applyDrag(cell) {
+  if (!cell || !cell.classList.contains("ag-cell")) return;
+  const key = cell.dataset.key;
+  if (dragAction === "add") selectedSlots.add(key);
+  if (dragAction === "remove") selectedSlots.delete(key);
+  paintCell(cell);
+  updateSelectionSummary();
+}
+
+function endDrag() {
+  if (!isDragging) return;
+  isDragging = false;
+}
+
+function bindGridDragEvents() {
+  let lastTouchTime = 0;
+
+  availabilityGrid.addEventListener("mousedown", (e) => {
+    if (Date.now() - lastTouchTime < 500) return;
+    const cell = e.target.closest(".ag-cell");
+    if (!cell) return;
+    startDrag(cell);
+    e.preventDefault();
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (!isDragging) return;
+    const cell = document.elementFromPoint(e.clientX, e.clientY)?.closest?.(".ag-cell");
+    if (cell) applyDrag(cell);
+  });
+
+  document.addEventListener("mouseup", endDrag);
+
+  availabilityGrid.addEventListener("touchstart", (e) => {
+    lastTouchTime = Date.now();
+    const touch = e.touches[0];
+    const cell = document.elementFromPoint(touch.clientX, touch.clientY)?.closest?.(".ag-cell");
+    if (cell) {
+      e.preventDefault();
+      startDrag(cell);
+    }
+  });
+
+  availabilityGrid.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!isDragging) return;
+      const touch = e.touches[0];
+      const cell = document.elementFromPoint(touch.clientX, touch.clientY)?.closest?.(".ag-cell");
+      if (cell) applyDrag(cell);
+    },
+    { passive: true }
+  );
+
+  availabilityGrid.addEventListener("touchend", endDrag);
+}
+
+function bindEventListeners() {
+  bindGridDragEvents();
+
+  availabilityModeSelect.addEventListener("change", () => {
+    selectedSlots.clear();
+    updateAvailabilityModeHelp();
+    buildGrid();
+    updateSelectionSummary();
+  });
+
+  const onDateRangeChange = () => {
+    buildGrid();
+    pruneSlotsOutsideColumns();
+    repaintAllCells();
+    updateSelectionSummary();
+  };
+
+  availabilityStartDateInput.addEventListener("change", onDateRangeChange);
+  availabilityEndDateInput.addEventListener("change", onDateRangeChange);
+
+  saveAvailabilityBtn.addEventListener("click", saveAvailability);
+}
+
+async function init() {
   const user = await requireAuth();
   if (!user) return;
-  redirectToSetupIfNoEventType();
+
+  if (redirectToSetupIfNoEventType()) return;
+
+  availabilityStartDateInput.value = todayIso();
+  availabilityEndDateInput.value = plusDaysIso(30);
+  availabilityTimezoneInput.value = "UTC";
+
   updateAvailabilityModeHelp();
-  await loadAvailability();
-})();
+  bindEventListeners();
+
+  await loadInitialData();
+
+  if (requestedEventTypeId) {
+    const currentEventType = allEventTypes.find((et) => et.id === requestedEventTypeId);
+    if (currentEventType) {
+      const heading = document.querySelector("h1");
+      if (heading) {
+        const sub = document.createElement("div");
+        sub.id = "availability-event-type";
+        sub.className = "text-muted h3";
+        sub.style.marginTop = "-0.5rem";
+        sub.style.marginBottom = "1.5rem";
+        sub.textContent = currentEventType.title;
+        heading.insertAdjacentElement("afterend", sub);
+      }
+    }
+  }
+
+  setAvailabilityGate();
+
+  if (isNewEventType) {
+    setupForNewEventType();
+  } else if (requestedEventTypeId) {
+    await loadAndRenderExistingAvailability(requestedEventTypeId);
+  } else {
+    buildGrid();
+    updateSelectionSummary();
+  }
+}
+
+init();

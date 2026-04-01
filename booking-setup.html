@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Event Types – MeetMe</title>
+    <title>New Booking – MeetMe</title>
     <link rel="stylesheet" href="/static/style.css" />
   </head>
   <body>
@@ -14,11 +14,10 @@
     <main class="main-content">
       <div class="form-page">
         <div class="form-card">
-          <h1>Event Types</h1>
-          <p class="text-muted">Define the meeting types people can book with you. After creating event types, set your availability for each event type so bookers can see open time slots.</p>
+          <p class="text-muted"><a href="/booking-links.html">&#x2190; Booking Links</a></p>
+          <h1 id="page-heading">New Booking</h1>
 
           <section id="event-type-panel" class="form-group">
-            <h2 class="setup-section-title" id="event-form-heading">New Event Type</h2>
             <form id="event-type-form">
               <input type="hidden" id="event-type-id" />
               <div class="form-group">
@@ -59,14 +58,10 @@
                 </div>
               </div>
               <div class="form-actions">
-                <button type="button" class="btn btn-ghost" id="event-cancel-btn" hidden>Cancel</button>
+                <a href="/booking-links.html" class="btn btn-ghost">Cancel</a>
                 <button type="submit" class="btn btn-primary">Save Event Type</button>
               </div>
             </form>
-          </section>
-
-          <section class="form-group setup-section-spaced" id="event-types-section">
-            <div id="event-types-list" class="meeting-grid"></div>
           </section>
         </div>
       </div>
@@ -76,11 +71,6 @@
 
     <script src="/static/layout.js"></script>
     <script src="/static/common.js"></script>
-    <script>
-      document.addEventListener("DOMContentLoaded", () => {
-        if (window.checkAuth) window.checkAuth();
-      });
-    </script>
     <script src="/static/booking-setup.js" defer></script>
   </body>
 </html>

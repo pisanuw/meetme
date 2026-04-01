@@ -51,5 +51,5 @@ test("loads availability for specific eventType", async ({ page }) => {
   });
   await page.goto("/booking-availability.html?eventType=evt-1");
   await expect(page.getByRole("heading", { name: "Availability" })).toBeVisible();
-  await expect(page.locator("#availability-rows")).toBeVisible();
+  await expect(page.locator("#availability-grid")).toBeVisible();
 });

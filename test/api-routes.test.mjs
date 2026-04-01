@@ -965,6 +965,7 @@ test("calendar busy route handles 24:00 end time", async () => {
     ...user,
     calendar_connected: true,
     google_access_token: encryptSecret("access-token"),
+    google_token_expiry: Date.now() + 3600000, // 1 hour from now
   });
 
   let fetchBody = "";

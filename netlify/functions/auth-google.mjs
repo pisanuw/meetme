@@ -26,7 +26,6 @@ import {
   setCookie,
   generateId,
   log,
-  logRequest,
   persistEvent,
   validateEmail,
   encryptSecret,

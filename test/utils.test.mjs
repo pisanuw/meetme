@@ -111,7 +111,7 @@ test("generateId produces correct format and is collision resistant", () => {
 });
 
 test("checkRateLimit allows and denies correctly", async () => {
-  const dbBackend = installInMemoryDb();
+  installInMemoryDb();
   const opts = { bucket: "test", key: "127.0.0.1", limit: 2, windowMs: 10000 };
   const r1 = await checkRateLimit(opts);
   assert.equal(r1.ok, true);

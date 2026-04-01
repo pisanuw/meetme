@@ -85,7 +85,10 @@ meetme/
 └── netlify/
     └── functions/
         ├── utils.mjs          # Shared helpers: env, JWT, crypto, logging, email, DB
-        ├── auth.mjs           # /api/auth/* — sign-in, OAuth, profile, logout, feedback
+        ├── auth.mjs           # /api/auth/* — profile, logout, feedback, health
+        ├── auth-google.mjs    # /api/auth/google/* — Google OAuth and Calendar
+        ├── magic-link.mjs     # /api/auth/magic-link/* — Email magic link sign-in
+        ├── auth-helpers.mjs   # Shared auth logic and user creation helpers
         ├── meetings.mjs       # /api/meetings/* — create, list, detail, delete, leave
         ├── meeting-actions.mjs # /api/meetings/* — availability, finalize, remind
         ├── calendar.mjs       # /api/calendar/* — Google Calendar free/busy
@@ -255,6 +258,13 @@ CI automation for staging smoke:
 - `Staging Smoke (auto)` runs on push and on a daily schedule **when** repository
   secret `STAGING_BASE_URL` is set.
 - Optional `STAGING_ADMIN_TOKEN` enables the admin stats check in that smoke run.
+
+### Latest predeployment check (2026-04-01)
+
+- `npm run lint`: pass
+- `npm test`: pass (60/60)
+- `TEST_RATE_LIMIT_MODE=on npm test`: pass (60/60)
+- `npm run test:e2e:smoke`: pass (12/12)
 - `Staging Smoke (manual)` can still be triggered via **Run workflow** using
   `workflow_dispatch` inputs.
 

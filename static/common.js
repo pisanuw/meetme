@@ -49,11 +49,18 @@ function getCurrentPathWithQuery() {
   return path;
 }
 
-function ensureNavDropdown(logoutLink, { menuId, listId, label }) {
+function ensureNavDropdown(container, { menuId, listId, label, beforeNode }) {
   let menu = document.getElementById(menuId);
   let menuList = document.getElementById(listId);
 
+  // Guard against conflicting element types from page HTML
+  if (menu && menu.tagName !== "DETAILS") { menu.removeAttribute("id"); menu = null; }
+  if (menuList && menuList.tagName !== "DIV") { menuList.removeAttribute("id"); menuList = null; }
+
   if (!menu || !menuList) {
+    if (menu) menu.remove();
+    if (menuList) menuList.remove();
+
     menu = document.createElement("details");
     menu.id = menuId;
     menu.className = "nav-dropdown";
@@ -67,7 +74,6 @@ function ensureNavDropdown(logoutLink, { menuId, listId, label }) {
     menuList.className = "nav-dropdown-list";
 
     menu.append(summary, menuList);
-    logoutLink.parentNode.insertBefore(menu, logoutLink);
 
     menu.addEventListener("toggle", () => {
       if (menu.open) {
@@ -76,6 +82,12 @@ function ensureNavDropdown(logoutLink, { menuId, listId, label }) {
         });
       }
     });
+  }
+
+  if (beforeNode && beforeNode.parentNode === container) {
+    container.insertBefore(menu, beforeNode);
+  } else {
+    container.appendChild(menu);
   }
 
   return { menu, menuList };
@@ -120,22 +132,28 @@ function bindResponsiveAccountLabelUpdates() {
 }
 
 function ensureNavMenus(logoutLink) {
-  if (!logoutLink?.parentNode) return null;
+  const navAuth = document.getElementById("nav-auth");
+  if (!navAuth) return null;
 
-  const bookings = ensureNavDropdown(logoutLink, {
-    menuId: "nav-bookings-menu",
-    listId: "nav-bookings-menu-list",
-    label: "Bookings",
-  });
-  const account = ensureNavDropdown(logoutLink, {
+  const account = ensureNavDropdown(navAuth, {
     menuId: "nav-account-menu",
     listId: "nav-account-menu-list",
     label: "Account",
+    beforeNode: logoutLink && logoutLink.parentNode === navAuth ? logoutLink : null
   });
 
-  logoutLink.className = "nav-dropdown-item nav-dropdown-item-danger";
-  if (logoutLink.parentNode !== account.menuList) {
-    account.menuList.appendChild(logoutLink);
+  const bookings = ensureNavDropdown(navAuth, {
+    menuId: "nav-bookings-menu",
+    listId: "nav-bookings-menu-list",
+    label: "Bookings",
+    beforeNode: account.menu
+  });
+
+  if (logoutLink) {
+    logoutLink.className = "nav-dropdown-item nav-dropdown-item-danger";
+    if (logoutLink.parentNode !== account.menuList) {
+      account.menuList.appendChild(logoutLink);
+    }
   }
 
   return {
@@ -148,29 +166,46 @@ function ensureNavMenus(logoutLink) {
 
 function ensureMenuLink(navMenuList, { id, href, text, className = "", beforeNode = null }) {
   let link = document.getElementById(id);
+  if (link && link.tagName !== "A") {
+    link.removeAttribute("id");
+    link = null;
+  }
+
   if (!link) {
     link = document.createElement("a");
     link.id = id;
-    link.href = href;
-    link.textContent = text;
   }
 
+  link.href = href;
+  link.textContent = text;
   link.className = `nav-dropdown-item ${className}`.trim();
-  navMenuList.insertBefore(link, beforeNode);
+
+  if (beforeNode && beforeNode.parentNode === navMenuList) {
+    navMenuList.insertBefore(link, beforeNode);
+  } else {
+    navMenuList.appendChild(link);
+  }
 
   return link;
 }
 
 function ensureMenuDivider(navMenuList, logoutLink) {
   let divider = document.getElementById("nav-menu-divider");
+  if (divider && divider.tagName !== "DIV") {
+    divider.removeAttribute("id");
+    divider = null;
+  }
+
   if (!divider) {
     divider = document.createElement("div");
     divider.id = "nav-menu-divider";
   }
 
   divider.className = "nav-dropdown-divider";
-  if (divider.parentNode !== navMenuList) {
+  if (logoutLink && logoutLink.parentNode === navMenuList) {
     navMenuList.insertBefore(divider, logoutLink);
+  } else {
+    navMenuList.appendChild(divider);
   }
 }
 

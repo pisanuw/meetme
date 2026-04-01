@@ -1,6 +1,6 @@
 # MeetMe - Codebase Review
 
-Last reviewed: 2026-03-30
+Last reviewed: 2026-04-01
 
 This document is an engineering handoff snapshot of the current repository state.
 It focuses on architecture, behavior, quality signals, and concrete risks.
@@ -52,7 +52,7 @@ No framework, no ORM, no migration system, no background worker outside Netlify 
 
 ## 4. Backend Route Map
 
-### Auth and profile (`netlify/functions/auth.mjs`, `auth-google.mjs`)
+### Auth and profile (`netlify/functions/auth.mjs`, `auth-google.mjs`, `magic-link.mjs`)
 
 - `GET /api/auth/health`
 - `POST /api/auth/magic-link/request`
@@ -245,11 +245,12 @@ Tradeoff:
   - Playwright smoke
   - Optional staging smoke (manual and auto when secret URL is configured)
 
-### Actual local command results (2026-03-29)
+### Actual local command results (2026-04-01)
 
-- `npm test`: pass (54/54).
-- `npm run test:e2e:smoke`: pass (7/7).
 - `npm run lint`: pass.
+- `npm test`: pass (60/60).
+- `TEST_RATE_LIMIT_MODE=on npm test`: pass (60/60).
+- `npm run test:e2e:smoke`: pass (12/12).
 
 ## 9. Current Risks and Gaps
 

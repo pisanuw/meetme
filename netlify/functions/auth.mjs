@@ -27,13 +27,11 @@ import {
   getDb,
   getEnv,
   createToken,
-  verifyTokenVerbose,
   getUserFromRequest,
   jsonResponse,
   errorResponse,
   setCookie,
   clearCookie,
-  generateId,
   log,
   logRequest,
   safeJson,
@@ -46,7 +44,6 @@ import {
   sendEmail,
   asArray,
   escapeHtml,
-  getAppUrl,
   getEmailPreferences,
   saveEmailPreferences,
   saveUserRecord,
@@ -54,6 +51,7 @@ import {
 } from "./utils.mjs";
 import magicLinkHandler from "./magic-link.mjs";
 import googleAuthHandler from "./auth-google.mjs";
+import { getClientIp } from "./auth-helpers.mjs";
 
 const FN = "auth";
 

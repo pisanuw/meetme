@@ -192,8 +192,7 @@ document.getElementById("create-form").addEventListener("submit", async (e) => {
     datesOrDays = Array.from(document.querySelectorAll('input[name="days_of_week"]:checked')).map(
       (el) => el.value
     );
-    const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-    datesOrDays.sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+    datesOrDays.sort((a, b) => days.indexOf(a) - days.indexOf(b));
     if (datesOrDays.length === 0) {
       showFlash("Select at least one day.", "danger");
       return;

@@ -64,7 +64,7 @@ function renderBookings() {
 
   gridEl.querySelectorAll(".js-cancel").forEach((button) => {
     button.addEventListener("click", async () => {
-      if (!confirm("Cancel this booking?")) return;
+      if (!window.confirm("Cancel this booking?")) return;
       const id = button.dataset.id;
       const { ok, data } = await apiFetch(`/api/bookings/${encodeURIComponent(id)}/cancel`, {
         method: "POST",
@@ -139,7 +139,7 @@ sendRemindersBtn.addEventListener("click", async () => {
 });
 
 runSchedulerNowBtn.addEventListener("click", async () => {
-  if (!confirm("Run scheduler reminders for all hosts now?")) return;
+  if (!window.confirm("Run scheduler reminders for all hosts now?")) return;
 
   runSchedulerNowBtn.disabled = true;
   const originalLabel = runSchedulerNowBtn.textContent;
