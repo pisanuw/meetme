@@ -116,6 +116,7 @@ async function handleRequest(req, _context) {
       const respondCount = meetingInvites.filter((i) => i.responded).length;
       const inviteCount = meetingInvites.length;
 
+      const myInvite = meetingInvites.find((i) => (i.email || "").toLowerCase() === userEmail);
       const summary = {
         ...meeting,
         respond_count: respondCount,
@@ -124,8 +125,8 @@ async function handleRequest(req, _context) {
 
       if (meeting.creator_id === user.id) {
         myMeetings.push(summary);
-      } else if (meetingInvites.some((i) => (i.email || "").toLowerCase() === userEmail)) {
-        invitedMeetings.push(summary);
+      } else if (myInvite) {
+        invitedMeetings.push({ ...summary, user_has_responded: myInvite.responded === true });
       }
     }
 

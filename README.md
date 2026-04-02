@@ -88,7 +88,6 @@ meetme/
 ├── book.html                 # Public booking page (week-view slot picker)
 ├── booking-setup.html        # Host: create/edit bookable event types
 ├── booking-availability.html # Host: set available time grid per event type
-├── booking-links.html        # Host: manage public booking link slugs
 ├── booking-confirmation.html # Shown to guest after booking is confirmed
 │
 ├── scripts/

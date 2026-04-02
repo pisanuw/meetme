@@ -772,6 +772,31 @@ a:hover {
   width: 120px;
 }
 
+.bookings-toolbar-feedback {
+  margin-top: 8px;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.bookings-toolbar-feedback.success {
+  color: var(--green-dark);
+}
+
+.bookings-toolbar-feedback.error {
+  color: var(--red);
+}
+
+.bookings-toolbar-reminder-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.bookings-toolbar-reminder-list li + li {
+  margin-top: 2px;
+}
+
 .not-found-container {
   max-width: 760px;
   padding-top: 32px;

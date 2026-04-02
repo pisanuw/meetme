@@ -1084,6 +1084,19 @@ export async function sendEmail({ to, subject, html, text, replyTo, tags, suppre
     };
   }
   try {
+    const siteUrl =
+      getEnv("APP_URL", "").trim() ||
+      getEnv("URL", "").trim() ||
+      getEnv("DEPLOY_PRIME_URL", "").trim();
+    const normalizedSiteUrl = siteUrl.replace(/\/+$/, "");
+    const htmlFooter = normalizedSiteUrl
+      ? `\n<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0 12px;" /><p style="margin:0;color:#6b7280;font-size:12px;">MeetMe: <a href="${escapeHtml(normalizedSiteUrl)}" style="color:#1976d2;">${escapeHtml(normalizedSiteUrl)}</a></p>`
+      : "";
+    const textFooter = normalizedSiteUrl ? `\n\n---\nMeetMe: ${normalizedSiteUrl}` : "";
+
+    const htmlWithFooter = `${String(html || "")}${htmlFooter}`;
+    const textWithFooter = `${String(text || "")}${textFooter}`;
+
     const recipients = (Array.isArray(to) ? to : [to])
       .map((item) => normalizeEmail(item))
       .filter(Boolean);
@@ -1116,8 +1129,8 @@ export async function sendEmail({ to, subject, html, text, replyTo, tags, suppre
       from: fromEmail,
       to: deliverableRecipients,
       subject,
-      html,
-      text,
+      html: htmlWithFooter,
+      text: textWithFooter,
     };
     if (replyTo) payload.reply_to = replyTo;
     if (tags && tags.length) payload.tags = tags;

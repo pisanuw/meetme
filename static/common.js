@@ -170,18 +170,14 @@ function ensureNavMenus(logoutLink) {
   const navAuth = document.getElementById("nav-auth");
   if (!navAuth) return null;
 
+  const legacyBookingsMenu = document.getElementById("nav-bookings-menu");
+  if (legacyBookingsMenu) legacyBookingsMenu.remove();
+
   const account = ensureNavDropdown(navAuth, {
     menuId: "nav-account-menu",
     listId: "nav-account-menu-list",
     label: "Account",
     beforeNode: logoutLink && logoutLink.parentNode === navAuth ? logoutLink : null
-  });
-
-  const bookings = ensureNavDropdown(navAuth, {
-    menuId: "nav-bookings-menu",
-    listId: "nav-bookings-menu-list",
-    label: "Bookings",
-    beforeNode: account.menu
   });
 
   if (logoutLink) {
@@ -192,11 +188,35 @@ function ensureNavMenus(logoutLink) {
   }
 
   return {
-    bookingsMenu: bookings.menu,
-    bookingsMenuList: bookings.menuList,
+    navAuth,
     accountMenu: account.menu,
     accountMenuList: account.menuList,
   };
+}
+
+function ensureNavActionLink(container, { id, href, text, className = "", beforeNode = null }) {
+  let link = document.getElementById(id);
+  if (link && link.tagName !== "A") {
+    link.removeAttribute("id");
+    link = null;
+  }
+
+  if (!link) {
+    link = document.createElement("a");
+    link.id = id;
+  }
+
+  link.href = href;
+  link.textContent = text;
+  link.className = className;
+
+  if (beforeNode && beforeNode.parentNode === container) {
+    container.insertBefore(link, beforeNode);
+  } else {
+    container.appendChild(link);
+  }
+
+  return link;
 }
 
 function ensureMenuLink(navMenuList, { id, href, text, className = "", beforeNode = null }) {
@@ -262,9 +282,9 @@ async function checkAuth() {
     const shortDisplayName = user.is_impersonated ? `${shortName} (impersonated)` : shortName;
 
     // Show the authenticated nav section and display the user's name.
-    const navAuth = document.getElementById("nav-auth");
+    const navAuthEl = document.getElementById("nav-auth");
     const navUser = document.getElementById("nav-username");
-    if (navAuth) navAuth.hidden = false;
+    if (navAuthEl) navAuthEl.hidden = false;
     if (navUser) {
       navUser.textContent = "";
     }
@@ -273,33 +293,25 @@ async function checkAuth() {
     const menuState = ensureNavMenus(logoutLink);
     if (!menuState) return user;
 
-    const { bookingsMenu, bookingsMenuList, accountMenu, accountMenuList } = menuState;
+    const { navAuth, accountMenu, accountMenuList } = menuState;
     accountMenu.dataset.desktopLabel = displayName;
     accountMenu.dataset.mobileLabel = shortDisplayName;
     bindResponsiveAccountLabelUpdates();
     applyResponsiveAccountLabel(accountMenu);
+
+    ensureNavActionLink(navAuth, {
+      id: "booking-setup-link",
+      href: "/booking-setup.html",
+      text: "+ New Booking",
+      className: "btn btn-sm btn-outline-white",
+      beforeNode: document.getElementById("nav-username"),
+    });
 
     ensureMenuLink(accountMenuList, {
       id: "profile-link",
       href: "/profile.html",
       text: "Edit Profile",
       beforeNode: logoutLink,
-    });
-    ensureMenuLink(bookingsMenuList, {
-      id: "booking-setup-link",
-      href: "/booking-setup.html",
-      text: "Event Types",
-    });
-    // Availability is always tied to a specific event type, so remove the general link
-    ensureMenuLink(bookingsMenuList, {
-      id: "booking-links-link",
-      href: "/booking-links.html",
-      text: "Booking Links",
-    });
-    ensureMenuLink(bookingsMenuList, {
-      id: "bookings-link",
-      href: "/bookings.html",
-      text: "My Bookings",
     });
 
     const existingAdmin = document.getElementById("admin-nav-link");

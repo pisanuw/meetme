@@ -180,12 +180,38 @@ test("host reminders action posts selected reminder window", async ({ page }) =>
     });
   });
 
+  await page.route("**/api/bookings/event-types", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        public_page_slug: "host-smoke",
+        event_types: [
+          {
+            id: "evt-reminders",
+            title: "Host Event",
+            event_type: "one_on_one",
+            duration_minutes: 30,
+            timezone: "UTC",
+            availability: { window_count: 1 },
+          },
+        ],
+      }),
+    });
+  });
+
   await page.route("**/api/bookings/reminders/send", async (route) => {
     capturedReminderPayload = JSON.parse(route.request().postData() || "{}");
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ success: true, sent_count: 1, skipped_count: 0, failed_count: 0 }),
+      body: JSON.stringify({
+        success: true,
+        sent_count: 1,
+        skipped_count: 0,
+        failed_count: 0,
+        reminder_booking_ids: ["bk-host-1"],
+      }),
     });
   });
 
@@ -198,13 +224,17 @@ test("host reminders action posts selected reminder window", async ({ page }) =>
     });
   });
 
-  await page.goto("/bookings.html");
-  await expect(page.getByRole("heading", { name: "My Bookings" })).toBeVisible();
+  await page.goto("/dashboard.html");
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
   await page.locator("#reminder-window").selectOption("6");
   await page.getByRole("button", { name: "Send Reminders" }).click();
 
-  await expect(page.getByText("Reminder run complete: sent 1, skipped 0, failed 0.")).toBeVisible();
+  await expect(page.locator("#bookings-toolbar-feedback")).toContainText("Sent 1 reminder.");
+  await expect(page.locator("#bookings-toolbar-reminder-list")).toBeVisible();
+  await expect(page.locator("#bookings-toolbar-reminder-list")).toContainText(
+    "Guest Smoke · Host Event · 2026-04-06 09:00 UTC"
+  );
 
   const schedulerButton = page.getByRole("button", { name: "Run Scheduler Now" });
   if (await schedulerButton.isVisible()) {
@@ -212,7 +242,9 @@ test("host reminders action posts selected reminder window", async ({ page }) =>
       await dialog.accept();
     });
     await schedulerButton.click();
-    await expect(page.getByText("Scheduler run complete: hosts 2, sent 1, skipped 1, failed 0.")).toBeVisible();
+    await expect(page.locator("#bookings-toolbar-feedback")).toHaveText(
+      "Scheduler run complete: hosts 2, sent 1, skipped 1, failed 0."
+    );
   } else {
     expect(schedulerRunCalled).toBeFalsy();
   }

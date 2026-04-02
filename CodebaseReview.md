@@ -199,9 +199,7 @@ Booking flow pages:
 
 - `booking-setup.html` + `static/booking-setup.js`
 - `booking-availability.html` + `static/booking-availability.js`
-- `booking-links.html` + `static/booking-links.js`
 - `book.html` + `static/book.js`
-- `bookings.html` + `static/bookings.js`
 - `booking-confirmation.html` + `static/booking-confirmation.js`
 
 Cross-page behavior:

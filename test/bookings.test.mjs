@@ -350,6 +350,104 @@ test("authenticated user can book slot and host can view it", async () => {
   assert.equal(hostListBody.bookings[0].attendee_email, guest.email);
 });
 
+test("deleting an event type deletes bookings for that event type", async () => {
+  const host = { id: "host-delete-et", email: "host-delete-et@example.com", name: "Host Delete ET" };
+  const guest = { id: "guest-delete-et", email: "guest-delete-et@example.com", name: "Guest Delete ET" };
+  await seedUser(host);
+  await seedUser(guest);
+
+  const createEventRes = await bookingsHandler(
+    makeJsonRequest("http://localhost:8888/api/bookings/event-types", {
+      method: "POST",
+      headers: { cookie: authCookie(host) },
+      body: {
+        title: "Delete Cascade Event",
+        event_type: "one_on_one",
+        duration_minutes: 30,
+        timezone: "UTC",
+      },
+    }),
+    {}
+  );
+  const createEventBody = await responseJson(createEventRes);
+  assert.equal(createEventRes.status, 200);
+  const eventTypeId = createEventBody.event_type.id;
+
+  const setAvailRes = await bookingsHandler(
+    makeJsonRequest("http://localhost:8888/api/bookings/availability", {
+      method: "POST",
+      headers: { cookie: authCookie(host) },
+      body: {
+        event_type_id: eventTypeId,
+        windows: [
+          { day_of_week: "Monday", start_time: "09:00", end_time: "10:00", timezone: "UTC" },
+        ],
+      },
+    }),
+    {}
+  );
+  assert.equal(setAvailRes.status, 200);
+
+  const bookRes = await bookingsHandler(
+    makeJsonRequest("http://localhost:8888/api/bookings/page/host-delete-et/book", {
+      method: "POST",
+      headers: { cookie: authCookie(guest) },
+      body: {
+        event_type_id: eventTypeId,
+        date: "2026-03-30",
+        start_time: "09:00",
+      },
+    }),
+    {}
+  );
+  const bookBody = await responseJson(bookRes);
+  assert.equal(bookRes.status, 200);
+  const bookingId = bookBody.booking.id;
+
+  const deleteEventRes = await bookingsHandler(
+    makeJsonRequest(`http://localhost:8888/api/bookings/event-types/${encodeURIComponent(eventTypeId)}/delete`, {
+      method: "POST",
+      headers: { cookie: authCookie(host) },
+      body: {},
+    }),
+    {}
+  );
+  const deleteEventBody = await responseJson(deleteEventRes);
+  assert.equal(deleteEventRes.status, 200);
+  assert.equal(deleteEventBody.deleted_bookings, 1);
+
+  const hostBookingsRes = await bookingsHandler(
+    new Request("http://localhost:8888/api/bookings/host", {
+      method: "GET",
+      headers: { cookie: authCookie(host) },
+    }),
+    {}
+  );
+  const hostBookingsBody = await responseJson(hostBookingsRes);
+  assert.equal(hostBookingsRes.status, 200);
+  assert.equal(hostBookingsBody.bookings.length, 0);
+
+  const attendeeBookingsRes = await bookingsHandler(
+    new Request("http://localhost:8888/api/bookings/mine", {
+      method: "GET",
+      headers: { cookie: authCookie(guest) },
+    }),
+    {}
+  );
+  const attendeeBookingsBody = await responseJson(attendeeBookingsRes);
+  assert.equal(attendeeBookingsRes.status, 200);
+  assert.equal(attendeeBookingsBody.bookings.length, 0);
+
+  const bookingDetailRes = await bookingsHandler(
+    makeJsonRequest(`http://localhost:8888/api/bookings/${bookingId}`, {
+      method: "GET",
+      headers: { cookie: authCookie(host) },
+    }),
+    {}
+  );
+  assert.equal(bookingDetailRes.status, 404);
+});
+
 test("host or attendee can cancel booking but unrelated user cannot", async () => {
   const host = { id: "host3", email: "host3@example.com", name: "Host Three" };
   const guest = { id: "guest3", email: "guest3@example.com", name: "Guest Three" };

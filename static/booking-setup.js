@@ -90,7 +90,7 @@ document.getElementById("event-type-form").addEventListener("submit", async (e) 
   if (isNew) {
     window.location.href = `/booking-availability.html?eventType=${encodeURIComponent(data.event_type.id)}&new=1`;
   } else {
-    window.location.href = "/booking-links.html";
+    window.location.href = "/dashboard.html";
   }
 });
 

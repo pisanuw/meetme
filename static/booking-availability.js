@@ -396,7 +396,7 @@ async function saveAvailability() {
     showFlash(data.error || "Could not save availability.", "danger");
     return;
   }
-  window.location.href = "/booking-links.html";
+  window.location.href = "/dashboard.html";
 }
 
 function startDrag(cell) {

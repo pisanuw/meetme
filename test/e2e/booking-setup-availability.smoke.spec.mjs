@@ -31,7 +31,7 @@ test("booking setup page loads and displays event type form", async ({ page }) =
   await expect(page.locator("#event-day-end")).toHaveValue("20:00");
 });
 
-test("booking setup page shows cancel link back to booking links", async ({ page }) => {
+test("booking setup page shows cancel link back to dashboard", async ({ page }) => {
   await page.route("**/api/auth/me", async (route) => {
     await route.fulfill({
       status: 200,
@@ -49,7 +49,7 @@ test("booking setup page shows cancel link back to booking links", async ({ page
   await page.goto("/booking-setup.html");
   const cancelLink = page.getByRole("link", { name: "Cancel" });
   await expect(cancelLink).toBeVisible();
-  await expect(cancelLink).toHaveAttribute("href", "/booking-links.html");
+  await expect(cancelLink).toHaveAttribute("href", "/dashboard.html");
 });
 
 test("booking availability page loads and displays event type select", async ({ page }) => {

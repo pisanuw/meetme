@@ -358,6 +358,71 @@ async function listBookingHostIds(bookingsDb) {
   )];
 }
 
+async function listStoreKeys(store, prefix = "") {
+  const listing = await store.list({ prefix }).catch(() => ({ blobs: [] }));
+  return asArray(listing.blobs)
+    .map((entry) => String(entry?.key || ""))
+    .filter(Boolean);
+}
+
+async function removeBookingReferences(bookingsDb, booking) {
+  const bookingId = String(booking?.id || "").trim();
+  if (!bookingId) return;
+
+  const hostUserId = String(booking.host_user_id || "").trim();
+  const attendeeUserId = String(booking.attendee_user_id || "").trim();
+  const eventTypeId = String(booking.event_type_id || "").trim();
+  const date = String(booking.date || "").trim();
+  const startTime = String(booking.start_time || "").trim();
+
+  if (hostUserId) {
+    const hostIds = asArray(await bookingsDb.get(`host:${hostUserId}`, { type: "json" }).catch(() => []));
+    await bookingsDb.setJSON(`host:${hostUserId}`, hostIds.filter((id) => id !== bookingId)).catch(() => null);
+  }
+
+  if (attendeeUserId) {
+    const attendeeIds = asArray(
+      await bookingsDb.get(`attendee:${attendeeUserId}`, { type: "json" }).catch(() => [])
+    );
+    await bookingsDb
+      .setJSON(`attendee:${attendeeUserId}`, attendeeIds.filter((id) => id !== bookingId))
+      .catch(() => null);
+  }
+
+  if (eventTypeId && date && startTime) {
+    const slotKey = `slot:${eventTypeId}:${date}:${startTime}`;
+    const slotIds = asArray(await bookingsDb.get(slotKey, { type: "json" }).catch(() => []));
+    const filteredSlotIds = slotIds.filter((id) => id !== bookingId);
+    if (filteredSlotIds.length > 0) {
+      await bookingsDb.setJSON(slotKey, filteredSlotIds).catch(() => null);
+    } else {
+      await bookingsDb.delete(slotKey).catch(() => null);
+    }
+  }
+
+  await bookingsDb.delete(`reminder:${bookingId}`).catch(() => null);
+  await bookingsDb.delete(`booking:${bookingId}`).catch(() => null);
+}
+
+async function deleteBookingsForEventType(bookingsDb, eventTypeId) {
+  const bookingKeys = await listStoreKeys(bookingsDb, "booking:");
+  let deletedCount = 0;
+
+  for (const bookingKey of bookingKeys) {
+    const booking = await bookingsDb.get(bookingKey, { type: "json" }).catch(() => null);
+    if (!booking || booking.event_type_id !== eventTypeId) continue;
+    await removeBookingReferences(bookingsDb, booking);
+    deletedCount += 1;
+  }
+
+  const slotKeys = await listStoreKeys(bookingsDb, `slot:${eventTypeId}:`);
+  for (const slotKey of slotKeys) {
+    await bookingsDb.delete(slotKey).catch(() => null);
+  }
+
+  return deletedCount;
+}
+
 function normalizeReminderWindowHours(input) {
   const requested = Number.parseInt(String(input || DEFAULT_REMINDER_WINDOW_HOURS), 10);
   if (!Number.isFinite(requested)) return DEFAULT_REMINDER_WINDOW_HOURS;
@@ -628,31 +693,16 @@ async function handleBookings(req, _context) {
     await availabilityDb.delete(getAvailabilityKey(authUser.id, eventTypeId)).catch(() => null);
     await eventTypesDb.setJSON(`owner:${authUser.id}`, ownerIds);
 
+    let deletedBookings = 0;
+
     // Clean up all bookings and slot keys for this event type
     try {
-      const bookingsDb = getDb("bookings");
-      // Find all slot keys and booking keys for this event type
-      const allKeys = await bookingsDb.list({ prefix: "" });
-      const slotKeys = allKeys.keys.filter((k) => k.startsWith(`slot:${eventTypeId}:`));
-      const bookingKeys = allKeys.keys.filter((k) => {
-        // Booking keys are booking:<id>, need to check event_type_id
-        return k.startsWith("booking:");
-      });
-      // For each booking, check if it matches this event type
-      for (const bookingKey of bookingKeys) {
-        const booking = await bookingsDb.get(bookingKey, { type: "json" }).catch(() => null);
-        if (booking && booking.event_type_id === eventTypeId) {
-          await bookingsDb.delete(bookingKey).catch(() => null);
-        }
-      }
-      // Delete all slot keys for this event type
-      for (const slotKey of slotKeys) {
-        await bookingsDb.delete(slotKey).catch(() => null);
-      }
+      deletedBookings = await deleteBookingsForEventType(bookingsDb, eventTypeId);
+      log("info", FN, "cascade deleted bookings for event type", { eventTypeId, deleted_bookings: deletedBookings });
     } catch (cleanupErr) {
       log("warn", FN, "cleanup failed after event type delete", { eventTypeId, error: cleanupErr.message });
     }
-    return jsonResponse(200, { success: true });
+    return jsonResponse(200, { success: true, deleted_bookings: deletedBookings });
   }
 
   // GET /api/bookings/availability
