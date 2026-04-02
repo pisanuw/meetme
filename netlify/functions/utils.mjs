@@ -736,19 +736,111 @@ export async function checkRateLimit({ bucket, key, limit, windowMs }) {
  * @property {string} message
  */
 
+const MEETING_KEY_PATTERN = /^m-(\d{13})-([a-z0-9]+)$/i;
+
+function extractMeetingIdFromKey(key) {
+  const value = String(key || "");
+  const prefixed = value.match(MEETING_KEY_PATTERN);
+  if (prefixed) return prefixed[2];
+  if (!value || value.includes(":")) return "";
+  return value;
+}
+
 /**
- * List all meeting IDs from the meetings blob store, excluding internal keys
- * such as "index" and any key containing a colon (reserved for namespaced records).
+ * Build the canonical meeting-record key.
+ *
+ * Format: `m-<epoch_ms>-<meeting_id>`
+ *
+ * @param {string} createdAtIso
+ * @param {string} meetingId
+ * @returns {string}
+ */
+export function buildMeetingRecordKey(createdAtIso, meetingId) {
+  const epoch = Date.parse(createdAtIso || "") || Date.now();
+  const ts = String(epoch).padStart(13, "0");
+  return `m-${ts}-${meetingId}`;
+}
+
+/**
+ * List all meeting IDs from the meetings blob store.
+ * Supports both legacy keys (`<meeting_id>`) and canonical keys
+ * (`m-<epoch_ms>-<meeting_id>`).
  *
  * @param {import("@netlify/blobs").Store} meetingsDb
  * @returns {Promise<string[]>}
  */
 export async function listMeetingIds(meetingsDb) {
   const listing = await meetingsDb.list().catch(() => ({ blobs: [] }));
-  return asArray(listing?.blobs)
-    .map((b) => b?.key)
-    .filter(Boolean)
-    .filter((key) => key !== "index" && !key.includes(":"));
+  return [...new Set(
+    asArray(listing?.blobs)
+      .map((b) => extractMeetingIdFromKey(b?.key))
+      .filter(Boolean)
+  )];
+}
+
+/**
+ * Load a meeting by ID from canonical key format, with legacy fallback.
+ *
+ * @param {import("@netlify/blobs").Store} meetingsDb
+ * @param {string} meetingId
+ * @returns {Promise<object|null>}
+ */
+export async function getMeetingRecord(meetingsDb, meetingId) {
+  const id = String(meetingId || "").trim();
+  if (!id) return null;
+
+  const listing = await meetingsDb.list().catch(() => ({ blobs: [] }));
+  const canonicalKeys = asArray(listing?.blobs)
+    .map((b) => String(b?.key || ""))
+    .filter((key) => key.endsWith(`-${id}`) && MEETING_KEY_PATTERN.test(key))
+    .sort((a, b) => b.localeCompare(a));
+
+  for (const key of canonicalKeys) {
+    const record = await meetingsDb.get(key, { type: "json" }).catch(() => null);
+    if (record && record.id === id) return record;
+  }
+
+  const legacy = await meetingsDb.get(id, { type: "json" }).catch(() => null);
+  if (legacy && legacy.id === id) return legacy;
+  return null;
+}
+
+/**
+ * Persist a meeting using the canonical key format.
+ *
+ * @param {import("@netlify/blobs").Store} meetingsDb
+ * @param {object} meeting
+ * @returns {Promise<void>}
+ */
+export async function saveMeetingRecord(meetingsDb, meeting) {
+  const id = String(meeting?.id || "").trim();
+  if (!id) throw new Error("Meeting record must include an id.");
+  const createdAt = String(meeting?.created_at || "").trim() || new Date().toISOString();
+  const key = buildMeetingRecordKey(createdAt, id);
+  await meetingsDb.setJSON(key, {
+    ...meeting,
+    id,
+    created_at: createdAt,
+  });
+}
+
+/**
+ * Delete all storage entries for a meeting ID (canonical and legacy).
+ *
+ * @param {import("@netlify/blobs").Store} meetingsDb
+ * @param {string} meetingId
+ * @returns {Promise<void>}
+ */
+export async function deleteMeetingRecord(meetingsDb, meetingId) {
+  const id = String(meetingId || "").trim();
+  if (!id) return;
+
+  await meetingsDb.delete(id).catch(() => null);
+  const listing = await meetingsDb.list().catch(() => ({ blobs: [] }));
+  const keys = asArray(listing?.blobs)
+    .map((b) => String(b?.key || ""))
+    .filter((key) => key.endsWith(`-${id}`) && MEETING_KEY_PATTERN.test(key));
+  await Promise.all(keys.map((key) => meetingsDb.delete(key).catch(() => null)));
 }
 
 /**
@@ -1055,4 +1147,13 @@ export const LIMITS = {
   DURATION_MIN: 15,
   DURATION_MAX: 24 * 60,
   FEEDBACK_MESSAGE_MAX: 5000,
+  ADMIN_PAGE_DEFAULT: 25,
+  ADMIN_PAGE_MAX: 100,
+  BOOKING_EVENT_TYPES_MAX: 25,
+  BOOKING_EVENT_TITLE_MAX: 120,
+  BOOKING_EVENT_DESCRIPTION_MAX: 1200,
+  BOOKING_AVAIL_WINDOWS_MAX: 60,
+  BOOKING_DURATION_MAX: 180,
+  BOOKING_GROUP_CAPACITY_MAX: 100,
+  BOOKING_REMINDER_WINDOW_HOURS_MAX: 72,
 };

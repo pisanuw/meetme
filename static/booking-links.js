@@ -39,7 +39,11 @@ function linkCard(item, hostSlug) {
   }
 
   const hostSlug = hostResp.data.public_page_slug;
-  const items = hostResp.data.event_types || [];
+  const items = (hostResp.data.event_types || []).slice().sort((a, b) => {
+    const ta = a.created_at || "";
+    const tb = b.created_at || "";
+    return tb.localeCompare(ta);
+  });
   const grid = document.getElementById("links-grid");
 
   if (!items.length) {

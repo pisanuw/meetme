@@ -116,6 +116,80 @@ test("booking host can create event type and publish slots", async () => {
   assert.equal(slotsBody.slots.includes("09:00"), true);
 });
 
+test("event types default and persist booking day time ranges", async () => {
+  const host = { id: "host-range", email: "host-range@example.com", name: "Host Range" };
+  await seedUser(host);
+
+  const defaultEventRes = await bookingsHandler(
+    makeJsonRequest("http://localhost:8888/api/bookings/event-types", {
+      method: "POST",
+      headers: { cookie: authCookie(host) },
+      body: {
+        title: "Default Range",
+        event_type: "one_on_one",
+        duration_minutes: 30,
+        timezone: "UTC",
+      },
+    }),
+    {}
+  );
+  const defaultEventBody = await responseJson(defaultEventRes);
+  assert.equal(defaultEventRes.status, 200);
+  assert.equal(defaultEventBody.event_type.day_start_time, "08:00");
+  assert.equal(defaultEventBody.event_type.day_end_time, "20:00");
+
+  const customEventRes = await bookingsHandler(
+    makeJsonRequest("http://localhost:8888/api/bookings/event-types", {
+      method: "POST",
+      headers: { cookie: authCookie(host) },
+      body: {
+        title: "Custom Range",
+        event_type: "one_on_one",
+        duration_minutes: 30,
+        timezone: "UTC",
+        day_start_time: "10:00",
+        day_end_time: "16:00",
+      },
+    }),
+    {}
+  );
+  const customEventBody = await responseJson(customEventRes);
+  assert.equal(customEventRes.status, 200);
+  assert.equal(customEventBody.event_type.day_start_time, "10:00");
+  assert.equal(customEventBody.event_type.day_end_time, "16:00");
+
+  const privateListRes = await bookingsHandler(
+    new Request("http://localhost:8888/api/bookings/event-types", {
+      method: "GET",
+      headers: { cookie: authCookie(host) },
+    }),
+    {}
+  );
+  const privateListBody = await responseJson(privateListRes);
+  assert.equal(privateListRes.status, 200);
+
+  const defaultPrivate = privateListBody.event_types.find((item) => item.id === defaultEventBody.event_type.id);
+  const customPrivate = privateListBody.event_types.find((item) => item.id === customEventBody.event_type.id);
+  assert.equal(defaultPrivate.day_start_time, "08:00");
+  assert.equal(defaultPrivate.day_end_time, "20:00");
+  assert.equal(customPrivate.day_start_time, "10:00");
+  assert.equal(customPrivate.day_end_time, "16:00");
+
+  const publicPageRes = await bookingsHandler(
+    new Request("http://localhost:8888/api/bookings/page/host-range", { method: "GET" }),
+    {}
+  );
+  const publicPageBody = await responseJson(publicPageRes);
+  assert.equal(publicPageRes.status, 200);
+
+  const defaultPublic = publicPageBody.event_types.find((item) => item.id === defaultEventBody.event_type.id);
+  const customPublic = publicPageBody.event_types.find((item) => item.id === customEventBody.event_type.id);
+  assert.equal(defaultPublic.day_start_time, "08:00");
+  assert.equal(defaultPublic.day_end_time, "20:00");
+  assert.equal(customPublic.day_start_time, "10:00");
+  assert.equal(customPublic.day_end_time, "16:00");
+});
+
 test("legacy booking slug lookup backfills slug index on first access", async () => {
   await store("users").setJSON("legacy@example.com", {
     id: "legacy-user",

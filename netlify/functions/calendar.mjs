@@ -26,6 +26,7 @@ import {
   buildTimeSlots,
   localToUTC,
   saveUserRecord,
+  getMeetingRecord,
 } from "./utils.mjs";
 
 const FN = "calendar";
@@ -120,7 +121,7 @@ async function handleCalendar(req, context) {
 
     // Load meeting
     const meetings = getDb("meetings");
-    const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
+    const meeting = await getMeetingRecord(meetings, meetingId);
     if (!meeting) return errorResponse(404, `Meeting '${meetingId}' not found.`);
 
     if (meeting.meeting_type === "day_of_week" || meeting.meeting_type === "days_of_week") {

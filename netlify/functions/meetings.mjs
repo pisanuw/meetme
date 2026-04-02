@@ -9,8 +9,8 @@
  *   POST /api/meetings/:id/leave    — remove yourself from a meeting (invitee only)
  *
  * Data model (Netlify Blobs):
- *   meetings:"index"          — string[] of all meeting IDs
- *   meetings:<id>             — Meeting object
+ *   meetings:"m-<epoch>-<id>" — Meeting object (canonical key)
+ *   meetings:<id>             — Legacy meeting object key (read-only compatibility)
  *   invites:"meeting:<id>"    — Invite[] for that meeting
  *   invites:"pending:<email>" — string[] of meeting IDs awaiting a not-yet-registered user
  *   availability:"meeting:<id>" — AvailabilitySlot[] (one entry per person per slot)
@@ -33,6 +33,9 @@ import {
   escapeHtml,
   buildTimeSlots,
   listMeetingIds,
+  getMeetingRecord,
+  saveMeetingRecord,
+  deleteMeetingRecord,
   createToken,
   LIMITS,
 } from "./utils.mjs";
@@ -96,7 +99,7 @@ async function handleRequest(req, _context) {
     const records = await Promise.all(
       meetingIds.map(async (meetingId) => {
         const [meeting, meetingInvites] = await Promise.all([
-          meetings.get(meetingId, { type: "json" }).catch(() => null),
+          getMeetingRecord(meetings, meetingId),
           invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => []),
         ]);
         if (!meeting) return null;
@@ -219,7 +222,7 @@ async function handleRequest(req, _context) {
       created_at: new Date().toISOString(),
     };
 
-    await meetings.setJSON(meetingId, meeting);
+    await saveMeetingRecord(meetings, meeting);
 
     const meetingInvites = [
       {
@@ -393,7 +396,7 @@ async function handleRequest(req, _context) {
     const meetingId = pathParts[0];
     log("info", FN, "get meeting detail", { meetingId, userId: user.id });
 
-    const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
+    const meeting = await getMeetingRecord(meetings, meetingId);
     if (!meeting) {
       log("warn", FN, "meeting not found", { meetingId });
       return errorResponse(404, `Meeting '${meetingId}' not found.`);
@@ -494,7 +497,7 @@ async function handleRequest(req, _context) {
     const meetingId = pathParts[0];
     log("info", FN, "delete meeting", { meetingId, userId: user.id });
 
-    const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
+    const meeting = await getMeetingRecord(meetings, meetingId);
     if (!meeting) return errorResponse(404, `Meeting '${meetingId}' not found.`);
     if (meeting.creator_id !== user.id)
       return errorResponse(403, "Only the meeting creator can delete it.");
@@ -511,7 +514,7 @@ async function handleRequest(req, _context) {
       else await invites.delete(pendingKey).catch(() => null);
     }
 
-    await meetings.delete(meetingId);
+    await deleteMeetingRecord(meetings, meetingId);
     await invites.delete(`meeting:${meetingId}`);
     await availability.delete(`meeting:${meetingId}`);
 
@@ -525,7 +528,7 @@ async function handleRequest(req, _context) {
     const meetingId = pathParts[0];
     log("info", FN, "leave meeting", { meetingId, userId: user.id });
 
-    const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
+    const meeting = await getMeetingRecord(meetings, meetingId);
     if (!meeting) return errorResponse(404, `Meeting '${meetingId}' not found.`);
     if (meeting.creator_id === user.id)
       return errorResponse(

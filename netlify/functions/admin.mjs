@@ -30,23 +30,23 @@ import {
   createToken,
   setCookie,
   listMeetingIds,
+  getMeetingRecord,
   sanitizeUser,
   saveUserRecord,
   deleteUserRecord,
+  LIMITS,
 } from "./utils.mjs";
 
 const FN = "admin";
-const DEFAULT_PAGE_SIZE = 25;
-const MAX_PAGE_SIZE = 100;
 
 function parsePagination(url) {
   const page = Math.max(1, Number.parseInt(url.searchParams.get("page") || "1", 10) || 1);
   const pageSize = Math.min(
-    MAX_PAGE_SIZE,
+    LIMITS.ADMIN_PAGE_MAX,
     Math.max(
       1,
-      Number.parseInt(url.searchParams.get("page_size") || `${DEFAULT_PAGE_SIZE}`, 10) ||
-        DEFAULT_PAGE_SIZE
+      Number.parseInt(url.searchParams.get("page_size") || `${LIMITS.ADMIN_PAGE_DEFAULT}`, 10) ||
+        LIMITS.ADMIN_PAGE_DEFAULT
     )
   );
   const query = String(url.searchParams.get("q") || "").trim().toLowerCase();
@@ -159,7 +159,7 @@ async function handleAdmin(req, context) {
     const invitedMeetings = [];
 
     for (const mid of index) {
-      const m = await meetings.get(mid, { type: "json" }).catch(() => null);
+      const m = await getMeetingRecord(meetings, mid);
       if (!m) continue;
 
       const meetingInvites = asArray(
@@ -225,6 +225,14 @@ async function handleAdmin(req, context) {
           ? (body.name || "").trim() || u.name
           : [firstName, lastName].filter(Boolean).join(" ") || u.name;
 
+      if (
+        firstName.length > LIMITS.NAME_MAX ||
+        lastName.length > LIMITS.NAME_MAX ||
+        String(name || "").length > LIMITS.NAME_MAX
+      ) {
+        return errorResponse(400, `Names must be ${LIMITS.NAME_MAX} characters or fewer.`);
+      }
+
       u = {
         ...u,
         first_name: firstName || "",
@@ -244,6 +252,13 @@ async function handleAdmin(req, context) {
         [firstName, lastName].filter(Boolean).join(" ") ||
         email.split("@")[0]
       ).trim();
+      if (
+        firstName.length > LIMITS.NAME_MAX ||
+        lastName.length > LIMITS.NAME_MAX ||
+        String(name || "").length > LIMITS.NAME_MAX
+      ) {
+        return errorResponse(400, `Names must be ${LIMITS.NAME_MAX} characters or fewer.`);
+      }
       u = {
         id: generateId(),
         email,
@@ -378,7 +393,7 @@ async function handleAdmin(req, context) {
     const loaded = await Promise.all(
       index.map(async (mid) => {
         const [m, inv] = await Promise.all([
-          meetings.get(mid, { type: "json" }).catch(() => null),
+          getMeetingRecord(meetings, mid),
           invites.get(`meeting:${mid}`, { type: "json" }).catch(() => []),
         ]);
         if (!m) return null;

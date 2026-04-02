@@ -1,6 +1,25 @@
 const params = new URLSearchParams(window.location.search);
 const editEventTypeId = params.get("edit") || "";
 
+// Build available-from / available-until selects (15-min granularity, 00:00 – 24:00)
+(function buildTimeSelects() {
+  const startSel = document.getElementById("event-day-start");
+  const endSel = document.getElementById("event-day-end");
+  const startParts = [];
+  const endParts = [];
+  for (let h = 0; h < 24; h++) {
+    for (const m of [0, 15, 30, 45]) {
+      const t = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      startParts.push(`<option value="${t}"${t === "08:00" ? " selected" : ""}>${t}</option>`);
+      endParts.push(`<option value="${t}"${t === "20:00" ? " selected" : ""}>${t}</option>`);
+    }
+  }
+  // Add 24:00 as the last end-time option
+  endParts.push(`<option value="24:00">24:00</option>`);
+  startSel.innerHTML = startParts.join("");
+  endSel.innerHTML = endParts.join("");
+})();
+
 if (params.get("error") === "no-event-type-selected") {
   showFlash("No event type selected. Please create or select an event type first.", "danger");
   const cleanUrl = window.location.pathname;
@@ -32,6 +51,8 @@ async function loadEventTypeForEdit(id) {
   document.getElementById("event-description").value = item.description || "";
   document.getElementById("event-kind").value = item.event_type || "one_on_one";
   document.getElementById("event-duration").value = String(item.duration_minutes || 30);
+  document.getElementById("event-day-start").value = item.day_start_time || "08:00";
+  document.getElementById("event-day-end").value = item.day_end_time || "20:00";
   document.getElementById("event-capacity").value = String(item.group_capacity || 1);
   document.getElementById("event-timezone").value = item.timezone || userProfileTimezone || "UTC";
   document.getElementById("page-heading").textContent = "Edit Booking";
@@ -47,6 +68,8 @@ document.getElementById("event-type-form").addEventListener("submit", async (e) 
     description: document.getElementById("event-description").value.trim(),
     event_type: document.getElementById("event-kind").value,
     duration_minutes: Number(document.getElementById("event-duration").value),
+    day_start_time: document.getElementById("event-day-start").value || "08:00",
+    day_end_time: document.getElementById("event-day-end").value || "20:00",
     group_capacity: Number(document.getElementById("event-capacity").value),
     timezone: document.getElementById("event-timezone").value.trim() || "UTC",
     enabled: true,

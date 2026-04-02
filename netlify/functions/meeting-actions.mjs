@@ -26,6 +26,8 @@ import {
   getAppUrl,
   createToken,
   generateId,
+  getMeetingRecord,
+  saveMeetingRecord,
   LIMITS,
 } from "./utils.mjs";
 
@@ -84,7 +86,7 @@ async function handleMeetingActions(req, _context) {
     const meetingId = availMatch[1];
     log("info", FN, "submit availability", { meetingId, userId: user.id });
 
-    const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
+    const meeting = await getMeetingRecord(meetings, meetingId);
     if (!meeting) {
       log("warn", FN, "meeting not found for availability", { meetingId });
       return errorResponse(404, `Meeting '${meetingId}' not found.`);
@@ -157,7 +159,7 @@ async function handleMeetingActions(req, _context) {
     const meetingId = finalizeMatch[1];
     log("info", FN, "finalize meeting", { meetingId, userId: user.id });
 
-    const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
+    const meeting = await getMeetingRecord(meetings, meetingId);
     if (!meeting) return errorResponse(404, `Meeting '${meetingId}' not found.`);
     if (meeting.creator_id !== user.id)
       return errorResponse(403, "Only the meeting creator can finalize it.");
@@ -184,7 +186,7 @@ async function handleMeetingActions(req, _context) {
     meeting.duration_minutes = durationMinutes;
     meeting.note = body.note || "";
     meeting.is_finalized = true;
-    await meetings.setJSON(meetingId, meeting);
+    await saveMeetingRecord(meetings, meeting);
 
     const meetingInvites = asArray(
       await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => [])
@@ -282,7 +284,7 @@ async function handleMeetingActions(req, _context) {
     const meetingId = unfinalizeMatch[1];
     log("info", FN, "unfinalize meeting", { meetingId, userId: user.id });
 
-    const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
+    const meeting = await getMeetingRecord(meetings, meetingId);
     if (!meeting) return errorResponse(404, `Meeting '${meetingId}' not found.`);
     if (meeting.creator_id !== user.id)
       return errorResponse(403, "Only the meeting creator can unfinalize it.");
@@ -290,7 +292,7 @@ async function handleMeetingActions(req, _context) {
     meeting.is_finalized = false;
     meeting.finalized_date = null;
     meeting.finalized_slot = null;
-    await meetings.setJSON(meetingId, meeting);
+    await saveMeetingRecord(meetings, meeting);
 
     log("info", FN, "meeting unfinalized", { meetingId });
     return jsonResponse(200, { success: true });
@@ -302,7 +304,7 @@ async function handleMeetingActions(req, _context) {
     const meetingId = remindMatch[1];
     log("info", FN, "send reminder emails", { meetingId, userId: user.id });
 
-    const meeting = await meetings.get(meetingId, { type: "json" }).catch(() => null);
+    const meeting = await getMeetingRecord(meetings, meetingId);
     if (!meeting) return errorResponse(404, `Meeting '${meetingId}' not found.`);
     if (meeting.creator_id !== user.id) {
       return errorResponse(403, "Only the meeting creator can send reminders.");

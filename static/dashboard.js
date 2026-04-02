@@ -1,17 +1,159 @@
+function sortBookingsByDate(bookings) {
+  return [...bookings].sort((a, b) => {
+    const aKey = `${a.date || "9999-12-31"}T${a.start_time || "23:59"}`;
+    const bKey = `${b.date || "9999-12-31"}T${b.start_time || "23:59"}`;
+    return aKey.localeCompare(bKey);
+  });
+}
+
+function renderBookingLinks(eventTypes, hostSlug) {
+  const container = document.getElementById("dashboard-booking-links");
+  container.innerHTML = "";
+
+  if (!eventTypes || eventTypes.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🔗</div>
+        <p>You haven't created any booking links yet.</p>
+        <a href="/booking-setup.html" class="btn btn-primary">Create booking link</a>
+      </div>
+    `;
+    return;
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "meeting-grid";
+
+  eventTypes.forEach((item) => {
+    const card = document.createElement("article");
+    card.className = "meeting-card";
+
+    const url = `${window.location.origin}/book.html?host=${encodeURIComponent(hostSlug)}&event=${encodeURIComponent(item.id)}`;
+
+    card.innerHTML = `
+      <div class="meeting-card-top">
+        <div>
+          <h3 class="meeting-title">${escapeHtml(item.title)}</h3>
+          <span class="meeting-meta">${escapeHtml(item.duration_minutes)} min · ${escapeHtml(item.timezone || "UTC")}</span>
+        </div>
+        <span class="badge ${item.event_type === "group" ? "badge-orange" : "badge-blue"}">${escapeHtml(item.event_type || "one_on_one")}</span>
+      </div>
+      <p class="meeting-desc">${escapeHtml(item.description || "No description")}</p>
+      <div class="booking-card-badges">
+        <span class="badge badge-gray">${escapeHtml(item.day_start_time || "08:00")} - ${escapeHtml(item.day_end_time || "20:00")}</span>
+        <span class="badge badge-gray">${item.availability?.window_count || 0} windows</span>
+      </div>
+      <div class="meeting-actions">
+        <a class="btn btn-sm btn-ghost" href="/booking-setup.html?edit=${encodeURIComponent(item.id)}">Edit</a>
+        <a class="btn btn-sm btn-ghost" href="/booking-availability.html?eventType=${encodeURIComponent(item.id)}">Availability</a>
+        <a class="btn btn-sm btn-primary" href="${escapeHtml(url)}" target="_blank" rel="noopener">Open</a>
+      </div>
+    `;
+
+    grid.appendChild(card);
+  });
+
+  container.appendChild(grid);
+}
+
+function renderDashboardBookings(hostBookings, attendeeBookings) {
+  const container = document.getElementById("dashboard-my-bookings");
+  container.innerHTML = "";
+
+  const merged = [
+    ...hostBookings.map((booking) => ({ ...booking, dashboard_role: "Host" })),
+    ...attendeeBookings.map((booking) => ({ ...booking, dashboard_role: "Attendee" })),
+  ];
+
+  const deduped = Array.from(new Map(merged.map((booking) => [booking.id, booking])).values());
+  const bookings = sortBookingsByDate(deduped);
+
+  if (!bookings.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🗓️</div>
+        <p>You don't have any bookings yet.</p>
+        <a href="/bookings.html" class="btn btn-primary">Open bookings</a>
+      </div>
+    `;
+    return;
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "meeting-grid";
+
+  bookings.forEach((booking) => {
+    const cancelled = booking.status === "cancelled";
+    const card = document.createElement("article");
+    card.className = "meeting-card";
+
+    const counterpart = booking.dashboard_role === "Host"
+      ? booking.attendee_name || booking.attendee_email || "Attendee"
+      : booking.host_name || booking.host_email || "Host";
+    const counterpartLabel = booking.dashboard_role === "Host" ? "Attendee" : "Host";
+
+    card.innerHTML = `
+      <div class="meeting-card-top">
+        <div>
+          <h3 class="meeting-title">${escapeHtml(booking.event_title || "Booking")}</h3>
+          <span class="meeting-meta">${escapeHtml(booking.date || "")} ${booking.start_time ? `· ${escapeHtml(booking.start_time)}` : ""} ${booking.timezone ? `· ${escapeHtml(booking.timezone)}` : ""}</span>
+        </div>
+        <span class="badge ${booking.dashboard_role === "Host" ? "badge-blue" : "badge-orange"}">${booking.dashboard_role}</span>
+      </div>
+      <div class="booking-card-badges">
+        <span class="badge ${cancelled ? "badge-gray" : "badge-green"}">${escapeHtml(booking.status || "confirmed")}</span>
+        <span class="badge badge-gray">${escapeHtml(booking.event_kind || "")}</span>
+      </div>
+      <p class="meeting-desc">${counterpartLabel}: ${escapeHtml(counterpart)}</p>
+      <div class="meeting-actions">
+        <a class="btn btn-sm btn-primary" href="/booking-confirmation.html?id=${encodeURIComponent(booking.id || "")}">View</a>
+      </div>
+    `;
+
+    grid.appendChild(card);
+  });
+
+  container.appendChild(grid);
+}
+
 (async () => {
   const user = await requireAuth();
   if (!user) return;
 
   document.getElementById("greeting").textContent = `Hello, ${user.name}`;
 
-  const { ok, status, data } = await apiFetch("/api/meetings");
-  if (!ok) {
-    showFlash(data.error || `Failed to load meetings (HTTP ${status}).`, "danger");
-    return;
+  const [meetingsRes, eventTypesRes, hostBookingsRes, myBookingsRes] = await Promise.all([
+    apiFetch("/api/meetings"),
+    apiFetch("/api/bookings/event-types"),
+    apiFetch("/api/bookings/host"),
+    apiFetch("/api/bookings/mine"),
+  ]);
+
+  if (meetingsRes.ok) {
+    renderMeetings("my-meetings", meetingsRes.data.my_meetings, true);
+    renderMeetings("invited-meetings", meetingsRes.data.invited_meetings, false);
+  } else {
+    showFlash(meetingsRes.data.error || `Failed to load meetings (HTTP ${meetingsRes.status}).`, "danger");
+    renderMeetings("my-meetings", [], true);
+    renderMeetings("invited-meetings", [], false);
   }
 
-  renderMeetings("my-meetings", data.my_meetings, true);
-  renderMeetings("invited-meetings", data.invited_meetings, false);
+  if (eventTypesRes.ok) {
+    renderBookingLinks(eventTypesRes.data.event_types || [], eventTypesRes.data.public_page_slug || "");
+  } else {
+    showFlash(eventTypesRes.data.error || "Failed to load booking links.", "danger");
+    renderBookingLinks([], "");
+  }
+
+  if (hostBookingsRes.ok && myBookingsRes.ok) {
+    renderDashboardBookings(hostBookingsRes.data.bookings || [], myBookingsRes.data.bookings || []);
+  } else {
+    showFlash(
+      hostBookingsRes.data?.error || myBookingsRes.data?.error || "Failed to load bookings.",
+      "danger"
+    );
+    renderDashboardBookings([], []);
+  }
 })();
 
 function renderMeetings(containerId, meetings, isOwner) {

@@ -99,6 +99,39 @@ function setNavDropdownLabel(menu, label) {
   if (trigger) trigger.textContent = label;
 }
 
+function closeAllNavDropdowns() {
+  document.querySelectorAll("details.nav-dropdown[open]").forEach((menu) => {
+    menu.removeAttribute("open");
+  });
+}
+
+function bindNavDropdownDismissal() {
+  if (window.__navDropdownDismissalBound) return;
+
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const clickedLink = target.closest(".nav-dropdown-list a");
+    if (clickedLink) {
+      closeAllNavDropdowns();
+      return;
+    }
+
+    if (!target.closest("details.nav-dropdown")) {
+      closeAllNavDropdowns();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeAllNavDropdowns();
+    }
+  });
+
+  window.__navDropdownDismissalBound = true;
+}
+
 function getAccountShortName(user) {
   const firstName = (user.first_name || "").trim();
   if (firstName) return firstName;
@@ -132,6 +165,8 @@ function bindResponsiveAccountLabelUpdates() {
 }
 
 function ensureNavMenus(logoutLink) {
+  bindNavDropdownDismissal();
+
   const navAuth = document.getElementById("nav-auth");
   if (!navAuth) return null;
 
@@ -312,18 +347,6 @@ async function checkAuth() {
     }
 
     ensureMenuDivider(accountMenuList, logoutLink);
-
-    [bookingsMenuList, accountMenuList].forEach((list) => {
-      list.querySelectorAll("a").forEach((link) => {
-        if (!link.dataset.closeMenuBound) {
-          link.addEventListener("click", () => {
-            bookingsMenu.open = false;
-            accountMenu.open = false;
-          });
-          link.dataset.closeMenuBound = "1";
-        }
-      });
-    });
 
     return user;
   } catch {

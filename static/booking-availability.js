@@ -24,6 +24,8 @@ let selectedSlots = new Set();
 let gridColumns = [];
 let isDragging = false;
 let dragAction = null;
+let gridStartMinutes = 0;
+let gridEndMinutes = DAY_MINUTES;
 
 function buildTimeOptions() {
   const out = [];
@@ -181,7 +183,10 @@ function buildGrid() {
     availabilityGrid.appendChild(header);
   });
 
-  QUICK_TIME_OPTIONS.forEach((time) => {
+  QUICK_TIME_OPTIONS.filter((time) => {
+    const mins = toMinutes(time);
+    return mins >= gridStartMinutes && mins < gridEndMinutes;
+  }).forEach((time) => {
     const [, minute] = time.split(":").map(Number);
     const isHour = minute === 0;
 
@@ -500,6 +505,8 @@ async function init() {
   if (requestedEventTypeId) {
     const currentEventType = allEventTypes.find((et) => et.id === requestedEventTypeId);
     if (currentEventType) {
+      gridStartMinutes = toMinutes(currentEventType.day_start_time || "08:00");
+      gridEndMinutes = toMinutes(currentEventType.day_end_time || "20:00");
       const heading = document.querySelector("h1");
       if (heading) {
         const sub = document.createElement("div");

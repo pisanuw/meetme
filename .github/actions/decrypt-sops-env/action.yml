@@ -35,5 +35,4 @@ runs:
         mkdir -p ~/.gnupg
         chmod 700 ~/.gnupg
         printf '%s' "${SOPS_GPG_PRIVATE_KEY}" | gpg --batch --import
-        sops --decrypt .env.enc > .env
-        chmod 600 .env
+        node scripts/decrypt-sops-env.mjs .env.enc .env

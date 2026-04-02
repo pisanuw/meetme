@@ -41,6 +41,13 @@ cp .env.example .env
 # Edit .env and fill in real values (see Configuration section below)
 ```
 
+If the repository ships a pre-encrypted `.env.enc` file, you can decrypt it instead
+(requires SOPS and the GPG key — see [Environment secrets (SOPS)](#environment-secrets-sops)):
+
+```bash
+npm run env:decrypt
+```
+
 ### 4. Run locally
 
 ```bash
@@ -67,16 +74,25 @@ meetme/
 ├── netlify.toml              # Build config and Netlify Function settings
 ├── package.json              # Node dependencies
 ├── .env.example              # Template for local environment variables
+├── .env.enc                  # SOPS-encrypted secrets (see Environment secrets section)
 │
 ├── index.html                # Sign-in page (magic link / Google OAuth)
 ├── register.html             # Alternative entry point (redirects to index)
-├── dashboard.html            # Lists user's meetings
+├── dashboard.html            # User dashboard: meetings, booking links, my bookings
 ├── create-meeting.html       # New meeting form
 ├── meeting.html              # Availability grid, heatmap, finalize
 ├── email-sent.html           # Shown after requesting a magic link
 ├── profile.html              # Edit name, timezone, connect Google Calendar
 ├── admin.html                # Admin-only: stats, users, meetings, event log
 ├── feedback.html             # User feedback form
+├── book.html                 # Public booking page (week-view slot picker)
+├── booking-setup.html        # Host: create/edit bookable event types
+├── booking-availability.html # Host: set available time grid per event type
+├── booking-links.html        # Host: manage public booking link slugs
+├── booking-confirmation.html # Shown to guest after booking is confirmed
+│
+├── scripts/
+│   └── decrypt-sops-env.mjs  # Node helper: decrypt .env.enc → .env (used by npm run env:decrypt and CI)
 │
 ├── static/
 │   ├── common.js             # Shared JS helpers (apiFetch, requireAuth, showFlash)
@@ -91,6 +107,7 @@ meetme/
         ├── auth-helpers.mjs   # Shared auth logic and user creation helpers
         ├── meetings.mjs       # /api/meetings/* — create, list, detail, delete, leave
         ├── meeting-actions.mjs # /api/meetings/* — availability, finalize, remind
+        ├── bookings.mjs       # /api/bookings/* — bookable event types and bookings
         ├── calendar.mjs       # /api/calendar/* — Google Calendar free/busy
         ├── admin.mjs          # /api/admin/* — admin panel data
         └── webhooks.mjs       # /api/webhooks/* — Resend bounce/complaint handler
@@ -146,6 +163,69 @@ Use `.env.example` as the template for local development values.
 6. Deploy and test:
    - Request a magic link from `/`
    - Open `/api/auth/health` to verify all env vars are detected
+
+### Environment secrets (SOPS)
+
+The repository optionally ships an encrypted secrets file (`.env.enc`) managed with
+[SOPS](https://github.com/getsops/sops). This is distinct from Netlify's built-in
+environment variable storage:
+
+| Context | How secrets are supplied |
+|---------|--------------------------|
+| **Netlify deploy** | Set directly in Netlify UI → Site configuration → Environment variables. `.env.enc` is **not** used. |
+| **Local development** | Decrypt `.env.enc` into `.env`, _or_ copy `.env.example` and fill in values manually. |
+| **CI (GitHub Actions)** | The `decrypt-sops-env` composite action decrypts `.env.enc` using a GPG key stored as a repository secret. |
+
+#### Local decryption
+
+Prerequisites: [SOPS](https://github.com/getsops/sops#installation) and [GnuPG](https://gnupg.org/download/).
+
+1. Import the GPG private key (obtain from your team's secure key store):
+
+   ```bash
+   gpg --import path/to/private-key.asc
+   ```
+
+   The key fingerprint used for this repo is `B1315A2CEAEFA6505F9C5365FFF1B4E2D6C1C779`.
+
+2. Decrypt to `.env`:
+
+   ```bash
+   npm run env:decrypt
+   ```
+
+   The script (`scripts/decrypt-sops-env.mjs`) calls `sops --decrypt`, handles the SOPS
+   JSON wrapper, extracts the plain dotenv content, and writes it to `.env` with mode `0600`.
+
+3. _(Optional)_ To re-encrypt changes after editing `.env`:
+
+   ```bash
+   sops --encrypt .env > .env.enc
+   ```
+
+#### CI setup
+
+The workflow in `.github/workflows/ci.yml` calls
+`.github/actions/decrypt-sops-env/action.yml`, which:
+
+1. Imports the GPG key from the `SOPS_GPG_PRIVATE_KEY` Actions secret.
+2. Runs `node scripts/decrypt-sops-env.mjs .env.enc .env`.
+
+To enable this in a fork or new repo:
+
+1. Export the GPG private key in ASCII-armored form:
+
+   ```bash
+   gpg --armor --export-secret-keys B1315A2CEAEFA6505F9C5365FFF1B4E2D6C1C779
+   ```
+
+2. Add the output as a repository secret named **`SOPS_GPG_PRIVATE_KEY`** in
+   GitHub → Settings → Secrets and variables → Actions.
+
+If the secret is absent, the decrypt step is skipped and tests run without secrets
+(suitable for open-source forks that supply their own env vars).
+
+---
 
 ### Should do before production launch
 
@@ -262,9 +342,9 @@ CI automation for staging smoke:
 ### Latest predeployment check (2026-04-01)
 
 - `npm run lint`: pass
-- `npm test`: pass (60/60)
-- `TEST_RATE_LIMIT_MODE=on npm test`: pass (60/60)
-- `npm run test:e2e:smoke`: pass (12/12)
+- `npm test`: pass (61/61)
+- `TEST_RATE_LIMIT_MODE=on npm test`: pass (61/61)
+- `npm run test:e2e:smoke`: pass (14/14)
 - `Staging Smoke (manual)` can still be triggered via **Run workflow** using
   `workflow_dispatch` inputs.
 

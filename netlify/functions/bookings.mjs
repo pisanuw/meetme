@@ -38,19 +38,12 @@ import {
   localToUTC,
   saveUserRecord,
   findUserByBookingPublicSlug,
+  LIMITS,
 } from "./utils.mjs";
 
 const FN = "bookings";
-const MAX_EVENT_TYPES = 25;
-const MAX_EVENT_TITLE_LENGTH = 120;
-const MAX_EVENT_DESCRIPTION_LENGTH = 1200;
-const MAX_AVAIL_WINDOWS = 60;
 const SLOT_STEP_MINUTES = 15;
-const MIN_DURATION_MINUTES = 15;
-const MAX_DURATION_MINUTES = 180;
-const MAX_GROUP_CAPACITY = 100;
 const DEFAULT_REMINDER_WINDOW_HOURS = 24;
-const MAX_REMINDER_WINDOW_HOURS = 72;
 const ALLOWED_AVAILABILITY_MODES = new Set(["weekly", "specific_dates"]);
 
 const ALLOWED_WEEKDAYS = new Set([
@@ -115,6 +108,8 @@ function eventTypePublicView(eventType) {
     description: eventType.description,
     event_type: eventType.event_type,
     duration_minutes: eventType.duration_minutes,
+    day_start_time: eventType.day_start_time || "08:00",
+    day_end_time: eventType.day_end_time || "20:00",
     group_capacity: eventType.group_capacity,
     timezone: eventType.timezone,
   };
@@ -366,7 +361,7 @@ async function listBookingHostIds(bookingsDb) {
 function normalizeReminderWindowHours(input) {
   const requested = Number.parseInt(String(input || DEFAULT_REMINDER_WINDOW_HOURS), 10);
   if (!Number.isFinite(requested)) return DEFAULT_REMINDER_WINDOW_HOURS;
-  return Math.max(1, Math.min(requested, MAX_REMINDER_WINDOW_HOURS));
+  return Math.max(1, Math.min(requested, LIMITS.BOOKING_REMINDER_WINDOW_HOURS_MAX));
 }
 
 async function sendBookingReminderEmails(booking, bookingId) {
@@ -515,6 +510,8 @@ async function handleBookings(req, _context) {
     const description = String(body.description || "").trim();
     const eventKind = String(body.event_type || "one_on_one").trim();
     const durationMinutes = Number.parseInt(body.duration_minutes || "30", 10);
+    const dayStartTime = String(body.day_start_time || "08:00").trim();
+    const dayEndTime = String(body.day_end_time || "20:00").trim();
     const timezone = String(body.timezone || currentUser.timezone || "UTC").trim();
     const groupCapacity = Number.parseInt(
       body.group_capacity || (eventKind === "group" ? "5" : "1"),
@@ -524,27 +521,41 @@ async function handleBookings(req, _context) {
     const eventTypeId = String(body.id || "").trim();
 
     if (!title) return errorResponse(400, "Event title is required.");
-    if (title.length > MAX_EVENT_TITLE_LENGTH) {
-      return errorResponse(400, `Event title must be ${MAX_EVENT_TITLE_LENGTH} characters or fewer.`);
-    }
-    if (description.length > MAX_EVENT_DESCRIPTION_LENGTH) {
+    if (title.length > LIMITS.BOOKING_EVENT_TITLE_MAX) {
       return errorResponse(
         400,
-        `Description must be ${MAX_EVENT_DESCRIPTION_LENGTH} characters or fewer.`
+        `Event title must be ${LIMITS.BOOKING_EVENT_TITLE_MAX} characters or fewer.`
+      );
+    }
+    if (description.length > LIMITS.BOOKING_EVENT_DESCRIPTION_MAX) {
+      return errorResponse(
+        400,
+        `Description must be ${LIMITS.BOOKING_EVENT_DESCRIPTION_MAX} characters or fewer.`
       );
     }
     if (!ALLOWED_EVENT_TYPES.has(eventKind)) {
       return errorResponse(400, "event_type must be one_on_one or group.");
     }
-    if (!Number.isFinite(durationMinutes) || durationMinutes < MIN_DURATION_MINUTES || durationMinutes > MAX_DURATION_MINUTES) {
+    if (
+      !Number.isFinite(durationMinutes) ||
+      durationMinutes < LIMITS.DURATION_MIN ||
+      durationMinutes > LIMITS.BOOKING_DURATION_MAX
+    ) {
       return errorResponse(
         400,
-        `duration_minutes must be between ${MIN_DURATION_MINUTES} and ${MAX_DURATION_MINUTES}.`
+        `duration_minutes must be between ${LIMITS.DURATION_MIN} and ${LIMITS.BOOKING_DURATION_MAX}.`
       );
     }
 
-    if (!Number.isFinite(groupCapacity) || groupCapacity < 1 || groupCapacity > MAX_GROUP_CAPACITY) {
-      return errorResponse(400, `group_capacity must be between 1 and ${MAX_GROUP_CAPACITY}.`);
+    if (
+      !Number.isFinite(groupCapacity) ||
+      groupCapacity < 1 ||
+      groupCapacity > LIMITS.BOOKING_GROUP_CAPACITY_MAX
+    ) {
+      return errorResponse(
+        400,
+        `group_capacity must be between 1 and ${LIMITS.BOOKING_GROUP_CAPACITY_MAX}.`
+      );
     }
 
     const ownerIds = asArray(
@@ -553,8 +564,11 @@ async function handleBookings(req, _context) {
 
     let id = eventTypeId;
     if (!id) {
-      if (ownerIds.length >= MAX_EVENT_TYPES) {
-        return errorResponse(400, `You can create at most ${MAX_EVENT_TYPES} event types.`);
+      if (ownerIds.length >= LIMITS.BOOKING_EVENT_TYPES_MAX) {
+        return errorResponse(
+          400,
+          `You can create at most ${LIMITS.BOOKING_EVENT_TYPES_MAX} event types.`
+        );
       }
       id = generateId();
       ownerIds.push(id);
@@ -576,6 +590,8 @@ async function handleBookings(req, _context) {
       description,
       event_type: eventKind,
       duration_minutes: durationMinutes,
+      day_start_time: isValidTime(dayStartTime) ? dayStartTime : "08:00",
+      day_end_time: isValidTime(dayEndTime) ? dayEndTime : "20:00",
       group_capacity: eventKind === "one_on_one" ? 1 : groupCapacity,
       timezone,
       enabled,
@@ -719,8 +735,11 @@ async function handleBookings(req, _context) {
 
     const defaultTimezone = String(body.timezone || eventType.timezone || "UTC").trim() || "UTC";
     const windows = asArray(body.windows);
-    if (windows.length > MAX_AVAIL_WINDOWS) {
-      return errorResponse(400, `You can set at most ${MAX_AVAIL_WINDOWS} availability windows.`);
+    if (windows.length > LIMITS.BOOKING_AVAIL_WINDOWS_MAX) {
+      return errorResponse(
+        400,
+        `You can set at most ${LIMITS.BOOKING_AVAIL_WINDOWS_MAX} availability windows.`
+      );
     }
 
     const normalized = [];
