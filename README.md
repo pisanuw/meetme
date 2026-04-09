@@ -4,6 +4,8 @@ A serverless web application for finding the perfect meeting time across your wh
 Built with Netlify Functions (Node.js ES modules) and Netlify Blobs for storage — no
 traditional server or database required.
 
+[![Netlify Status](https://api.netlify.com/api/v1/badges/ea21e245-ad0e-4e32-a1b0-1fd0360abe5b/deploy-status)](https://app.netlify.com/projects/meetme-2/deploys)
+
 ## Features
 
 - **Passwordless authentication** – users sign in via email magic link or Google OAuth
