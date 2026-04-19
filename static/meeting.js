@@ -852,6 +852,22 @@ function repaintAll() {
 
 function attachGridEvents(grid) {
   let lastTouchTime = 0;
+  const TOUCH_DRAG_START_DISTANCE = 12;
+  const touchState = {
+    active: false,
+    startX: 0,
+    startY: 0,
+    startCell: null,
+    isScrolling: false,
+  };
+
+  function resetTouchState() {
+    touchState.active = false;
+    touchState.startX = 0;
+    touchState.startY = 0;
+    touchState.startCell = null;
+    touchState.isScrolling = false;
+  }
 
   function startDrag(cell) {
     if (currentView !== "mine") return;
@@ -895,24 +911,58 @@ function attachGridEvents(grid) {
 
   grid.addEventListener("touchstart", (e) => {
     lastTouchTime = Date.now();
-    e.preventDefault();
+    if (e.touches.length !== 1) {
+      resetTouchState();
+      return;
+    }
     const touch = e.touches[0];
     const cell = document.elementFromPoint(touch.clientX, touch.clientY)?.closest?.(".ag-cell");
-    if (cell) startDrag(cell);
+    touchState.active = Boolean(cell);
+    touchState.startX = touch.clientX;
+    touchState.startY = touch.clientY;
+    touchState.startCell = cell || null;
+    touchState.isScrolling = false;
   });
 
   grid.addEventListener(
     "touchmove",
     (e) => {
-      if (!isDragging) return;
+      if (!touchState.active || touchState.isScrolling || e.touches.length !== 1) return;
       const touch = e.touches[0];
-      const cell = document.elementFromPoint(touch.clientX, touch.clientY)?.closest?.(".ag-cell");
-      if (cell) applyDrag(cell);
+      const deltaX = touch.clientX - touchState.startX;
+      const deltaY = touch.clientY - touchState.startY;
+      const movedFarEnough = Math.abs(deltaX) > TOUCH_DRAG_START_DISTANCE || Math.abs(deltaY) > TOUCH_DRAG_START_DISTANCE;
+      if (!isDragging) {
+        if (!movedFarEnough) return;
+        if (Math.abs(deltaY) > Math.abs(deltaX)) {
+          touchState.isScrolling = true;
+          return;
+        }
+        startDrag(touchState.startCell);
+      }
+      if (isDragging) {
+        e.preventDefault();
+        const cell = document.elementFromPoint(touch.clientX, touch.clientY)?.closest?.(".ag-cell");
+        if (cell) applyDrag(cell);
+      }
     },
-    { passive: true }
+    { passive: false }
   );
 
-  grid.addEventListener("touchend", endDrag);
+  grid.addEventListener("touchend", () => {
+    try {
+      if (touchState.active && !touchState.isScrolling && !isDragging && touchState.startCell) {
+        startDrag(touchState.startCell);
+      }
+    } finally {
+      endDrag();
+      resetTouchState();
+    }
+  });
+  grid.addEventListener("touchcancel", () => {
+    endDrag();
+    resetTouchState();
+  });
 }
 
 function scheduleSave() {
