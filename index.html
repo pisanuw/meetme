@@ -3,15 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Log In – MeetMe</title>
+    <title>MeetMe – Create a Meeting</title>
     <link rel="stylesheet" href="/static/style.css" />
   </head>
   <body>
     <nav class="navbar">
       <div class="nav-inner">
-        <a href="/dashboard.html" class="nav-brand">
-          <span class="brand-icon">&#x27F3;</span> MeetMe
-        </a>
+        <a href="/" class="nav-brand"> <span class="brand-icon">&#x27F3;</span> MeetMe </a>
+        <div class="nav-links" id="nav-anon">
+          <a href="/login.html" class="nav-link">Sign in</a>
+        </div>
         <div class="nav-links" id="nav-auth" hidden>
           <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
           <span class="nav-user" id="nav-username"></span>
@@ -23,38 +24,187 @@
     <div id="flash-container" class="flash-container"></div>
 
     <main class="main-content">
-      <div class="auth-wrapper">
-        <div class="auth-card">
-          <div class="auth-header">
-            <div class="auth-logo">&#x27F3;</div>
-            <h1>Welcome to MeetMe</h1>
-            <p>Sign in to MeetMe without a password</p>
-          </div>
+      <div class="form-page">
+        <div class="form-card" id="create-card">
+          <h1>Create a meeting</h1>
+          <p class="text-muted">
+            No sign-up required. You'll get a link to share with participants and a separate admin
+            link you can use to edit or finalize the meeting later.
+            <strong>Save both — the admin link will not be shown again.</strong>
+          </p>
 
-          <form id="magic-link-form" class="auth-form">
+          <form id="create-form">
             <div class="form-group">
-              <label for="email">Email address</label>
+              <label for="title">Meeting title <span class="required">*</span></label>
               <input
-                type="email"
-                id="email"
-                name="email"
+                type="text"
+                id="title"
+                name="title"
                 class="form-control"
-                placeholder="you@example.com"
+                placeholder="e.g. Q3 Planning, Team Lunch..."
                 required
                 autofocus
               />
             </div>
-            <button type="submit" class="btn btn-primary btn-full">Email me a sign-in link</button>
+
+            <div class="form-group">
+              <label for="description">Description (optional)</label>
+              <textarea
+                id="description"
+                name="description"
+                class="form-control"
+                rows="2"
+                placeholder="Any context for participants..."
+              ></textarea>
+            </div>
+
+            <div class="form-group">
+              <label for="creator_name">Your name (optional)</label>
+              <input
+                type="text"
+                id="creator_name"
+                name="creator_name"
+                class="form-control"
+                placeholder="Shown as the organizer"
+              />
+            </div>
+
+            <div class="form-group">
+              <label>Meeting type <span class="required">*</span></label>
+              <div class="type-toggle">
+                <label class="type-option" id="tab-dates">
+                  <input type="radio" name="meeting_type" value="specific_dates" />
+                  &#x1F4C5; Specific dates
+                </label>
+                <label class="type-option active" id="tab-days">
+                  <input type="radio" name="meeting_type" value="days_of_week" checked />
+                  &#x1F5D3; Days of week
+                </label>
+              </div>
+            </div>
+
+            <div id="panel-specific-dates" class="form-group" hidden>
+              <label>Select dates</label>
+              <div class="date-picker-wrapper">
+                <input
+                  type="text"
+                  id="date-input"
+                  class="form-control"
+                  placeholder="Click to add dates..."
+                  readonly
+                />
+                <div class="mini-calendar" id="mini-calendar"></div>
+              </div>
+              <div id="selected-dates-chips" class="chips-row"></div>
+            </div>
+
+            <div id="panel-days-of-week" class="form-group" hidden>
+              <label>Select days</label>
+              <div class="day-checkboxes" id="day-checkboxes"></div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="start_time">Earliest time</label>
+                <select id="start_time" name="start_time" class="form-control"></select>
+              </div>
+              <div class="form-group">
+                <label for="end_time">Latest time</label>
+                <select id="end_time" name="end_time" class="form-control"></select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="timezone">Meeting time zone</label>
+              <select id="timezone" name="timezone" class="form-control">
+                <option value="">&#x2014; Detect automatically &#x2014;</option>
+                <optgroup label="Americas">
+                  <option value="America/New_York">Eastern Time (New York)</option>
+                  <option value="America/Chicago">Central Time (Chicago)</option>
+                  <option value="America/Denver">Mountain Time (Denver)</option>
+                  <option value="America/Los_Angeles">Pacific Time (Los Angeles)</option>
+                  <option value="America/Anchorage">Alaska (Anchorage)</option>
+                  <option value="Pacific/Honolulu">Hawaii (Honolulu)</option>
+                  <option value="America/Toronto">Eastern Time (Toronto)</option>
+                  <option value="America/Vancouver">Pacific Time (Vancouver)</option>
+                </optgroup>
+                <optgroup label="Europe">
+                  <option value="Europe/London">London (GMT/BST)</option>
+                  <option value="Europe/Paris">Paris / Madrid / Berlin (CET)</option>
+                  <option value="Europe/Istanbul">Istanbul</option>
+                </optgroup>
+                <optgroup label="Asia">
+                  <option value="Asia/Kolkata">India (IST)</option>
+                  <option value="Asia/Singapore">Singapore / Kuala Lumpur</option>
+                  <option value="Asia/Shanghai">China (CST)</option>
+                  <option value="Asia/Tokyo">Japan (JST)</option>
+                </optgroup>
+                <optgroup label="Pacific / Oceania">
+                  <option value="Australia/Sydney">Sydney (AEST/AEDT)</option>
+                  <option value="Pacific/Auckland">New Zealand (NZST)</option>
+                </optgroup>
+                <optgroup label="Other">
+                  <option value="UTC">UTC</option>
+                </optgroup>
+              </select>
+              <small class="form-hint">Participants see times in their own zone.</small>
+            </div>
+
+            <div class="form-actions">
+              <a href="/login.html" class="btn btn-ghost">Sign in instead</a>
+              <button type="submit" class="btn btn-primary" id="create-submit">
+                Create meeting &rarr;
+              </button>
+            </div>
           </form>
+        </div>
 
-          <div class="auth-divider"><span>or</span></div>
-
-          <a href="/api/auth/google/start" class="btn btn-ghost btn-full">Continue with Google</a>
-
-          <p class="auth-footer">
-            New here?
-            <a href="/register.html">Set your name and get a sign-in link</a>
+        <div class="form-card" id="success-card" hidden>
+          <h1>Meeting created &#x2713;</h1>
+          <p class="text-muted">
+            Share the <strong>participation link</strong> with people you want to invite. Keep the
+            <strong>admin link</strong> private — it lets you edit, finalize, or delete the meeting.
+            <strong>The admin link is shown only on this page.</strong>
           </p>
+
+          <div class="form-group">
+            <label for="participation-url">Participation link (share this)</label>
+            <div class="meeting-share-row">
+              <input
+                type="text"
+                id="participation-url"
+                class="form-control meeting-share-input"
+                readonly
+              />
+              <button
+                type="button"
+                class="btn btn-sm btn-ghost"
+                data-copy-target="participation-url"
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="admin-url">Admin link (save this for yourself)</label>
+            <div class="meeting-share-row">
+              <input type="text" id="admin-url" class="form-control meeting-share-input" readonly />
+              <button type="button" class="btn btn-sm btn-ghost" data-copy-target="admin-url">
+                Copy
+              </button>
+            </div>
+            <small class="form-hint">
+              Anyone with the admin link can edit this meeting. We never store or email it.
+            </small>
+          </div>
+
+          <div class="form-actions">
+            <a href="/" class="btn btn-ghost">Create another</a>
+            <a href="#" id="open-admin-link" class="btn btn-primary">
+              Open meeting (as admin) &rarr;
+            </a>
+          </div>
         </div>
       </div>
     </main>

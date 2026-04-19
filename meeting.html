@@ -12,6 +12,9 @@
         <a href="/dashboard.html" class="nav-brand">
           <span class="brand-icon">&#x27F3;</span> MeetMe
         </a>
+        <div class="nav-links" id="nav-anon" hidden>
+          <a href="/login.html" class="nav-link">Sign in</a>
+        </div>
         <div class="nav-links" id="nav-auth" hidden>
           <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
           <span class="nav-user" id="nav-username"></span>
@@ -24,6 +27,24 @@
 
     <main class="main-content">
       <div class="meeting-page" id="meeting-page" hidden>
+        <div
+          id="claim-banner"
+          class="flash flash-info"
+          role="status"
+          hidden
+          style="
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            justify-content: space-between;
+            margin-bottom: 16px;
+          "
+        >
+          <span id="claim-banner-text"></span>
+          <button type="button" id="claim-banner-btn" class="btn btn-sm btn-primary">
+            Add to my account
+          </button>
+        </div>
         <!-- HEADER -->
         <div class="meeting-header">
           <div>
@@ -34,14 +55,16 @@
               <span class="badge badge-blue" id="meeting-type-badge"></span>
               <span class="text-muted" id="meeting-time-range"></span>
               <span class="text-muted" id="meeting-respond-count"></span>
-              <span class="badge badge-green" id="finalized-badge" hidden
-                >&#x2713; Finalized</span
-              >
+              <span class="badge badge-green" id="finalized-badge" hidden>&#x2713; Finalized</span>
             </div>
             <div id="tz-bar" class="tz-bar meeting-tz-bar" hidden>
               <span>&#x1F5FA; Time zone:</span>
               <span id="tz-label" class="meeting-tz-label"></span>
-              <button id="tz-toggle-btn" class="btn btn-xs btn-ghost meeting-tz-toggle" hidden></button>
+              <button
+                id="tz-toggle-btn"
+                class="btn btn-xs btn-ghost meeting-tz-toggle"
+                hidden
+              ></button>
             </div>
           </div>
 
@@ -49,23 +72,14 @@
             <div class="finalized-time" id="finalized-time"></div>
             <div class="finalized-note" id="finalized-note"></div>
             <div class="meeting-inline-actions">
-              <button class="btn btn-ghost" id="btn-unfinalize" hidden>
-                Edit finalization
-              </button>
+              <button class="btn btn-ghost" id="btn-unfinalize" hidden>Edit finalization</button>
             </div>
           </div>
 
           <div id="share-controls" class="meeting-share-controls" hidden>
-            <div class="meeting-share-label">
-              Private meeting URL
-            </div>
+            <div class="meeting-share-label">Private meeting URL</div>
             <div class="meeting-share-row">
-              <input
-                id="share-url"
-                class="form-control meeting-share-input"
-                type="text"
-                readonly
-              />
+              <input id="share-url" class="form-control meeting-share-input" type="text" readonly />
               <button id="copy-share-url-btn" class="btn btn-sm btn-ghost" type="button">
                 Copy URL
               </button>
@@ -130,9 +144,7 @@
           <div id="slot-detail-heading" class="slot-detail-heading"></div>
           <div id="slot-detail-body" class="slot-detail-body">
             <div>
-              <div class="slot-detail-label slot-detail-label-available">
-                &#x2713; Available
-              </div>
+              <div class="slot-detail-label slot-detail-label-available">&#x2713; Available</div>
               <ul id="slot-detail-available" class="slot-detail-list"></ul>
             </div>
             <div>
@@ -190,6 +202,54 @@
         </div>
       </div>
     </main>
+
+    <div
+      id="name-modal"
+      class="name-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="name-modal-title"
+      hidden
+      style="
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+      "
+    >
+      <div
+        class="name-modal-card"
+        style="
+          background: #fff;
+          border-radius: 10px;
+          padding: 24px;
+          max-width: 420px;
+          width: calc(100% - 32px);
+          box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+        "
+      >
+        <h2 id="name-modal-title" style="margin-top: 0">What's your name?</h2>
+        <p class="text-muted">
+          This is how other participants will see your availability on this meeting.
+        </p>
+        <div class="form-group">
+          <input
+            type="text"
+            id="name-modal-input"
+            class="form-control"
+            placeholder="Your name"
+            maxlength="100"
+          />
+        </div>
+        <div class="form-actions" style="display: flex; gap: 8px; justify-content: flex-end">
+          <button type="button" id="name-modal-cancel" class="btn btn-ghost">Cancel</button>
+          <button type="button" id="name-modal-save" class="btn btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
 
     <footer class="footer" data-shared-footer></footer>
 
