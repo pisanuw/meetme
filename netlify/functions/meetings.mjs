@@ -37,6 +37,8 @@ import {
   saveMeetingRecord,
   deleteMeetingRecord,
   createToken,
+  verifyMeetingToken,
+  MEETING_TOKEN_KINDS,
   LIMITS,
 } from "./utils.mjs";
 import meetingActionsHandler from "./meeting-actions.mjs";
@@ -90,6 +92,137 @@ async function handleRequest(req, _context) {
   const meetings = getDb("meetings");
   const invites = getDb("invites");
   const availability = getDb("availability");
+
+  // POST /api/meetings/claim ────────────────────────────────────────────────
+  // Logged-in user is visiting a meeting via a shared participation/admin URL
+  // (anonymous flow) and wants to associate it with their account.
+  //
+  //   • participation token → add user as a participant on the meeting.
+  //   • admin token → transfer ownership to the user (creator_id = user.id),
+  //     also add them as a participant. Per product decision, the admin
+  //     token remains valid afterwards (convenient backup).
+  //
+  // In both cases, if the browser is also carrying an anonymous participant_id
+  // for this meeting, migrate that identity to the user's account so their
+  // previously-submitted availability is preserved under their name.
+  if (req.method === "POST" && pathParts.length === 1 && pathParts[0] === "claim") {
+    const body = await safeJson(req);
+    if (body === null) return errorResponse(400, "Request body must be valid JSON.");
+
+    const payload = verifyMeetingToken(body.t || "");
+    if (!payload) return errorResponse(401, "Invalid or expired meeting token.");
+
+    const meetingId = payload.meeting_id;
+    const meeting = await getMeetingRecord(meetings, meetingId);
+    if (!meeting) return errorResponse(404, `Meeting '${meetingId}' not found.`);
+
+    const isAdminClaim = payload.kind === MEETING_TOKEN_KINDS.ADMIN;
+    const anonParticipantId =
+      typeof body.participant_id === "string" ? body.participant_id.trim() : "";
+
+    let meetingInvites = asArray(
+      await invites.get(`meeting:${meetingId}`, { type: "json" }).catch(() => [])
+    );
+    let allAvail = asArray(
+      await availability.get(`meeting:${meetingId}`, { type: "json" }).catch(() => [])
+    );
+
+    const userEmail = (user.email || "").toLowerCase();
+    const alreadyInvite = meetingInvites.find(
+      (i) => i.user_id === user.id || (i.email || "").toLowerCase() === userEmail
+    );
+
+    // Migrate any anonymous participant record this browser owns into the
+    // user's invite / availability rows. Only allowed if the token matches
+    // the meeting the participant_id belongs to (already checked above) and
+    // the participant_id actually exists on this meeting.
+    if (anonParticipantId) {
+      const anonInvite = meetingInvites.find((i) => i.user_id === anonParticipantId);
+      if (anonInvite) {
+        meetingInvites = meetingInvites.filter((i) => i.user_id !== anonParticipantId);
+        allAvail = allAvail.map((a) =>
+          a.user_id === anonParticipantId ? { ...a, user_id: user.id } : a
+        );
+        if (alreadyInvite) {
+          // Merge name/responded flag back into the existing invite.
+          meetingInvites = meetingInvites.map((i) =>
+            i.user_id === user.id || (i.email || "").toLowerCase() === userEmail
+              ? {
+                  ...i,
+                  user_id: user.id,
+                  email: user.email,
+                  name: i.name || anonInvite.name,
+                  responded: i.responded || anonInvite.responded,
+                }
+              : i
+          );
+        } else {
+          meetingInvites = [
+            ...meetingInvites,
+            {
+              id: generateId(),
+              meeting_id: meetingId,
+              user_id: user.id,
+              email: user.email,
+              name: anonInvite.name || user.name,
+              responded: anonInvite.responded === true,
+              added_via_shared_link: true,
+              added_at: new Date().toISOString(),
+            },
+          ];
+        }
+      }
+    } else if (!alreadyInvite) {
+      meetingInvites = [
+        ...meetingInvites,
+        {
+          id: generateId(),
+          meeting_id: meetingId,
+          user_id: user.id,
+          email: user.email,
+          name: user.name,
+          responded: false,
+          added_via_shared_link: true,
+          added_at: new Date().toISOString(),
+        },
+      ];
+    } else if (!alreadyInvite.user_id) {
+      // Pending invite by email (no user_id yet) → link to user.
+      meetingInvites = meetingInvites.map((i) =>
+        i === alreadyInvite ? { ...i, user_id: user.id, name: i.name || user.name } : i
+      );
+    }
+
+    if (isAdminClaim) {
+      meeting.creator_id = user.id;
+      meeting.creator_name = user.name || meeting.creator_name;
+      meeting.anonymous = false;
+      meeting.last_activity_at = new Date().toISOString();
+      await saveMeetingRecord(meetings, meeting);
+    } else {
+      meeting.last_activity_at = new Date().toISOString();
+      await saveMeetingRecord(meetings, meeting);
+    }
+
+    await invites.setJSON(`meeting:${meetingId}`, meetingInvites);
+    await availability.setJSON(`meeting:${meetingId}`, allAvail);
+
+    log("info", FN, "meeting claimed", {
+      meetingId,
+      userId: user.id,
+      role: isAdminClaim ? "owner" : "participant",
+    });
+    await persistEvent("info", FN, "meeting claimed", {
+      meeting_id: meetingId,
+      user_email: user.email,
+      role: isAdminClaim ? "owner" : "participant",
+    });
+    return jsonResponse(200, {
+      success: true,
+      meeting_id: meetingId,
+      role: isAdminClaim ? "owner" : "participant",
+    });
+  }
 
   // GET /api/meetings - list dashboard data
   if (req.method === "GET" && pathParts.length === 0) {
@@ -245,7 +378,10 @@ async function handleRequest(req, _context) {
         ...new Set(rawEmails.map((e) => validateEmail(e)).filter((e) => e && e !== creatorEmail)),
       ];
       if (emails.length > LIMITS.MAX_INVITEES) {
-        return errorResponse(400, `You can invite at most ${LIMITS.MAX_INVITEES} people to one meeting.`);
+        return errorResponse(
+          400,
+          `You can invite at most ${LIMITS.MAX_INVITEES} people to one meeting.`
+        );
       }
       const users = getDb("users");
       for (const email of emails) {
@@ -286,7 +422,9 @@ async function handleRequest(req, _context) {
     const datesText = Array.isArray(meeting.dates_or_days) ? meeting.dates_or_days.join(", ") : "";
     const timeRange = `${meeting.start_time || "08:00"} – ${meeting.end_time || "20:00"}${meeting.timezone ? ` (${meeting.timezone})` : ""}`;
 
-    const inviteesOnly = meetingInvites.filter((inv) => (inv.email || "").toLowerCase() !== creatorEmail);
+    const inviteesOnly = meetingInvites.filter(
+      (inv) => (inv.email || "").toLowerCase() !== creatorEmail
+    );
     const invite_results = [];
     for (const inv of inviteesOnly) {
       const preferencesToken = createToken(

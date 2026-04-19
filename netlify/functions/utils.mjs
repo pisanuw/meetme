@@ -306,7 +306,9 @@ export function validateEmail(email) {
 }
 
 function normalizeEmail(value) {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 function emailPreferenceKey(email) {
@@ -363,7 +365,13 @@ export async function saveEmailPreferences(recipientEmail, updates = {}) {
     email: current.email,
     global_opt_out:
       typeof updates.global_opt_out === "boolean" ? updates.global_opt_out : current.global_opt_out,
-    blocked_organizers: [...new Set(asArray(blocked).map((item) => normalizeEmail(item)).filter(Boolean))],
+    blocked_organizers: [
+      ...new Set(
+        asArray(blocked)
+          .map((item) => normalizeEmail(item))
+          .filter(Boolean)
+      ),
+    ],
     updated_at: new Date().toISOString(),
   };
 
@@ -553,7 +561,9 @@ export function isAdmin(user) {
  * @returns {boolean}
  */
 export function isSuperAdminEmail(email) {
-  const normalized = String(email || "").trim().toLowerCase();
+  const normalized = String(email || "")
+    .trim()
+    .toLowerCase();
   if (!normalized) return false;
   const adminEmails = getEnv("ADMIN_EMAILS", "")
     .split(",")
@@ -771,11 +781,13 @@ export function buildMeetingRecordKey(createdAtIso, meetingId) {
  */
 export async function listMeetingIds(meetingsDb) {
   const listing = await meetingsDb.list().catch(() => ({ blobs: [] }));
-  return [...new Set(
-    asArray(listing?.blobs)
-      .map((b) => extractMeetingIdFromKey(b?.key))
-      .filter(Boolean)
-  )];
+  return [
+    ...new Set(
+      asArray(listing?.blobs)
+        .map((b) => extractMeetingIdFromKey(b?.key))
+        .filter(Boolean)
+    ),
+  ];
 }
 
 /**
@@ -855,6 +867,88 @@ export function generateId() {
 }
 
 /**
+ * Generate an opaque, hard-to-guess anonymous participant identity.
+ * Used for availability/invite records on anonymous meetings where we don't
+ * have a logged-in user.id. Stored in availability.user_id as "anon:<id>" so
+ * the existing dedup-by-user_id logic continues to work unchanged.
+ *
+ * @returns {string} e.g. "anon:k0u3k4abc123abc"
+ */
+export function generateAnonymousParticipantId() {
+  // Two random chunks + time component ≈ 80 bits of entropy; practically
+  // impossible to guess but still URL-safe base36.
+  return (
+    "anon:" +
+    Date.now().toString(36) +
+    Math.random().toString(36).slice(2, 10) +
+    Math.random().toString(36).slice(2, 10)
+  );
+}
+
+export const MEETING_TOKEN_KINDS = Object.freeze({
+  PARTICIPATION: "meeting_participation",
+  ADMIN: "meeting_admin",
+});
+
+/**
+ * Verify a meeting-scoped JWT (participation or admin token) and return its
+ * decoded payload, or null if invalid/expired or of the wrong kind.
+ *
+ * Unlike the session token, these tokens carry a `meeting_id` and `kind`
+ * claim and are embedded in shareable URLs, not cookies.
+ *
+ * @param {string} token
+ * @param {string} [expectedKind] One of MEETING_TOKEN_KINDS, or undefined to accept either.
+ * @returns {{ kind: string, meeting_id: string }|null}
+ */
+export function verifyMeetingToken(token, expectedKind) {
+  if (!token) return null;
+  const payload = verifyToken(token);
+  if (!payload || typeof payload !== "object") return null;
+  if (!payload.meeting_id || typeof payload.meeting_id !== "string") return null;
+  const kindValues = Object.values(MEETING_TOKEN_KINDS);
+  if (!kindValues.includes(payload.kind)) return null;
+  if (expectedKind && payload.kind !== expectedKind) return null;
+  return payload;
+}
+
+/**
+ * Decide whether an anonymous meeting is past the 30-day retention window
+ * and eligible for automatic deletion.
+ *
+ * Retention rules (per product decision):
+ *   • Non-anonymous meetings never auto-expire.
+ *   • For specific-dates meetings, keep the meeting alive while any listed
+ *     date is still within 30 days of "now".
+ *   • `last_activity_at` (updated on availability writes / finalize) extends
+ *     the window; new activity keeps the meeting alive.
+ *
+ * @param {object} meeting
+ * @param {Date}   [now]  Defaults to new Date()
+ * @returns {boolean}
+ */
+export function isAnonymousMeetingExpired(meeting, now = new Date()) {
+  if (!meeting || !meeting.anonymous) return false;
+  const cutoffMs = now.getTime() - 30 * 24 * 60 * 60 * 1000;
+
+  const lastActivityStr = meeting.last_activity_at || meeting.created_at;
+  const lastActivityMs = lastActivityStr ? Date.parse(lastActivityStr) : NaN;
+  if (Number.isFinite(lastActivityMs) && lastActivityMs > cutoffMs) return false;
+
+  if (meeting.meeting_type === "specific_dates" && Array.isArray(meeting.dates_or_days)) {
+    const maxDate = [...meeting.dates_or_days]
+      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d)))
+      .sort()
+      .pop();
+    if (maxDate) {
+      const dateMs = Date.parse(`${maxDate}T23:59:59Z`);
+      if (Number.isFinite(dateMs) && dateMs > cutoffMs) return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Safely coerce a value to an array.
  * Returns the value itself when it is already an array, otherwise returns [].
  * Use this whenever reading from Netlify Blobs: a malformed or missing record
@@ -898,7 +992,9 @@ export async function saveUserRecord(usersDb, userRecord) {
   if (!email) throw new Error("User record must include a valid email.");
 
   const existing = await usersDb.get(email, { type: "json" }).catch(() => null);
-  const previousSlug = String(existing?.booking_public_slug || "").trim().toLowerCase();
+  const previousSlug = String(existing?.booking_public_slug || "")
+    .trim()
+    .toLowerCase();
   const bookingPublicSlug = await resolveUniqueBookingPublicSlug(
     usersDb,
     userRecord?.booking_public_slug || existing?.booking_public_slug || email.split("@")[0],
@@ -933,12 +1029,16 @@ export async function deleteUserRecord(usersDb, email) {
   if (!normalizedEmail) return;
 
   const existing = await usersDb.get(normalizedEmail, { type: "json" }).catch(() => null);
-  const slug = String(existing?.booking_public_slug || "").trim().toLowerCase();
+  const slug = String(existing?.booking_public_slug || "")
+    .trim()
+    .toLowerCase();
 
   await usersDb.delete(normalizedEmail).catch(() => null);
 
   if (slug) {
-    const mapped = await usersDb.get(`booking_public_slug:${slug}`, { type: "json" }).catch(() => null);
+    const mapped = await usersDb
+      .get(`booking_public_slug:${slug}`, { type: "json" })
+      .catch(() => null);
     const mappedEmail = normalizeEmail(mapped?.email || mapped);
     if (!mappedEmail || mappedEmail === normalizedEmail) {
       await usersDb.delete(`booking_public_slug:${slug}`).catch(() => null);
@@ -950,11 +1050,19 @@ export async function findUserByBookingPublicSlug(usersDb, ownerSlug) {
   const slug = normalizeSlug(ownerSlug);
   if (!slug) return null;
 
-  const mapped = await usersDb.get(`booking_public_slug:${slug}`, { type: "json" }).catch(() => null);
+  const mapped = await usersDb
+    .get(`booking_public_slug:${slug}`, { type: "json" })
+    .catch(() => null);
   const mappedEmail = normalizeEmail(mapped?.email || mapped);
   if (mappedEmail) {
     const user = await usersDb.get(mappedEmail, { type: "json" }).catch(() => null);
-    if (user && String(user.booking_public_slug || "").trim().toLowerCase() === slug) return user;
+    if (
+      user &&
+      String(user.booking_public_slug || "")
+        .trim()
+        .toLowerCase() === slug
+    )
+      return user;
     await usersDb.delete(`booking_public_slug:${slug}`).catch(() => null);
   }
 

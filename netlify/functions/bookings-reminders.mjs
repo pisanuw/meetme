@@ -1,12 +1,64 @@
 /**
  * bookings-reminders.mjs
- * Scheduled reminder sender for upcoming bookings.
+ * Scheduled reminder sender for upcoming bookings. Also piggy-backs on the
+ * hourly cron to purge anonymous meetings whose 30-day retention window has
+ * elapsed (see isAnonymousMeetingExpired in utils.mjs).
  */
-import { errorResponse, getDb, getEnv, jsonResponse, log, persistEvent, secretsEqual } from "./utils.mjs";
+import {
+  deleteMeetingRecord,
+  errorResponse,
+  getDb,
+  getEnv,
+  getMeetingRecord,
+  isAnonymousMeetingExpired,
+  jsonResponse,
+  listMeetingIds,
+  log,
+  persistEvent,
+  secretsEqual,
+} from "./utils.mjs";
 import { sendUpcomingRemindersForHost } from "./bookings.mjs";
 
 const FN = "bookings-reminders";
 const DEFAULT_WINDOW_HOURS = 24;
+
+async function purgeExpiredAnonymousMeetings() {
+  const meetings = getDb("meetings");
+  const invites = getDb("invites");
+  const availability = getDb("availability");
+
+  const ids = await listMeetingIds(meetings);
+  let examined = 0;
+  let deleted = 0;
+  const now = new Date();
+
+  for (const id of ids) {
+    examined++;
+    const meeting = await getMeetingRecord(meetings, id);
+    if (!meeting) continue;
+    if (!isAnonymousMeetingExpired(meeting, now)) continue;
+
+    await deleteMeetingRecord(meetings, id);
+    await invites.delete(`meeting:${id}`).catch(() => null);
+    await availability.delete(`meeting:${id}`).catch(() => null);
+    deleted++;
+
+    log("info", FN, "purged expired anonymous meeting", {
+      meeting_id: id,
+      created_at: meeting.created_at,
+      last_activity_at: meeting.last_activity_at,
+    });
+  }
+
+  if (deleted > 0) {
+    await persistEvent("info", FN, "anonymous meetings purged", {
+      examined_count: examined,
+      deleted_count: deleted,
+    });
+  }
+
+  return { examined_count: examined, deleted_count: deleted };
+}
 
 function getProvidedSecret(req) {
   return (
@@ -66,11 +118,23 @@ export default async function handler(req, context) {
     trigger: isCronTrigger ? "cron" : "manual",
   });
 
+  // Piggy-back anonymous-meeting retention cleanup on the same hourly cron.
+  // Isolated in its own try/catch so a cleanup failure never breaks the
+  // reminders pipeline.
+  let purge = { examined_count: 0, deleted_count: 0 };
+  try {
+    purge = await purgeExpiredAnonymousMeetings();
+  } catch (err) {
+    log("error", FN, "anonymous meeting purge failed", { message: err.message });
+  }
+
   log("info", FN, "scheduled reminders complete", {
     host_count: hostIds.length,
     sent_count: totalSent,
     skipped_count: totalSkipped,
     failed_count: totalFailed,
+    anon_meetings_examined: purge.examined_count,
+    anon_meetings_deleted: purge.deleted_count,
   });
 
   return jsonResponse(200, {
@@ -79,8 +143,12 @@ export default async function handler(req, context) {
     sent_count: totalSent,
     skipped_count: totalSkipped,
     failed_count: totalFailed,
+    anon_meetings_examined: purge.examined_count,
+    anon_meetings_deleted: purge.deleted_count,
   });
 }
+
+export { purgeExpiredAnonymousMeetings };
 
 export const config = {
   schedule: "0 * * * *",

@@ -13,6 +13,166 @@ let viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 let showMeetingTz = false;
 let busySlots = new Set();
 
+// When non-null, this page is rendering an anonymous meeting via the public
+// API. All network calls for reads + writes flow through the /api/public
+// endpoints and carry the URL token + participant_id instead of a session.
+let anonContext = null;
+
+/* ── Anonymous-mode local storage helpers ────────────────────────────────
+ * Participant id + name are per-meeting, scoped to this browser. We keep
+ * them in localStorage so the same person editing later lands back on their
+ * existing record instead of creating a duplicate. Localstorage may be
+ * unavailable (private mode) — degrade silently. */
+
+function lsKey(kind, meetingId) {
+  return `meetme:${kind}:${meetingId}`;
+}
+function lsGet(kind, meetingId) {
+  try {
+    return localStorage.getItem(lsKey(kind, meetingId)) || "";
+  } catch {
+    return "";
+  }
+}
+function lsSet(kind, meetingId, value) {
+  try {
+    localStorage.setItem(lsKey(kind, meetingId), value);
+  } catch {
+    /* ignore */
+  }
+}
+function lsDel(kind, meetingId) {
+  try {
+    localStorage.removeItem(lsKey(kind, meetingId));
+  } catch {
+    /* ignore */
+  }
+}
+
+/* ── Meeting API dispatchers (anonymous vs authenticated) ──────────────── */
+
+async function mtgGetMeeting(meetingId) {
+  if (anonContext) {
+    return apiFetch(
+      `/api/public/meetings/${encodeURIComponent(meetingId)}?t=${encodeURIComponent(anonContext.token)}`
+    );
+  }
+  return apiFetch(`/api/meetings/${encodeURIComponent(meetingId)}`);
+}
+
+async function mtgSaveAvailability(slots, { keepalive = false } = {}) {
+  if (anonContext) {
+    // Anonymous submission requires a display name. If the participant has
+    // not supplied one yet, ask before hitting the API.
+    if (!anonContext.name) {
+      const name = await promptForName();
+      if (!name) return { ok: false, data: { error: "A display name is required." } };
+      anonContext.name = name;
+      lsSet("participant-name", anonContext.meetingId, name);
+    }
+    const body = JSON.stringify({
+      t: anonContext.token,
+      participant_id: anonContext.participantId || undefined,
+      name: anonContext.name,
+      slots,
+    });
+    const res = await apiFetch(
+      `/api/public/meetings/${encodeURIComponent(anonContext.meetingId)}/availability`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        keepalive,
+        body,
+      }
+    );
+    if (res.ok && res.data && res.data.participant_id) {
+      anonContext.participantId = res.data.participant_id;
+      lsSet("participant-id", anonContext.meetingId, res.data.participant_id);
+    }
+    return res;
+  }
+  return apiFetch(`/api/meetings/${encodeURIComponent(M.id)}/availability`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    keepalive,
+    body: JSON.stringify({ slots }),
+  });
+}
+
+async function mtgFinalize(payload) {
+  if (anonContext) {
+    return apiFetch(`/api/public/meetings/${encodeURIComponent(anonContext.meetingId)}/finalize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ t: anonContext.token, ...payload }),
+    });
+  }
+  return apiFetch(`/api/meetings/${encodeURIComponent(M.id)}/finalize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+async function mtgUnfinalize() {
+  if (anonContext) {
+    return apiFetch(
+      `/api/public/meetings/${encodeURIComponent(anonContext.meetingId)}/unfinalize`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ t: anonContext.token }),
+      }
+    );
+  }
+  return apiFetch(`/api/meetings/${encodeURIComponent(M.id)}/unfinalize`, { method: "POST" });
+}
+
+/* ── Name-entry modal ───────────────────────────────────────────────────── */
+
+function promptForName() {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("name-modal");
+    const input = document.getElementById("name-modal-input");
+    const saveBtn = document.getElementById("name-modal-save");
+    const cancelBtn = document.getElementById("name-modal-cancel");
+    if (!modal || !input || !saveBtn || !cancelBtn) {
+      resolve("");
+      return;
+    }
+    input.value = anonContext?.name || "";
+    modal.hidden = false;
+    input.focus();
+
+    const cleanup = () => {
+      modal.hidden = true;
+      saveBtn.removeEventListener("click", onSave);
+      cancelBtn.removeEventListener("click", onCancel);
+      input.removeEventListener("keydown", onKey);
+    };
+    const onSave = () => {
+      const v = input.value.trim().slice(0, 100);
+      if (!v) {
+        input.focus();
+        return;
+      }
+      cleanup();
+      resolve(v);
+    };
+    const onCancel = () => {
+      cleanup();
+      resolve("");
+    };
+    const onKey = (e) => {
+      if (e.key === "Enter") onSave();
+      if (e.key === "Escape") onCancel();
+    };
+    saveBtn.addEventListener("click", onSave);
+    cancelBtn.addEventListener("click", onCancel);
+    input.addEventListener("keydown", onKey);
+  });
+}
+
 function flushPendingAvailabilitySave() {
   if (!saveTimer) return;
   clearTimeout(saveTimer);
@@ -30,24 +190,41 @@ function bindAvailabilityPersistenceLifecycle() {
 }
 
 (async () => {
-  const user = await requireAuth();
-  if (!user) return;
-  currentUser = user;
-
-  bindAvailabilityPersistenceLifecycle();
-
   const params = new URLSearchParams(window.location.search);
   const meetingId = params.get("id");
+  const meetingToken = params.get("t");
+
   if (!meetingId) {
     window.location.href = "/dashboard.html";
     return;
   }
 
-  const { ok, status, data } = await apiFetch(`/api/meetings/${meetingId}`);
+  if (meetingToken) {
+    // Anonymous mode: don't force login. Still call checkAuth() so the nav
+    // reflects the user's state and we can show the claim banner.
+    anonContext = {
+      token: meetingToken,
+      meetingId,
+      participantId: lsGet("participant-id", meetingId),
+      name: lsGet("participant-name", meetingId),
+    };
+    const maybeUser = await checkAuth();
+    currentUser = maybeUser || null;
+    const anonNav = document.getElementById("nav-anon");
+    if (!maybeUser && anonNav) anonNav.hidden = false;
+  } else {
+    const user = await requireAuth();
+    if (!user) return;
+    currentUser = user;
+  }
+
+  bindAvailabilityPersistenceLifecycle();
+
+  const { ok, status, data } = await mtgGetMeeting(meetingId);
   if (!ok) {
     showFlash(data.error || `Could not load meeting (HTTP ${status}).`, "danger");
     setTimeout(() => {
-      window.location.href = "/dashboard.html";
+      window.location.href = anonContext ? "/" : "/dashboard.html";
     }, 2000);
     return;
   }
@@ -66,10 +243,30 @@ function bindAvailabilityPersistenceLifecycle() {
     meetingType: data.meeting.meeting_type,
     participants: data.participants || [],
     meeting: data.meeting,
+    isAnonymous: data.is_anonymous === true,
   };
 
-  M.myParticipantIndex = -1;
-  if (currentUser && Array.isArray(M.participants)) {
+  // In anonymous mode, rehydrate "my slots" from the participant_id we have
+  // in localStorage by looking up the matching participant in the server
+  // response (the public endpoint does not know which browser is "us").
+  if (anonContext && anonContext.participantId) {
+    const me = M.participants.find((p) => p.participant_id === anonContext.participantId);
+    if (me) {
+      M.mySlots = new Set(me.slots);
+      M.myParticipantIndex = M.participants.indexOf(me);
+      if (!anonContext.name && me.name) {
+        anonContext.name = me.name;
+        lsSet("participant-name", anonContext.meetingId, me.name);
+      }
+    } else {
+      // Stale participant_id (meeting reset or deleted record); clear it.
+      anonContext.participantId = "";
+      lsDel("participant-id", anonContext.meetingId);
+    }
+  }
+
+  if (typeof M.myParticipantIndex !== "number") M.myParticipantIndex = -1;
+  if (!anonContext && currentUser && Array.isArray(M.participants)) {
     let idx = currentUser.email
       ? M.participants.findIndex(
           (p) => (p.email || "").toLowerCase() === currentUser.email.toLowerCase()
@@ -84,8 +281,56 @@ function bindAvailabilityPersistenceLifecycle() {
 
   meetingTz = data.meeting.timezone || "UTC";
 
-  const { ok: pOk, data: pData } = await apiFetch("/api/auth/profile");
-  if (pOk && pData.timezone) viewerTz = pData.timezone;
+  // Only the authenticated flow has a /api/auth/profile endpoint available.
+  if (!anonContext) {
+    const { ok: pOk, data: pData } = await apiFetch("/api/auth/profile");
+    if (pOk && pData.timezone) viewerTz = pData.timezone;
+    if (pOk && pData.calendar_connected && M.meetingType === "specific_dates") {
+      document.getElementById("gcal-area").hidden = false;
+    }
+  }
+
+  // Show the "claim this meeting" banner to logged-in users who arrived via
+  // a ?t= URL. The banner offers "Add to my account" / "Claim as owner"
+  // depending on token kind — the server makes the final call.
+  if (anonContext && currentUser) {
+    const claimBanner = document.getElementById("claim-banner");
+    const claimBtn = document.getElementById("claim-banner-btn");
+    const claimText = document.getElementById("claim-banner-text");
+    if (claimBanner && claimBtn && claimText) {
+      const isAdminLink = M.isCreator === true;
+      claimText.textContent = isAdminLink
+        ? "You're signed in. Claim ownership of this meeting to manage it from your dashboard."
+        : "You're signed in. Add this meeting to your account to see it on your dashboard.";
+      claimBtn.textContent = isAdminLink ? "Claim ownership" : "Add to my account";
+      claimBanner.hidden = false;
+
+      claimBtn.addEventListener("click", async () => {
+        claimBtn.disabled = true;
+        const { ok: cOk, data: cData } = await apiFetch("/api/meetings/claim", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            t: anonContext.token,
+            participant_id: anonContext.participantId || undefined,
+          }),
+        });
+        if (cOk && cData.success) {
+          // Drop the ?t= param and the local anonymous identity so the page
+          // re-loads in authenticated mode going forward.
+          lsDel("participant-id", anonContext.meetingId);
+          lsDel("participant-name", anonContext.meetingId);
+          showFlash("Meeting added to your account.", "success");
+          setTimeout(() => {
+            window.location.href = `/meeting.html?id=${encodeURIComponent(anonContext.meetingId)}`;
+          }, 900);
+        } else {
+          claimBtn.disabled = false;
+          showFlash(cData.error || "Could not claim meeting.", "danger");
+        }
+      });
+    }
+  }
 
   if (meetingTz && M.meetingType === "specific_dates") {
     const bar = document.getElementById("tz-bar");
@@ -95,10 +340,6 @@ function bindAvailabilityPersistenceLifecycle() {
     lbl.textContent = viewerTz;
     btn.textContent = meetingTz !== viewerTz ? `Switch to meeting TZ (${meetingTz})` : "";
     btn.hidden = meetingTz === viewerTz;
-  }
-
-  if (pOk && pData.calendar_connected && M.meetingType === "specific_dates") {
-    document.getElementById("gcal-area").hidden = false;
   }
 
   document.getElementById("meeting-page").hidden = false;
@@ -207,18 +448,24 @@ function bindAvailabilityPersistenceLifecycle() {
   if (M.isCreator) {
     const shareWrap = document.getElementById("share-controls");
     const shareInput = document.getElementById("share-url");
-    const meetingUrl = `${window.location.origin}/meeting.html?id=${encodeURIComponent(M.id)}`;
-    shareInput.value = meetingUrl;
-    shareWrap.hidden = false;
+    if (anonContext) {
+      // Anonymous admins received both URLs at creation time and we don't
+      // re-mint tokens on detail fetch, so there's nothing useful to show
+      // here. Also hide remind-pending — anonymous meetings have no emails.
+      shareWrap.hidden = true;
+      document.getElementById("remind-pending-btn")?.setAttribute("hidden", "hidden");
+    } else {
+      const meetingUrl = `${window.location.origin}/meeting.html?id=${encodeURIComponent(M.id)}`;
+      shareInput.value = meetingUrl;
+      shareWrap.hidden = false;
+    }
   }
 
   const btnUnfinalize = document.getElementById("btn-unfinalize");
   if (btnUnfinalize) {
     btnUnfinalize.addEventListener("click", async () => {
       if (!confirm("Remove finalization and reopen for editing?")) return;
-      const { ok, data: d } = await apiFetch(`/api/meetings/${M.id}/unfinalize`, {
-        method: "POST",
-      });
+      const { ok, data: d } = await mtgUnfinalize();
       if (ok && d.success) window.location.reload();
       else showFlash(d.error || "Failed to unfinalize. Please try again.", "danger");
     });
@@ -262,7 +509,9 @@ function createParticipantRow(p, i) {
   slots.className = "participant-slots";
   const badge = document.createElement("span");
   badge.className = p.responded ? "badge badge-green" : "badge badge-gray";
-  badge.textContent = p.responded ? `${p.slot_count} slot${p.slot_count !== 1 ? "s" : ""}` : "No response";
+  badge.textContent = p.responded
+    ? `${p.slot_count} slot${p.slot_count !== 1 ? "s" : ""}`
+    : "No response";
   slots.appendChild(badge);
 
   row.append(avatar, info, slots);
@@ -676,12 +925,7 @@ function scheduleSave() {
 
 async function saveAvailability({ keepalive = false } = {}) {
   const slots = Array.from(M.mySlots);
-  const { ok, data } = await apiFetch(`/api/meetings/${M.id}/availability`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    keepalive,
-    body: JSON.stringify({ slots }),
-  });
+  const { ok, data } = await mtgSaveAvailability(slots, { keepalive });
   if (ok && data.success) {
     M.slotCounts = data.slot_counts;
     if (M.myParticipantIndex >= 0) {
@@ -778,24 +1022,24 @@ async function confirmFinalize() {
   if (!pendingFinalize) return;
   const duration = document.getElementById("finalize-duration").value;
   const note = document.getElementById("finalize-note").value;
-  const { ok, data } = await apiFetch(`/api/meetings/${M.id}/finalize`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      date_or_day: pendingFinalize.date,
-      time_slot: pendingFinalize.time,
-      duration_minutes: parseInt(duration, 10),
-      note,
-    }),
+  const { ok, data } = await mtgFinalize({
+    date_or_day: pendingFinalize.date,
+    time_slot: pendingFinalize.time,
+    duration_minutes: parseInt(duration, 10),
+    note,
   });
   if (ok && data.success) {
-    const sent = Number(data.sent_count || 0);
-    const failed = Number(data.failed_count || 0);
-    const msg =
-      failed > 0
-        ? `Meeting finalized. Sent ${sent} email${sent === 1 ? "" : "s"} (${failed} failed).`
-        : `Meeting finalized. Sent ${sent} email${sent === 1 ? "" : "s"}.`;
-    showFlash(msg, failed > 0 ? "warning" : "success");
+    if (anonContext) {
+      showFlash("Meeting finalized.", "success");
+    } else {
+      const sent = Number(data.sent_count || 0);
+      const failed = Number(data.failed_count || 0);
+      const msg =
+        failed > 0
+          ? `Meeting finalized. Sent ${sent} email${sent === 1 ? "" : "s"} (${failed} failed).`
+          : `Meeting finalized. Sent ${sent} email${sent === 1 ? "" : "s"}.`;
+      showFlash(msg, failed > 0 ? "warning" : "success");
+    }
     setTimeout(() => {
       window.location.reload();
     }, 1400);

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Log In – MeetMe</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-inner">
+        <a href="/dashboard.html" class="nav-brand">
+          <span class="brand-icon">&#x27F3;</span> MeetMe
+        </a>
+        <div class="nav-links" id="nav-auth" hidden>
+          <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
+          <span class="nav-user" id="nav-username"></span>
+          <a href="#" class="nav-link" id="logout-link">Log out</a>
+        </div>
+      </div>
+    </nav>
+
+    <div id="flash-container" class="flash-container"></div>
+
+    <main class="main-content">
+      <div class="auth-wrapper">
+        <div class="auth-card">
+          <div class="auth-header">
+            <div class="auth-logo">&#x27F3;</div>
+            <h1>Welcome to MeetMe</h1>
+            <p>Sign in to MeetMe without a password</p>
+          </div>
+
+          <form id="magic-link-form" class="auth-form">
+            <div class="form-group">
+              <label for="email">Email address</label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                class="form-control"
+                placeholder="you@example.com"
+                required
+                autofocus
+              />
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">Email me a sign-in link</button>
+          </form>
+
+          <div class="auth-divider"><span>or</span></div>
+
+          <a href="/api/auth/google/start" class="btn btn-ghost btn-full">Continue with Google</a>
+
+          <p class="auth-footer">
+            New here?
+            <a href="/register.html">Set your name and get a sign-in link</a>
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer" data-shared-footer></footer>
+
+    <script src="/static/layout.js"></script>
+    <script src="/static/common.js"></script>
+    <script src="/static/login.js" defer></script>
+  </body>
+</html>

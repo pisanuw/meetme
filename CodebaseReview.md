@@ -5,6 +5,34 @@ Last reviewed: 2026-04-02
 This document is an engineering handoff snapshot of the current repository state.
 It focuses on architecture, behavior, quality signals, and concrete risks.
 
+## Recent changes: anonymous meetings
+
+Added in the `anonymous-meetings` branch (April 2026):
+
+- New landing page (`/` → `index.html`, `static/index.js`) is the anonymous
+  create-meeting form. The old login page moved to `/login.html` +
+  `static/login.js`.
+- New Netlify Function `netlify/functions/public-meetings.mjs` serves
+  `/api/public/meetings/*` — create, read, submit availability, finalize,
+  unfinalize, delete — all gated on a JWT URL token (kind `meeting_admin`
+  or `meeting_participation`) instead of a session cookie.
+- Anonymous participant identity is `user_id: "anon:<opaqueId>"` in the
+  existing invite + availability records. The server mints the ID on first
+  submit and returns it; clients persist it in localStorage so repeat edits
+  update the same record. Submissions with an unknown participant_id are
+  rejected to prevent spoofing.
+- New `POST /api/meetings/claim` (authenticated) attaches a shared anonymous
+  meeting to a logged-in user's account (participant role) or transfers
+  ownership (admin role). Anonymous availability + invite rows are migrated
+  to the claimer's `user.id`.
+- Anonymous meetings carry `anonymous: true` and a `last_activity_at`
+  timestamp; the hourly scheduled function
+  (`netlify/functions/bookings-reminders.mjs`) now also calls
+  `purgeExpiredAnonymousMeetings()` which deletes anonymous meetings whose
+  last activity (and last meeting date, for specific-date meetings) is more
+  than 30 days in the past.
+- Test coverage in `test/public-meetings.test.mjs` (23 tests).
+
 ## 1. Project Purpose and Current Scope
 
 MeetMe is now two products in one repository:
@@ -255,15 +283,15 @@ Tradeoff:
 The high-impact risks identified in the previous review (frontend parsing errors, API contract mismatches, and test coverage gaps) have been resolved. The primary remaining risk is related to frontend code maintainability.
 
 1.  **Large single-file frontend scripts (Medium, Maintainability)**
-    -   `static/meeting.js` (~800 lines), `static/admin.js` (~600 lines), and `static/booking-setup.js` (~250 lines) are large and handle multiple responsibilities.
-    -   This increases the cognitive load for new developers, raises the probability of merge conflicts, and elevates regression risk when making changes.
+    - `static/meeting.js` (~800 lines), `static/admin.js` (~600 lines), and `static/booking-setup.js` (~250 lines) are large and handle multiple responsibilities.
+    - This increases the cognitive load for new developers, raises the probability of merge conflicts, and elevates regression risk when making changes.
 
 ## 10. Recommended Immediate Work Plan
 
 With all critical pre-launch and high-priority items addressed, the focus should now shift to improving long-term maintainability.
 
 1.  **Refactor large frontend scripts**
-    -   Break down `static/meeting.js` and `static/admin.js` into smaller, more focused modules. For example, `meeting.js` could be split into modules for grid rendering, event handling, and API interactions. This will make the code easier to understand, test, and modify safely.
+    - Break down `static/meeting.js` and `static/admin.js` into smaller, more focused modules. For example, `meeting.js` could be split into modules for grid rendering, event handling, and API interactions. This will make the code easier to understand, test, and modify safely.
 
 ## 11. Developer Onboarding Notes
 

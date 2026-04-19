@@ -8,14 +8,16 @@ traditional server or database required.
 
 ## Features
 
+- **Anonymous meeting creation** – the landing page creates a meeting without sign-up; the organizer gets a participation URL and a separate admin URL to share or keep
 - **Passwordless authentication** – users sign in via email magic link or Google OAuth
 - **Two scheduling modes** – pick specific calendar dates, or generic days of the week
 - **Visual 15-minute availability grid** – click and drag to mark availability fast
 - **Group heatmap** – see at a glance when most people are free (white → dark green)
 - **Slot detail panel** – hover any heatmap cell to see exactly who is available
 - **Per-person breakdown** – all participants can inspect each other's slot counts
-- **Reminder emails** – creator can nudge non-responders with one click
+- **Reminder emails** – creator can nudge non-responders with one click (account meetings only)
 - **Finalization** – creator picks the time, sets duration, adds a note
+- **Claim an anonymous meeting** – logged-in users can add a shared meeting to their account, or transfer ownership via the admin link
 - **Google Calendar integration** – connect your calendar to see conflicts while filling in availability
 - **Bounce notifications** – creator is notified by email when an invitation can't be delivered
 - **Admin panel** – view site-wide stats, user list, meeting list, and audit log
@@ -121,19 +123,19 @@ meetme/
 Set these environment variables in Netlify (Site configuration → Environment variables)
 and in your local `.env` file for development:
 
-| Variable                | Default                | Purpose                                                                                    |
-| ----------------------- | ---------------------- | ------------------------------------------------------------------------------------------ |
-| `JWT_SECRET`            | _(required)_           | Secret used to sign session JWTs — use a long random string                                |
-| `TOKEN_ENCRYPTION_KEY`  | _(required)_           | Key for AES-256-GCM encryption of stored OAuth tokens — use a different long random string |
-| `APP_URL`               | inferred from request  | Public base URL, e.g. `https://your-site.netlify.app`                                      |
-| `RESEND_API_KEY`        | _(required for email)_ | API key from [resend.com](https://resend.com)                                              |
-| `AUTH_FROM_EMAIL`       | _(required for email)_ | Verified sender address, e.g. `MeetMe <noreply@yourdomain.com>`                            |
-| `RESEND_WEBHOOK_SECRET` | _(optional)_           | Shared secret for the Resend bounce/complaint webhook                                      |
-| `BOOKING_REMINDERS_RUN_SECRET` | _(recommended)_   | Shared secret required for manual calls to `/api/bookings/reminders/run`                    |
-| `ALLOW_BOOKING_REMINDER_RUN_NOW` | `false`          | Enables admin-triggered `/api/bookings/reminders/run-now` endpoint when set to `true`       |
-| `ADMIN_EMAILS`          | _(optional)_           | Comma-separated admin addresses, e.g. `alice@example.com,bob@example.com`                  |
-| `GOOGLE_CLIENT_ID`      | _(optional)_           | OAuth 2.0 client ID (required for Google sign-in and Calendar)                             |
-| `GOOGLE_CLIENT_SECRET`  | _(optional)_           | OAuth 2.0 client secret                                                                    |
+| Variable                         | Default                | Purpose                                                                                    |
+| -------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------ |
+| `JWT_SECRET`                     | _(required)_           | Secret used to sign session JWTs — use a long random string                                |
+| `TOKEN_ENCRYPTION_KEY`           | _(required)_           | Key for AES-256-GCM encryption of stored OAuth tokens — use a different long random string |
+| `APP_URL`                        | inferred from request  | Public base URL, e.g. `https://your-site.netlify.app`                                      |
+| `RESEND_API_KEY`                 | _(required for email)_ | API key from [resend.com](https://resend.com)                                              |
+| `AUTH_FROM_EMAIL`                | _(required for email)_ | Verified sender address, e.g. `MeetMe <noreply@yourdomain.com>`                            |
+| `RESEND_WEBHOOK_SECRET`          | _(optional)_           | Shared secret for the Resend bounce/complaint webhook                                      |
+| `BOOKING_REMINDERS_RUN_SECRET`   | _(recommended)_        | Shared secret required for manual calls to `/api/bookings/reminders/run`                   |
+| `ALLOW_BOOKING_REMINDER_RUN_NOW` | `false`                | Enables admin-triggered `/api/bookings/reminders/run-now` endpoint when set to `true`      |
+| `ADMIN_EMAILS`                   | _(optional)_           | Comma-separated admin addresses, e.g. `alice@example.com,bob@example.com`                  |
+| `GOOGLE_CLIENT_ID`               | _(optional)_           | OAuth 2.0 client ID (required for Google sign-in and Calendar)                             |
+| `GOOGLE_CLIENT_SECRET`           | _(optional)_           | OAuth 2.0 client secret                                                                    |
 
 Generate strong secrets with:
 
@@ -157,9 +159,10 @@ Use `.env.example` as the template for local development values.
 - Subscribe to: `email.bounced`, `email.complained`
 
 5. Configure booking reminder scheduler secret:
-  - Set `BOOKING_REMINDERS_RUN_SECRET` in Netlify.
-  - Hourly cron runs execute automatically.
-  - Manual runs must include header `x-booking-reminders-secret: <BOOKING_REMINDERS_RUN_SECRET>`.
+
+- Set `BOOKING_REMINDERS_RUN_SECRET` in Netlify.
+- Hourly cron runs execute automatically.
+- Manual runs must include header `x-booking-reminders-secret: <BOOKING_REMINDERS_RUN_SECRET>`.
 
 6. Deploy and test:
    - Request a magic link from `/`
@@ -171,10 +174,10 @@ The repository optionally ships an encrypted secrets file (`.env.enc`) managed w
 [SOPS](https://github.com/getsops/sops). This is distinct from Netlify's built-in
 environment variable storage:
 
-| Context | How secrets are supplied |
-|---------|--------------------------|
-| **Netlify deploy** | Set directly in Netlify UI → Site configuration → Environment variables. `.env.enc` is **not** used. |
-| **Local development** | Decrypt `.env.enc` into `.env`, _or_ copy `.env.example` and fill in values manually. |
+| Context                 | How secrets are supplied                                                                                   |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Netlify deploy**      | Set directly in Netlify UI → Site configuration → Environment variables. `.env.enc` is **not** used.       |
+| **Local development**   | Decrypt `.env.enc` into `.env`, _or_ copy `.env.example` and fill in values manually.                      |
 | **CI (GitHub Actions)** | The `decrypt-sops-env` composite action decrypts `.env.enc` using a GPG key stored as a repository secret. |
 
 #### Local decryption

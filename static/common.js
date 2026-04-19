@@ -54,8 +54,14 @@ function ensureNavDropdown(container, { menuId, listId, label, beforeNode }) {
   let menuList = document.getElementById(listId);
 
   // Guard against conflicting element types from page HTML
-  if (menu && menu.tagName !== "DETAILS") { menu.removeAttribute("id"); menu = null; }
-  if (menuList && menuList.tagName !== "DIV") { menuList.removeAttribute("id"); menuList = null; }
+  if (menu && menu.tagName !== "DETAILS") {
+    menu.removeAttribute("id");
+    menu = null;
+  }
+  if (menuList && menuList.tagName !== "DIV") {
+    menuList.removeAttribute("id");
+    menuList = null;
+  }
 
   if (!menu || !menuList) {
     if (menu) menu.remove();
@@ -177,7 +183,7 @@ function ensureNavMenus(logoutLink) {
     menuId: "nav-account-menu",
     listId: "nav-account-menu-list",
     label: "Account",
-    beforeNode: logoutLink && logoutLink.parentNode === navAuth ? logoutLink : null
+    beforeNode: logoutLink && logoutLink.parentNode === navAuth ? logoutLink : null,
   });
 
   if (logoutLink) {
@@ -340,7 +346,7 @@ async function checkAuth() {
       if (!stopLink.dataset.handlerBound) {
         stopLink.addEventListener("click", async (e) => {
           e.preventDefault();
-            accountMenu.open = false;
+          accountMenu.open = false;
           const { ok, data } = await apiFetch("/api/auth/impersonation/stop", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -375,7 +381,10 @@ async function requireAuth() {
   const user = await checkAuth();
   if (!user) {
     const next = getCurrentPathWithQuery();
-    const loginUrl = next && next !== "/" ? `/?next=${encodeURIComponent(next)}` : "/";
+    const loginUrl =
+      next && next !== "/" && next !== "/login.html"
+        ? `/login.html?next=${encodeURIComponent(next)}`
+        : "/login.html";
     window.location.href = loginUrl;
     return null;
   }
