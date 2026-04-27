@@ -47,6 +47,7 @@ import {
   getEmailPreferences,
   saveEmailPreferences,
   saveUserRecord,
+  deleteUserRecord,
   LIMITS,
 } from "./utils.mjs";
 import magicLinkHandler from "./magic-link.mjs";
@@ -273,6 +274,50 @@ async function handleAuth(req, context) {
   if (path === "logout") {
     log("info", FN, "user logged out");
     return jsonResponse(200, { success: true }, { "Set-Cookie": clearCookie("token") });
+  }
+
+  // ── POST /api/auth/account/delete ─────────────────────────────────────────
+  // Permanently deletes the authenticated user's account and all associated
+  // data. Required by Apple App Store guideline 5.1.1 (account deletion).
+  if (path === "account/delete") {
+    const tokenUser = getUserFromRequest(req);
+    if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
+
+    if (isRateLimitEnabled()) {
+      const ip = getClientIp(req);
+      const limit = await checkRateLimit({
+        bucket: "auth_account_delete",
+        key: ip,
+        limit: 5,
+        windowMs: 60 * 60 * 1000,
+      });
+      if (!limit.ok) {
+        return jsonResponse(429, {
+          error: "Too many requests. Please try again later.",
+          retry_after_seconds: limit.retryAfterSec,
+        });
+      }
+    }
+
+    const usersDb = getDb("users");
+    const user = await usersDb.get(tokenUser.email, { type: "json" }).catch(() => null);
+    if (!user) {
+      // Already deleted — still clear the cookie so the client is logged out.
+      return jsonResponse(200, { success: true }, { "Set-Cookie": clearCookie("token") });
+    }
+
+    await deleteUserRecord(usersDb, tokenUser.email);
+    await persistEvent("warn", FN, "user deleted own account", {
+      email: tokenUser.email,
+      name: user.name || "",
+    });
+    log("info", FN, "user deleted own account", { email: tokenUser.email });
+
+    return jsonResponse(
+      200,
+      { success: true, message: "Your account has been deleted." },
+      { "Set-Cookie": clearCookie("token") }
+    );
   }
 
   if (path === "feedback") {

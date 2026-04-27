@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy Policy – MeetMe</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <style>
+      .policy-page { max-width: 720px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+      .policy-page h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; }
+      .policy-page .updated { color: var(--text-muted, #6b7280); font-size: 0.875rem; margin-bottom: 2rem; }
+      .policy-page h2 { font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.5rem; }
+      .policy-page p, .policy-page ul { font-size: 0.9375rem; color: var(--text-muted, #374151); line-height: 1.7; margin: 0 0 0.5rem; }
+      .policy-page ul { padding-left: 1.25rem; }
+      .policy-page ul li { margin-bottom: 0.25rem; }
+    </style>
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-inner">
+        <a href="/" class="nav-brand"><span class="brand-icon">&#x27F3;</span> MeetMe</a>
+      </div>
+    </nav>
+
+    <main class="main-content">
+      <div class="policy-page">
+        <h1>Privacy Policy</h1>
+        <p class="updated">Last updated: April 2026</p>
+
+        <h2>Overview</h2>
+        <p>MeetMe helps groups find a common meeting time. We collect the minimum data necessary to provide this service and never sell your personal information.</p>
+
+        <h2>Information We Collect</h2>
+        <ul>
+          <li><strong>Email address</strong> — used to identify you and send magic-link sign-in emails and meeting invitations.</li>
+          <li><strong>Display name</strong> — shown to other meeting participants.</li>
+          <li><strong>Timezone</strong> — used to display availability in your local time.</li>
+          <li><strong>Availability slots</strong> — the times you mark as available within a meeting.</li>
+          <li><strong>Google Calendar (optional)</strong> — if you connect Google Calendar, we read free/busy data only; we never read event titles or descriptions.</li>
+        </ul>
+
+        <h2>How We Use Your Information</h2>
+        <ul>
+          <li>To authenticate you via magic link or Google OAuth.</li>
+          <li>To display your name and availability to other meeting participants.</li>
+          <li>To send meeting invitations and reminder emails on your behalf.</li>
+          <li>To show aggregated availability across all participants.</li>
+        </ul>
+
+        <h2>Data Storage</h2>
+        <p>Your data is stored securely on Netlify infrastructure. Google Calendar OAuth tokens are encrypted at rest using AES-256-GCM. Session tokens are signed JWTs stored in HttpOnly cookies and are never accessible to JavaScript.</p>
+
+        <h2>Data Sharing</h2>
+        <p>We do not sell or share your personal data with third parties, except:</p>
+        <ul>
+          <li><strong>Resend</strong> (email delivery service) — receives your email address to deliver messages you request.</li>
+          <li><strong>Google</strong> — if you connect Google Calendar, OAuth tokens are exchanged with Google's servers.</li>
+        </ul>
+
+        <h2>Data Retention</h2>
+        <ul>
+          <li>Active meeting data is retained as long as the meeting exists.</li>
+          <li>Anonymous meetings are automatically deleted after 30 days of inactivity.</li>
+          <li>You may delete your meetings or leave meetings you were invited to at any time.</li>
+          <li>You may delete your account at any time from the app's Profile screen.</li>
+        </ul>
+
+        <h2>Your Rights</h2>
+        <p>You may request access to, correction of, or deletion of your personal data at any time by contacting us at <a href="mailto:privacy@meetme.pisan.me">privacy@meetme.pisan.me</a>.</p>
+
+        <h2>Contact</h2>
+        <p>Questions about this policy? Email <a href="mailto:privacy@meetme.pisan.me">privacy@meetme.pisan.me</a>.</p>
+      </div>
+    </main>
+  </body>
+</html>

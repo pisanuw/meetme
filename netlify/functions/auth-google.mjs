@@ -65,6 +65,7 @@ export default async function handleGoogleAuthRoute(req, context) {
     }
 
     const redirectUri = getGoogleRedirectUri(req);
+    const isMobile = url.searchParams.get("mobile") === "1";
     const stateToken = createToken(
       {
         id: "oauth-state",
@@ -72,6 +73,7 @@ export default async function handleGoogleAuthRoute(req, context) {
         name: "oauth",
         purpose: "google_oauth_state",
         return_to: next || "/dashboard.html",
+        mobile: isMobile,
         jti: generateId(),
       },
       "10m"
@@ -212,6 +214,17 @@ export default async function handleGoogleAuthRoute(req, context) {
       name: user.name || user.email,
       is_new_user: !!isNew,
     });
+
+    // Mobile app uses ASWebAuthenticationSession — redirect back to the app scheme
+    // so the browser session closes. The token cookie is still set normally and
+    // will be available to subsequent fetch() calls via the shared iOS cookie store.
+    if (statePayload.mobile) {
+      const mobileDest = isNew || !user.profile_complete
+        ? "meetme://auth/google/setup"
+        : "meetme://auth/google/done";
+      return redirectResponse(mobileDest, { "Set-Cookie": setCookie("token", appToken) });
+    }
+
     const safeReturnTo = sanitizeNextPath(statePayload.return_to || "") || "/dashboard.html";
     const dest = isNew || !user.profile_complete ? "/profile.html?setup=1" : safeReturnTo;
     return redirectResponse(dest, { "Set-Cookie": setCookie("token", appToken) });
