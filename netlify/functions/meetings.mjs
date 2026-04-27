@@ -42,18 +42,12 @@ import {
   LIMITS,
 } from "./utils.mjs";
 import meetingActionsHandler from "./meeting-actions.mjs";
+import {
+  validateCreateMeetingBody,
+  validateInviteEmails,
+} from "./lib/meeting-validation.mjs";
 
 const FN = "meetings";
-const ALLOWED_MEETING_TYPES = new Set(["specific_dates", "days_of_week"]);
-const ALLOWED_DAY_NAMES = new Set([
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-]);
 
 // Top-level Netlify Function entry point. Wraps everything in a try/catch so
 // an unexpected exception always returns a clean JSON error instead of a
@@ -273,66 +267,28 @@ async function handleRequest(req, _context) {
   if (req.method === "POST" && pathParts.length === 0) {
     const body = await safeJson(req);
     if (body === null) return errorResponse(400, "Request body must be valid JSON.");
+
+    const validation = validateCreateMeetingBody(body);
+    if (validation.error) {
+      return errorResponse(validation.error.status, validation.error.message);
+    }
     const {
-      title,
-      description,
-      meeting_type,
-      dates_or_days,
+      normalizedTitle,
+      normalizedDescription,
+      normalizedMeetingType,
+      normalizedDatesOrDays,
+      normalizedTimezone,
       start_time,
       end_time,
-      invite_emails,
-      timezone,
-    } = body;
+    } = validation.data;
 
-    const normalizedTitle = String(title || "").trim();
-    const normalizedDescription = String(description || "").trim();
-    const normalizedMeetingType = String(meeting_type || "specific_dates").trim();
-    const normalizedDatesOrDays = [
-      ...new Set(
-        asArray(dates_or_days)
-          .map((v) => String(v || "").trim())
-          .filter(Boolean)
-      ),
-    ];
     const creatorEmail = (user.email || "").toLowerCase();
 
-    if (!normalizedTitle) return errorResponse(400, "Meeting title is required.");
-    if (normalizedTitle.length > LIMITS.TITLE_MAX) {
-      return errorResponse(400, `Meeting title must be ${LIMITS.TITLE_MAX} characters or fewer.`);
+    const inviteValidation = validateInviteEmails(body.invite_emails, creatorEmail);
+    if (inviteValidation.error) {
+      return errorResponse(inviteValidation.error.status, inviteValidation.error.message);
     }
-    if (normalizedDescription.length > LIMITS.DESCRIPTION_MAX) {
-      return errorResponse(
-        400,
-        `Description must be ${LIMITS.DESCRIPTION_MAX} characters or fewer.`
-      );
-    }
-    if (!ALLOWED_MEETING_TYPES.has(normalizedMeetingType)) {
-      return errorResponse(400, "meeting_type must be either 'specific_dates' or 'days_of_week'.");
-    }
-    if (normalizedDatesOrDays.length === 0)
-      return errorResponse(400, "Select at least one date or day.");
-    if (normalizedMeetingType === "specific_dates") {
-      const invalidDate = normalizedDatesOrDays.find((d) => !/^\d{4}-\d{2}-\d{2}$/.test(d));
-      if (invalidDate)
-        return errorResponse(400, `Invalid date value '${invalidDate}'. Expected YYYY-MM-DD.`);
-    } else {
-      const invalidDay = normalizedDatesOrDays.find((d) => !ALLOWED_DAY_NAMES.has(d));
-      if (invalidDay) return errorResponse(400, `Invalid day value '${invalidDay}'.`);
-    }
-
-    const timeRe = /^\d{2}:\d{2}$/;
-    if (start_time && !timeRe.test(start_time))
-      return errorResponse(400, "start_time must be in HH:MM format.");
-    if (end_time && !timeRe.test(end_time))
-      return errorResponse(400, "end_time must be in HH:MM format.");
-    if (start_time && end_time && start_time >= end_time)
-      return errorResponse(400, "end_time must be after start_time.");
-
-    const normalizedTimezone = String(timezone || "UTC").trim();
-    const validTimezones = new Set(Intl.supportedValuesOf("timeZone"));
-    if (normalizedTimezone !== "UTC" && !validTimezones.has(normalizedTimezone)) {
-      return errorResponse(400, "Invalid timezone value.");
-    }
+    const validatedEmails = inviteValidation.emails;
 
     log("info", FN, "creating meeting", { title: normalizedTitle, creator: user.email });
 
@@ -369,22 +325,9 @@ async function handleRequest(req, _context) {
       },
     ];
 
-    if (invite_emails) {
-      const rawInviteEmails = Array.isArray(invite_emails)
-        ? invite_emails.join(",")
-        : String(invite_emails);
-      const rawEmails = rawInviteEmails.split(/[\n,]+/);
-      const emails = [
-        ...new Set(rawEmails.map((e) => validateEmail(e)).filter((e) => e && e !== creatorEmail)),
-      ];
-      if (emails.length > LIMITS.MAX_INVITEES) {
-        return errorResponse(
-          400,
-          `You can invite at most ${LIMITS.MAX_INVITEES} people to one meeting.`
-        );
-      }
+    if (validatedEmails.length > 0) {
       const users = getDb("users");
-      for (const email of emails) {
+      for (const email of validatedEmails) {
         const existingUser = await users.get(email, { type: "json" }).catch(() => null);
         meetingInvites.push({
           id: generateId(),

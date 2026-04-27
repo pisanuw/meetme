@@ -30,6 +30,7 @@ import {
   saveMeetingRecord,
   LIMITS,
 } from "./utils.mjs";
+import { validateFinalizeBody } from "./lib/meeting-validation.mjs";
 
 const FN = "meeting-actions";
 
@@ -166,20 +167,11 @@ async function handleMeetingActions(req, _context) {
 
     const body = await safeJson(req);
     if (body === null) return errorResponse(400, "Request body must be valid JSON.");
-    if (!body.date_or_day || !body.time_slot) {
-      return errorResponse(400, "Both 'date_or_day' and 'time_slot' are required to finalize.");
+    const finalizeValidation = validateFinalizeBody(body);
+    if (finalizeValidation.error) {
+      return errorResponse(finalizeValidation.error.status, finalizeValidation.error.message);
     }
-    const durationMinutes = Number.parseInt(body.duration_minutes || 60, 10);
-    if (
-      !Number.isFinite(durationMinutes) ||
-      durationMinutes < LIMITS.DURATION_MIN ||
-      durationMinutes > LIMITS.DURATION_MAX
-    ) {
-      return errorResponse(
-        400,
-        `duration_minutes must be between ${LIMITS.DURATION_MIN} and ${LIMITS.DURATION_MAX}.`
-      );
-    }
+    const { durationMinutes } = finalizeValidation;
 
     meeting.finalized_date = body.date_or_day;
     meeting.finalized_slot = body.time_slot;

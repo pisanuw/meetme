@@ -1,21 +1,44 @@
-// Meeting data - loaded from API
-let M = null;
-let currentUser = null;
-let currentView = "heatmap";
-let currentPerson = 0;
-let isDragging = false;
-let dragAction = null;
-let saveTimer = null;
-let saveLifecycleBound = false;
-let pendingFinalize = null;
-let meetingTz = "UTC";
-let viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-let showMeetingTz = false;
-let busySlots = new Set();
+/**
+ * meeting.js — Meeting detail page controller
+ *
+ * External dependencies (from common.js): apiFetch, showFlash, requireAuth, checkAuth, escapeHtml
+ *
+ * ── Page state ─────────────────────────────────────────────────────────────
+ * All mutable page state is declared here so it is easy to identify what
+ * constitutes "page state" and avoid hidden coupling between functions.
+ */
 
-// When non-null, this page is rendering an anonymous meeting via the public
-// API. All network calls for reads + writes flow through the /api/public
-// endpoints and carry the URL token + participant_id instead of a session.
+/** Loaded meeting data and local availability set. */
+let M = null;
+/** Authenticated user (null if anonymous). */
+let currentUser = null;
+/** "heatmap" | "person" | "edit" */
+let currentView = "heatmap";
+/** Index of the person selected in by-person view. */
+let currentPerson = 0;
+/** Whether the user is currently drag-selecting cells. */
+let isDragging = false;
+/** "add" | "remove" — action applied while dragging. */
+let dragAction = null;
+/** Pending debounced-save timer handle. */
+let saveTimer = null;
+/** Guard against registering persistence listeners more than once. */
+let saveLifecycleBound = false;
+/** Finalize payload staged pending confirmation. */
+let pendingFinalize = null;
+/** IANA timezone string for the meeting. */
+let meetingTz = "UTC";
+/** IANA timezone string for the current viewer's local zone. */
+let viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+/** Whether to display times in the meeting timezone instead of viewer tz. */
+let showMeetingTz = false;
+/** Set of slot keys marked busy by Google Calendar. */
+let busySlots = new Set();
+/**
+ * When non-null, this page is rendering an anonymous meeting via the public
+ * API. All network calls flow through /api/public endpoints carrying the
+ * URL token + participant_id instead of a session cookie.
+ */
 let anonContext = null;
 
 /* ── Anonymous-mode local storage helpers ────────────────────────────────
