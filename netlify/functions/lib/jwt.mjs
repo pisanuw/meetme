@@ -56,6 +56,13 @@ export function verifyTokenVerbose(token) {
  * @returns {object|null} Decoded JWT payload (user object) or null
  */
 export function getUserFromRequest(req) {
+  // Check Authorization: Bearer <token> header first (mobile native flows where
+  // ASWebAuthenticationSession cookies are not shared with URLSession).
+  const authHeader = req.headers.get("authorization") || "";
+  if (authHeader.startsWith("Bearer ")) {
+    return verifyToken(authHeader.slice(7));
+  }
+  // Fall back to HttpOnly cookie (web and WKWebView flows).
   const cookie = req.headers.get("cookie") || "";
   const match = cookie.match(/(?:^|;\s*)token=([^;]+)/);
   if (!match) return null;

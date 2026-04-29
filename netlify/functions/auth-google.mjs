@@ -216,12 +216,13 @@ export default async function handleGoogleAuthRoute(req, context) {
     });
 
     // Mobile app uses ASWebAuthenticationSession — redirect back to the app scheme
-    // so the browser session closes. The token cookie is still set normally and
-    // will be available to subsequent fetch() calls via the shared iOS cookie store.
+    // so the browser session closes.
+    // NOTE: ASWebAuthenticationSession cookies do NOT reach URLSession (NSHTTPCookieStorage.shared).
+    // We embed the JWT token in the custom-scheme URL so the app can extract and store it
+    // in SecureStore, then send it as Authorization: Bearer on every API request.
     if (statePayload.mobile) {
-      const mobileDest = isNew || !user.profile_complete
-        ? "meetme://auth/google/setup"
-        : "meetme://auth/google/done";
+      const route = isNew || !user.profile_complete ? "setup" : "done";
+      const mobileDest = `meetme://auth/google/${route}?token=${encodeURIComponent(appToken)}`;
       return redirectResponse(mobileDest, { "Set-Cookie": setCookie("token", appToken) });
     }
 
