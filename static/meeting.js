@@ -165,7 +165,6 @@ function promptForName() {
     }
     input.value = anonContext?.name || "";
     modal.hidden = false;
-    input.focus();
 
     const cleanup = () => {
       modal.hidden = true;
@@ -176,7 +175,6 @@ function promptForName() {
     const onSave = () => {
       const v = input.value.trim().slice(0, 100);
       if (!v) {
-        input.focus();
         return;
       }
       cleanup();

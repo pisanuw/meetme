@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Support – MeetMe</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <style>
+      .support-page { max-width: 720px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+      .support-page h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; }
+      .support-page .subtitle { color: var(--text-muted, #6b7280); font-size: 0.9375rem; margin-bottom: 2.5rem; }
+      .support-page h2 { font-size: 1.1rem; font-weight: 600; margin: 2rem 0 0.75rem; color: var(--text, #111827); }
+      .support-page p, .support-page ul { font-size: 0.9375rem; color: var(--text-muted, #374151); line-height: 1.7; margin: 0 0 0.5rem; }
+      .support-page ul { padding-left: 1.25rem; }
+      .support-page ul li { margin-bottom: 0.4rem; }
+      .faq-item { border: 1px solid var(--border, #e5e7eb); border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 0.75rem; }
+      .faq-item .question { font-weight: 600; font-size: 0.9375rem; color: var(--text, #111827); margin-bottom: 0.5rem; }
+      .faq-item .answer { font-size: 0.9rem; color: var(--text-muted, #374151); line-height: 1.6; }
+      .contact-card { background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 12px; padding: 1.5rem; margin-top: 2rem; }
+      .contact-card h2 { margin-top: 0; color: #1d4ed8; }
+      .contact-card a { color: #2563eb; font-weight: 600; text-decoration: none; }
+      .contact-card a:hover { text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-inner">
+        <a href="/" class="nav-brand"><span class="brand-icon">&#x27F3;</span> MeetMe</a>
+      </div>
+    </nav>
+
+    <main class="main-content">
+      <div class="support-page">
+        <h1>Support</h1>
+        <p class="subtitle">Get help with MeetMe — the easiest way to find a time that works for everyone.</p>
+
+        <h2>Frequently Asked Questions</h2>
+
+        <div class="faq-item">
+          <div class="question">How do I create a meeting?</div>
+          <div class="answer">
+            Tap <strong>New Meeting</strong> in the app (or on the website), fill in a title and choose your
+            preferred days or specific dates, then tap <strong>Create Meeting</strong>. You'll receive a
+            shareable invite link and a private admin link.
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="question">What is the difference between the invite link and the admin link?</div>
+          <div class="answer">
+            The <strong>invite link</strong> is for your participants — share it with anyone you want to invite.
+            They can fill in their availability without creating an account.
+            The <strong>admin link</strong> is private and gives you the ability to edit, finalize, or delete
+            the meeting. Keep it safe — it is not stored in your account and will not be sent to you again.
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="question">Do participants need to create an account?</div>
+          <div class="answer">
+            No. Anyone with the invite link can fill in their availability using just their name — no
+            account or email address required.
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="question">How do I sign in?</div>
+          <div class="answer">
+            MeetMe uses <strong>magic links</strong> — enter your email address and we'll send you a
+            one-click sign-in link. No password required. You can also sign in with Google.
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="question">I lost my admin link. Can I recover it?</div>
+          <div class="answer">
+            If you created the meeting while signed in to your account, you can access it from your
+            Dashboard. If you created it anonymously (without an account), the admin link cannot be
+            recovered — please create a new meeting.
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="question">How do I finalize a meeting time?</div>
+          <div class="answer">
+            Open the meeting with your admin link, switch to <strong>Group View</strong>, and tap any
+            time slot in the heatmap. You'll be able to set a duration and add an optional note before
+            confirming. All participants will be able to see the finalized time.
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="question">Can I delete or edit a meeting?</div>
+          <div class="answer">
+            Yes. Open the meeting with your admin link (or from your Dashboard if you have an account)
+            and tap the trash icon to delete it. Editing the meeting title and dates is available from
+            the same screen.
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="question">What data does MeetMe collect?</div>
+          <div class="answer">
+            Please see our <a href="/privacy.html">Privacy Policy</a> for full details. In short, we
+            collect only what is needed to run the service: your email address (if you sign in), your
+            name, and the availability slots you choose to share.
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="question">How do I delete my account?</div>
+          <div class="answer">
+            Go to the <strong>Profile</strong> tab in the app (or visit your profile on the website),
+            scroll to <strong>Danger Zone</strong>, and tap <strong>Delete Account</strong>. This
+            permanently removes your account and all associated data.
+          </div>
+        </div>
+
+        <div class="contact-card">
+          <h2>Still need help?</h2>
+          <p>
+            Send us an email and we'll get back to you as soon as possible.
+          </p>
+          <p>
+            <a href="mailto:support@pisan.me">support@pisan.me</a>
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer" data-shared-footer></footer>
+    <script src="/static/layout.js"></script>
+  </body>
+</html>

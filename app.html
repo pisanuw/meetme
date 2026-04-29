@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MeetMe – Find the Perfect Meeting Time</title>
+    <meta name="description" content="MeetMe makes it effortless to find a time that works for everyone. No accounts required for participants. Free to use." />
+    <link rel="stylesheet" href="/static/style.css" />
+    <style>
+      .landing-hero {
+        text-align: center;
+        padding: 4rem 1.5rem 3rem;
+        max-width: 640px;
+        margin: 0 auto;
+      }
+      .hero-icon {
+        font-size: 3.5rem;
+        margin-bottom: 1rem;
+        display: block;
+      }
+      .landing-hero h1 {
+        font-size: 2.25rem;
+        font-weight: 800;
+        color: var(--text, #111827);
+        line-height: 1.2;
+        margin-bottom: 1rem;
+      }
+      .landing-hero h1 span { color: #2563eb; }
+      .landing-hero p {
+        font-size: 1.0625rem;
+        color: var(--text-muted, #6b7280);
+        line-height: 1.7;
+        margin-bottom: 2rem;
+      }
+      .hero-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+      .features-section {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 0 1.5rem 4rem;
+      }
+      .features-section h2 {
+        text-align: center;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text, #111827);
+        margin-bottom: 2rem;
+      }
+      .features-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1.25rem;
+      }
+      .feature-card {
+        background: white;
+        border: 1px solid var(--border, #e5e7eb);
+        border-radius: 14px;
+        padding: 1.5rem;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+      }
+      .feature-icon { font-size: 1.75rem; margin-bottom: 0.75rem; display: block; }
+      .feature-card h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text, #111827);
+        margin-bottom: 0.5rem;
+      }
+      .feature-card p {
+        font-size: 0.9rem;
+        color: var(--text-muted, #6b7280);
+        line-height: 1.6;
+        margin: 0;
+      }
+      .how-section {
+        background: #eff6ff;
+        border-top: 1px solid #bfdbfe;
+        border-bottom: 1px solid #bfdbfe;
+        padding: 3rem 1.5rem;
+        margin-bottom: 0;
+      }
+      .how-inner {
+        max-width: 680px;
+        margin: 0 auto;
+      }
+      .how-section h2 {
+        text-align: center;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text, #111827);
+        margin-bottom: 2rem;
+      }
+      .steps { display: flex; flex-direction: column; gap: 1.25rem; }
+      .step { display: flex; gap: 1rem; align-items: flex-start; }
+      .step-num {
+        flex-shrink: 0;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: #2563eb;
+        color: white;
+        font-weight: 700;
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .step-body h3 { font-size: 0.9375rem; font-weight: 600; color: var(--text, #111827); margin: 0 0 0.25rem; }
+      .step-body p { font-size: 0.875rem; color: var(--text-muted, #6b7280); margin: 0; line-height: 1.5; }
+      .cta-section {
+        text-align: center;
+        padding: 3.5rem 1.5rem 4rem;
+        max-width: 540px;
+        margin: 0 auto;
+      }
+      .cta-section h2 { font-size: 1.5rem; font-weight: 700; color: var(--text, #111827); margin-bottom: 0.75rem; }
+      .cta-section p { font-size: 0.9375rem; color: var(--text-muted, #6b7280); margin-bottom: 1.75rem; }
+      .cta-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-inner">
+        <a href="/" class="nav-brand"><span class="brand-icon">&#x27F3;</span> MeetMe</a>
+        <div class="nav-links">
+          <a href="/login.html" class="nav-link">Sign in</a>
+          <a href="/" class="btn btn-sm btn-outline-white">Get started free</a>
+        </div>
+      </div>
+    </nav>
+
+    <main>
+      <!-- Hero -->
+      <section class="landing-hero">
+        <span class="hero-icon">&#x27F3;</span>
+        <h1>Find a time that works for <span>everyone</span></h1>
+        <p>
+          MeetMe makes scheduling group meetings effortless. Share a link, collect availability,
+          and pick the best time — no accounts required for participants.
+        </p>
+        <div class="hero-actions">
+          <a href="/" class="btn btn-primary">Create a free meeting</a>
+          <a href="/login.html" class="btn btn-ghost">Sign in</a>
+        </div>
+      </section>
+
+      <!-- Features -->
+      <section class="features-section">
+        <h2>Everything you need, nothing you don't</h2>
+        <div class="features-grid">
+          <div class="feature-card">
+            <span class="feature-icon">&#x1F4E4;</span>
+            <h3>No sign-up for participants</h3>
+            <p>Invite anyone with a link. They fill in their availability using just their name — no account or email needed.</p>
+          </div>
+          <div class="feature-card">
+            <span class="feature-icon">&#x1F5D3;</span>
+            <h3>Specific dates or recurring days</h3>
+            <p>Choose exact dates for a one-off meeting, or pick days of the week for recurring scheduling.</p>
+          </div>
+          <div class="feature-card">
+            <span class="feature-icon">&#x1F525;</span>
+            <h3>Availability heatmap</h3>
+            <p>See at a glance which times work for the most people with a colour-coded group availability grid.</p>
+          </div>
+          <div class="feature-card">
+            <span class="feature-icon">&#x1F4CD;</span>
+            <h3>One-tap finalization</h3>
+            <p>Lock in the meeting time with a single tap. Add a duration and note for participants — done.</p>
+          </div>
+          <div class="feature-card">
+            <span class="feature-icon">&#x1F510;</span>
+            <h3>Passwordless sign-in</h3>
+            <p>Sign in with a magic link or Google — no passwords to remember or reset.</p>
+          </div>
+          <div class="feature-card">
+            <span class="feature-icon">&#x1F4F1;</span>
+            <h3>Works on any device</h3>
+            <p>Use MeetMe on the web from any browser, or download the iPhone app for a native experience.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- How it works -->
+      <section class="how-section">
+        <div class="how-inner">
+          <h2>How it works</h2>
+          <div class="steps">
+            <div class="step">
+              <div class="step-num">1</div>
+              <div class="step-body">
+                <h3>Create a meeting</h3>
+                <p>Give your meeting a title, choose the days or dates to consider, and set the time window.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num">2</div>
+              <div class="step-body">
+                <h3>Share the invite link</h3>
+                <p>Send the participation link to everyone you want to invite. They tap it, enter their name, and mark when they're available.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num">3</div>
+              <div class="step-body">
+                <h3>See who's free</h3>
+                <p>Watch the heatmap fill in as responses come in. The best times stand out instantly.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num">4</div>
+              <div class="step-body">
+                <h3>Finalize the time</h3>
+                <p>Tap your chosen slot, set a duration, add an optional note, and confirm. Everyone sees the final time.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA -->
+      <section class="cta-section">
+        <h2>Ready to stop the email chain?</h2>
+        <p>Create your first meeting in under a minute — free, forever.</p>
+        <div class="cta-actions">
+          <a href="/" class="btn btn-primary">Create a meeting</a>
+          <a href="/support.html" class="btn btn-ghost">Get support</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer" data-shared-footer></footer>
+    <script src="/static/layout.js"></script>
+  </body>
+</html>

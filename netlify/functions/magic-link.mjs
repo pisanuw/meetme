@@ -1,11 +1,10 @@
+import crypto from "node:crypto";
 import {
   getDb,
   createToken,
-  verifyTokenVerbose,
   jsonResponse,
   errorResponse,
   setCookie,
-  generateId,
   log,
   logRequest,
   safeJson,
@@ -20,6 +19,15 @@ import {
 import { sanitizeNextPath, redirectResponse, getClientIp, getOrCreateUser, linkPendingInvites } from "./auth-helpers.mjs";
 
 const FN = "magic-link";
+
+const TOKEN_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+const TOKEN_LENGTH = 16;
+const TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+function generateMagicToken() {
+  const bytes = crypto.randomBytes(TOKEN_LENGTH);
+  return Array.from(bytes, b => TOKEN_CHARS[b % TOKEN_CHARS.length]).join("");
+}
 
 async function sendMagicLinkEmail(email, link) {
   const result = await sendEmail({
@@ -61,49 +69,37 @@ export default async function handleMagicLink(req, context) {
       return redirectResponse("/?error=invalid-link");
     }
 
-    const { payload, error: tokenError } = verifyTokenVerbose(token);
-    if (!payload) {
-      const reason = tokenError === "TokenExpiredError" ? "link-expired" : "invalid-link";
-      log("warn", FN, "magic link token invalid", { reason: tokenError });
-      return redirectResponse(`/?error=${reason}`);
-    }
-
-    if (payload.purpose !== "magic_link" || !payload.jti || !payload.email) {
-      log("warn", FN, "magic link token has wrong shape", { purpose: payload.purpose });
-      return redirectResponse("/?error=invalid-link");
-    }
-
     const loginTokens = getDb("login_tokens");
-    const tokenRecord = await loginTokens.get(payload.jti, { type: "json" }).catch(() => null);
+    const tokenRecord = await loginTokens.get(token, { type: "json" }).catch(() => null);
 
     if (!tokenRecord) {
-      log("warn", FN, "magic link jti not found in store", { jti: payload.jti });
+      log("warn", FN, "magic link token not found in store");
       return redirectResponse("/?error=invalid-link");
     }
     if (tokenRecord.used) {
-      log("warn", FN, "magic link already used", { jti: payload.jti });
+      log("warn", FN, "magic link already used", { email: tokenRecord.email });
       return redirectResponse("/?error=link-already-used");
     }
-    if (tokenRecord.email !== payload.email) {
-      log("warn", FN, "magic link email mismatch", { jti: payload.jti });
-      return redirectResponse("/?error=invalid-link");
+    if (Date.now() > new Date(tokenRecord.expires_at).getTime()) {
+      log("warn", FN, "magic link expired", { email: tokenRecord.email });
+      return redirectResponse("/?error=link-expired");
     }
 
-    await loginTokens.setJSON(payload.jti, {
+    await loginTokens.setJSON(token, {
       ...tokenRecord,
       used: true,
       used_at: new Date().toISOString(),
     });
 
-    const { user, isNew } = await getOrCreateUser(payload.email, payload.name || "");
+    const { user, isNew } = await getOrCreateUser(tokenRecord.email, tokenRecord.name || "");
     if (!user) {
       log("error", FN, "getOrCreateUser returned null during magic link verify", {
-        email: payload.email,
+        email: tokenRecord.email,
       });
       return redirectResponse("/?error=invalid-link");
     }
 
-    await linkPendingInvites(payload.email, user);
+    await linkPendingInvites(tokenRecord.email, user);
 
     const appToken = createToken(user);
     log("info", FN, "magic link sign-in successful", { email: user.email, isNew });
@@ -113,7 +109,7 @@ export default async function handleMagicLink(req, context) {
       name: user.name || user.email,
       is_new_user: !!isNew,
     });
-    const returnTo = sanitizeNextPath(payload.next || "");
+    const returnTo = sanitizeNextPath(tokenRecord.next || "");
     const dest = isNew || !user.profile_complete ? "/profile.html?setup=1" : returnTo || "/dashboard.html";
     return redirectResponse(dest, { "Set-Cookie": setCookie("token", appToken) });
   }
@@ -166,18 +162,17 @@ export default async function handleMagicLink(req, context) {
 
     await getOrCreateUser(emailKey, name);
 
-    const jti = generateId();
+    const token = generateMagicToken();
     const loginTokens = getDb("login_tokens");
-    await loginTokens.setJSON(jti, {
+    await loginTokens.setJSON(token, {
       email: emailKey,
+      name,
+      next,
+      expires_at: new Date(Date.now() + TOKEN_TTL_MS).toISOString(),
       used: false,
       created_at: new Date().toISOString(),
     });
 
-    const token = createToken(
-      { id: "magic-link", email: emailKey, name, purpose: "magic_link", jti, next },
-      "15m"
-    );
     const link = `${getAppUrl(req)}/api/auth/magic-link/verify?token=${encodeURIComponent(token)}`;
 
     log("info", FN, "magic link generated", { email: emailKey });
