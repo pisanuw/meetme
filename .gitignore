@@ -1,0 +1,35 @@
+node_modules/
+
+# Secrets — never commit keys or decrypted env
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.asc
+id_rsa*
+.gnupg*/
+*.gpg
+*.enc
+
+# AI session logs — copilot-instructions.md mandates writing prompts verbatim
+# to AI-log.md; that file MUST never be committed (it can contain secrets/PII).
+AI-log.md
+
+# Netlify CLI runtime state — never commit
+.netlify/
+
+# Generated test artifacts
+playwright-report/
+test-results/
+test.txt
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Local planning / working artifacts (not part of the app)
+IMPLEMENTATION-PLAN.md
+.staging/

@@ -1,0 +1,13 @@
+{
+  "name": "meetme",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "netlify dev --internal-disable-edge-functions --no-open -p 8888",
+    "dev:offline": "netlify dev --internal-disable-edge-functions --offline --no-open -p 8888",
+    "dev:stop": "pkill -f \"[n]etlify dev\" || true"
+  }
+}
