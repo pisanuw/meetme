@@ -9,5 +9,8 @@
     "dev": "netlify dev --internal-disable-edge-functions --no-open -p 8888",
     "dev:offline": "netlify dev --internal-disable-edge-functions --offline --no-open -p 8888",
     "dev:stop": "pkill -f \"[n]etlify dev\" || true"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
   }
 }
