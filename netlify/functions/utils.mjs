@@ -7,7 +7,8 @@
 
 export * from "./lib/env.mjs";
 export * from "./lib/db.mjs";
-export * from "./lib/http.mjs";
 export * from "./lib/log.mjs";
+export * from "./lib/jwt.mjs";
+export * from "./lib/http.mjs";
 export * from "./lib/user-store.mjs";
 export * from "./lib/utils-core.mjs";
