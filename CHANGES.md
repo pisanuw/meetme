@@ -7,3 +7,4 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-06-02 [code] Stage 2: serverless runtime — lib/http + lib/log helpers, utils.mjs barrel, auth.mjs health endpoint, /api/* function routing, custom 404 page + fallback redirect.
 2026-06-03 [code] Stage 3: persistence — lib/db (Netlify Blobs JSON wrapper), lib/env (env validation), lib/utils-core (ids/time helpers), lib/user-store (user records keyed by normalized email).
 2026-06-03 [code] Stage 4: sessions — lib/jwt (sign/verify JWT, getUserFromRequest from cookie or Bearer), auth.mjs me/profile/logout endpoints, HttpOnly token cookie. JWT_SECRET fails closed.
+2026-06-04 [code] Stage 5: email — lib/email single sendEmail() choke-point over the Resend API, escapeHtml for user content, type tags, dev logging; suppression-aware preference helpers.
