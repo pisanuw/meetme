@@ -8,3 +8,4 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-06-03 [code] Stage 3: persistence — lib/db (Netlify Blobs JSON wrapper), lib/env (env validation), lib/utils-core (ids/time helpers), lib/user-store (user records keyed by normalized email).
 2026-06-03 [code] Stage 4: sessions — lib/jwt (sign/verify JWT, getUserFromRequest from cookie or Bearer), auth.mjs me/profile/logout endpoints, HttpOnly token cookie. JWT_SECRET fails closed.
 2026-06-04 [code] Stage 5: email — lib/email single sendEmail() choke-point over the Resend API, escapeHtml for user content, type tags, dev logging; suppression-aware preference helpers.
+2026-06-05 [code] Stage 6: passwordless login — magic-link.mjs request/verify (16-char single-use token, 15-min TTL), auth-helpers getOrCreateUser; auth.mjs delegates magic-link/* routes.

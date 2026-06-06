@@ -26,6 +26,7 @@ import {
   saveUserRecord,
   LIMITS,
 } from "./utils.mjs";
+import magicLinkHandler from "./magic-link.mjs";
 
 const FN = "auth";
 
@@ -41,6 +42,12 @@ export default async (req, context) => {
 async function handleAuth(req, context) {
   const path = context.params["0"] || "";
   logRequest(FN, req, { path });
+
+  // Delegate the magic-link sub-routes (request / verify) to their handler.
+  if (path.startsWith("magic-link/")) {
+    const res = await magicLinkHandler(req, context);
+    if (res) return res;
+  }
 
   // ── GET /api/auth/health ──────────────────────────────────────────────────
   // Returns which required environment variables are present. Never returns the
