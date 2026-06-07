@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Your Profile – MeetMe</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-inner">
+        <a href="/dashboard.html" class="nav-brand">
+          <span class="brand-icon">&#x27F3;</span> MeetMe
+        </a>
+        <div class="nav-links" id="nav-auth" hidden>
+          <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
+          <span class="nav-user" id="nav-username"></span>
+          <a href="/profile.html" class="nav-link" id="profile-link">Edit Profile</a>
+          <a href="#" class="nav-link" id="logout-link">Log out</a>
+        </div>
+      </div>
+    </nav>
+
+    <div id="flash-container" class="flash-container"></div>
+
+    <main class="main-content">
+      <div class="auth-wrapper profile-wrapper">
+        <div class="auth-card profile-card">
+          <div class="auth-header">
+            <div class="auth-logo">&#x1F464;</div>
+            <h1 id="page-title">Your Profile</h1>
+            <p id="page-subtitle">Keep your name and settings up to date.</p>
+          </div>
+
+          <!-- ── Name & Timezone form ───────────────────────────────────────── -->
+          <form id="profile-form" class="auth-form" autocomplete="off">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="first-name">First name <span class="required">*</span></label>
+                <input
+                  type="text"
+                  id="first-name"
+                  name="first_name"
+                  class="form-control"
+                  placeholder="e.g. Alex"
+                  required
+                  autofocus
+                />
+              </div>
+              <div class="form-group">
+                <label for="last-name">Last name</label>
+                <input
+                  type="text"
+                  id="last-name"
+                  name="last_name"
+                  class="form-control"
+                  placeholder="e.g. Smith"
+                />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="timezone">Your time zone</label>
+              <select id="timezone" name="timezone" class="form-control">
+                <option value="">— Detect automatically —</option>
+                <optgroup label="Americas">
+                  <option value="America/New_York">Eastern Time (New York)</option>
+                  <option value="America/Chicago">Central Time (Chicago)</option>
+                  <option value="America/Denver">Mountain Time (Denver)</option>
+                  <option value="America/Los_Angeles">Pacific Time (Los Angeles)</option>
+                  <option value="America/Anchorage">Alaska (Anchorage)</option>
+                  <option value="Pacific/Honolulu">Hawaii (Honolulu)</option>
+                  <option value="America/Toronto">Eastern Time (Toronto)</option>
+                  <option value="America/Vancouver">Pacific Time (Vancouver)</option>
+                  <option value="America/Mexico_City">Central Time (Mexico City)</option>
+                  <option value="America/Sao_Paulo">Brasília (São Paulo)</option>
+                  <option value="America/Argentina/Buenos_Aires">Argentina (Buenos Aires)</option>
+                  <option value="America/Bogota">Colombia (Bogotá)</option>
+                  <option value="America/Lima">Peru (Lima)</option>
+                </optgroup>
+                <optgroup label="Europe">
+                  <option value="Europe/London">London (GMT/BST)</option>
+                  <option value="Europe/Dublin">Dublin</option>
+                  <option value="Europe/Lisbon">Lisbon</option>
+                  <option value="Europe/Paris">Paris / Madrid / Berlin (CET)</option>
+                  <option value="Europe/Amsterdam">Amsterdam / Brussels</option>
+                  <option value="Europe/Rome">Rome</option>
+                  <option value="Europe/Helsinki">Helsinki / Tallinn (EET)</option>
+                  <option value="Europe/Athens">Athens</option>
+                  <option value="Europe/Kiev">Kyiv</option>
+                  <option value="Europe/Moscow">Moscow</option>
+                  <option value="Europe/Istanbul">Istanbul</option>
+                </optgroup>
+                <optgroup label="Africa">
+                  <option value="Africa/Cairo">Cairo (EET)</option>
+                  <option value="Africa/Johannesburg">Johannesburg (SAST)</option>
+                  <option value="Africa/Lagos">Lagos (WAT)</option>
+                  <option value="Africa/Nairobi">Nairobi (EAT)</option>
+                </optgroup>
+                <optgroup label="Asia">
+                  <option value="Asia/Dubai">Dubai (GST)</option>
+                  <option value="Asia/Karachi">Karachi (PKT)</option>
+                  <option value="Asia/Kolkata">India (IST)</option>
+                  <option value="Asia/Dhaka">Bangladesh (BST)</option>
+                  <option value="Asia/Bangkok">Bangkok / Jakarta (ICT)</option>
+                  <option value="Asia/Singapore">Singapore / Kuala Lumpur</option>
+                  <option value="Asia/Shanghai">China (CST)</option>
+                  <option value="Asia/Hong_Kong">Hong Kong</option>
+                  <option value="Asia/Taipei">Taipei</option>
+                  <option value="Asia/Tokyo">Japan (JST)</option>
+                  <option value="Asia/Seoul">South Korea (KST)</option>
+                  <option value="Asia/Jerusalem">Israel</option>
+                  <option value="Asia/Riyadh">Riyadh (AST)</option>
+                  <option value="Asia/Colombo">Sri Lanka</option>
+                </optgroup>
+                <optgroup label="Pacific / Oceania">
+                  <option value="Australia/Sydney">Sydney (AEST/AEDT)</option>
+                  <option value="Australia/Melbourne">Melbourne</option>
+                  <option value="Australia/Brisbane">Brisbane</option>
+                  <option value="Australia/Perth">Perth (AWST)</option>
+                  <option value="Pacific/Auckland">New Zealand (NZST)</option>
+                  <option value="Pacific/Fiji">Fiji</option>
+                </optgroup>
+                <optgroup label="Other">
+                  <option value="UTC">UTC</option>
+                </optgroup>
+              </select>
+              <p class="form-hint">Used to show meeting times in your local time zone.</p>
+            </div>
+
+            <div class="profile-actions-row">
+              <button type="submit" class="btn btn-primary profile-action" id="save-btn">
+                Save profile
+              </button>
+              <a
+                id="skip-btn"
+                href="/dashboard.html"
+                class="btn btn-ghost profile-action profile-action-link"
+                hidden
+                >Skip for now</a
+              >
+            </div>
+          </form>
+
+          <!-- ── Google Calendar section ─────────────────────────────────────── -->
+          <div class="profile-section">
+            <h2 class="profile-section-title">Google Calendar</h2>
+            <p class="profile-section-copy">
+              Connect your Google Calendar so MeetMe can automatically highlight slots when you’re
+              busy. You can always override the suggestions manually.
+            </p>
+            <div id="calendar-status"><!-- filled by JS --></div>
+          </div>
+
+          <!-- ── Email Preferences section ─────────────────────────────────── -->
+          <div class="profile-section">
+            <h2 class="profile-section-title">Email Preferences</h2>
+            <p class="profile-section-copy">Control which MeetMe emails you receive.</p>
+
+            <label class="profile-checkbox-label">
+              <input type="checkbox" id="pref-global-opt-out" class="profile-checkbox-input" />
+              <span class="profile-checkbox-copy"> Never send me any emails from MeetMe </span>
+            </label>
+
+            <p class="form-hint profile-form-hint-tight">
+              If enabled, this overrides all organizer-level settings below.
+            </p>
+
+            <div class="form-group profile-form-group-tight">
+              <label for="pref-blocked-organizers"
+                >Block meeting emails from specific organizers</label
+              >
+              <textarea
+                id="pref-blocked-organizers"
+                class="form-control"
+                rows="4"
+                placeholder="one.email@example.com&#10;another@example.com"
+              ></textarea>
+              <p class="form-hint">
+                One email per line. These organizers can no longer send you meeting invites,
+                reminders, or finalized notices.
+              </p>
+            </div>
+
+            <button type="button" class="btn btn-ghost" id="save-email-prefs-btn">
+              Save email preferences
+            </button>
+            <p id="email-prefs-meta" class="form-hint profile-form-hint-meta"></p>
+          </div>
+
+          <p class="auth-footer profile-back-link" id="back-link" hidden>
+            <a href="/dashboard.html">&#x2190; Back to Dashboard</a>
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer" data-shared-footer></footer>
+
+    <script src="/static/layout.js"></script>
+    <script src="/static/common.js"></script>
+    <script src="/static/profile.js" defer></script>
+  </body>
+</html>
