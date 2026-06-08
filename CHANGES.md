@@ -12,3 +12,4 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-06-06 [code] Stage 7: auth UI + client helpers — login/register/email-sent pages; common.js apiFetch/checkAuth/requireAuth/showFlash/escapeHtml and the account nav dropdown.
 2026-06-07 [code] Stage 8: profile — profile.html/js with name + timezone auto-detect, profile-complete setup hint and skip-for-now, backed by auth.mjs GET/POST profile.
 2026-06-08 [code] Stage 9: rate limiting — lib/rate-limit sliding-window counters via atomic compare-and-swap on Blobs (etag retry), fail-closed on store error, honors DISABLE_RATE_LIMIT.
+2026-06-08 [code] Stage 10: meetings model — meeting-validation + meeting-store; meetings.mjs POST create (with invite + pending:<email> index) and GET :id; create-meeting page (specific-dates/days-of-week).

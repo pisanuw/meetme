@@ -12,5 +12,6 @@ export * from "./lib/jwt.mjs";
 export * from "./lib/http.mjs";
 export * from "./lib/rate-limit.mjs";
 export * from "./lib/email.mjs";
+export * from "./lib/meeting-store.mjs";
 export * from "./lib/user-store.mjs";
 export * from "./lib/utils-core.mjs";
