@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Meeting – MeetMe</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-inner">
+        <a href="/dashboard.html" class="nav-brand">
+          <span class="brand-icon">&#x27F3;</span> MeetMe
+        </a>
+        <div class="nav-links" id="nav-anon" hidden>
+          <a href="/login.html" class="nav-link">Sign in</a>
+        </div>
+        <div class="nav-links" id="nav-auth" hidden>
+          <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
+          <span class="nav-user" id="nav-username"></span>
+          <a href="#" class="nav-link" id="logout-link">Log out</a>
+        </div>
+      </div>
+    </nav>
+
+    <div id="flash-container" class="flash-container"></div>
+
+    <main class="main-content">
+      <div class="meeting-page" id="meeting-page" hidden>
+        <div
+          id="claim-banner"
+          class="flash flash-info"
+          role="status"
+          hidden
+          style="
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+          "
+        >
+          <span id="claim-banner-text"></span>
+          <button type="button" id="claim-banner-btn" class="btn btn-sm btn-primary">
+            Add to my account
+          </button>
+        </div>
+        <!-- HEADER -->
+        <div class="meeting-header">
+          <div>
+            <div class="breadcrumb"><a href="/dashboard.html">Dashboard</a> &rsaquo; Meeting</div>
+            <h1 id="meeting-title"></h1>
+            <p class="text-muted" id="meeting-desc"></p>
+            <div class="meeting-meta-row">
+              <span class="badge badge-blue" id="meeting-type-badge"></span>
+              <span class="text-muted" id="meeting-time-range"></span>
+              <span class="text-muted" id="meeting-respond-count"></span>
+              <span class="badge badge-green" id="finalized-badge" hidden>&#x2713; Finalized</span>
+            </div>
+            <div id="tz-bar" class="tz-bar meeting-tz-bar" hidden>
+              <span>&#x1F5FA; Time zone:</span>
+              <span id="tz-label" class="meeting-tz-label"></span>
+              <button
+                id="tz-toggle-btn"
+                class="btn btn-xs btn-ghost meeting-tz-toggle"
+                hidden
+              ></button>
+            </div>
+          </div>
+
+          <div class="finalized-banner" id="finalized-banner" hidden>
+            <div class="finalized-time" id="finalized-time"></div>
+            <div class="finalized-note" id="finalized-note"></div>
+            <div class="meeting-inline-actions">
+              <button class="btn btn-ghost" id="btn-unfinalize" hidden>Edit finalization</button>
+            </div>
+          </div>
+
+          <div id="share-controls" class="meeting-share-controls" hidden>
+            <div class="meeting-share-label">Private meeting URL</div>
+            <div class="meeting-share-row">
+              <input id="share-url" class="form-control meeting-share-input" type="text" readonly />
+              <button id="copy-share-url-btn" class="btn btn-sm btn-ghost" type="button">
+                Copy URL
+              </button>
+            </div>
+            <button id="remind-pending-btn" class="btn btn-sm btn-ghost" type="button">
+              Send reminder to non-responders
+            </button>
+          </div>
+        </div>
+
+        <!-- TOOLBAR -->
+        <div class="grid-toolbar">
+          <div class="view-tabs" id="view-tabs"></div>
+          <div id="gcal-area" hidden>
+            <button class="btn btn-sm btn-ghost meeting-gcal-btn" id="gcal-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" class="meeting-gcal-icon">
+                <path
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  fill="#4285F4"
+                />
+                <path
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  fill="#34A853"
+                />
+                <path
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
+                  fill="#FBBC05"
+                />
+                <path
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                  fill="#EA4335"
+                />
+              </svg>
+              Load busy times
+            </button>
+          </div>
+          <div id="person-selector" hidden>
+            <select class="form-control" id="person-select"></select>
+          </div>
+          <div class="legend">
+            <span class="legend-label">Fewer</span>
+            <span class="legend-swatch legend-swatch-level-1"></span>
+            <span class="legend-swatch legend-swatch-level-2"></span>
+            <span class="legend-swatch legend-swatch-level-3"></span>
+            <span class="legend-swatch legend-swatch-level-4"></span>
+            <span class="legend-label">More</span>
+          </div>
+        </div>
+
+        <div id="edit-instructions" class="instructions" hidden>
+          Click or click-and-drag to select your available times. Changes save automatically.
+        </div>
+        <div id="heatmap-instructions" class="instructions"></div>
+
+        <!-- GRID -->
+        <div class="grid-scroll-wrapper">
+          <div class="av-grid" id="av-grid" data-editing="false"></div>
+        </div>
+
+        <!-- SLOT DETAIL PANEL -->
+        <div id="slot-detail" class="slot-detail-panel" hidden>
+          <div id="slot-detail-heading" class="slot-detail-heading"></div>
+          <div id="slot-detail-body" class="slot-detail-body">
+            <div>
+              <div class="slot-detail-label slot-detail-label-available">&#x2713; Available</div>
+              <ul id="slot-detail-available" class="slot-detail-list"></ul>
+            </div>
+            <div>
+              <div class="slot-detail-label slot-detail-label-unavailable">
+                &#x2717; Not available
+              </div>
+              <ul id="slot-detail-unavailable" class="slot-detail-list"></ul>
+            </div>
+          </div>
+          <div id="slot-detail-no-participants" class="slot-detail-empty" hidden>
+            Hover over a time slot to see availability details.
+          </div>
+        </div>
+
+        <!-- FINALIZE PANEL -->
+        <div class="finalize-panel" id="finalize-panel" hidden>
+          <h3>&#x1F4CC; Finalize meeting time</h3>
+          <p class="text-muted">
+            You've selected: <strong id="finalize-slot-label">&ndash;</strong>
+          </p>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Duration</label>
+              <select class="form-control" id="finalize-duration">
+                <option value="30">30 minutes</option>
+                <option value="60" selected>1 hour</option>
+                <option value="90">1.5 hours</option>
+                <option value="120">2 hours</option>
+                <option value="180">3 hours</option>
+                <option value="240">4 hours</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Note to participants</label>
+            <textarea
+              class="form-control"
+              id="finalize-note"
+              rows="3"
+              placeholder="Location, dial-in link, agenda..."
+            ></textarea>
+          </div>
+          <div class="meeting-inline-actions meeting-inline-actions-wide">
+            <button class="btn btn-primary" id="btn-confirm-finalize">
+              &#x2713; Confirm &amp; Finalize
+            </button>
+            <button class="btn btn-ghost" id="btn-cancel-finalize">Cancel</button>
+          </div>
+        </div>
+
+        <!-- PARTICIPANTS -->
+        <div class="participants-panel" id="participants-panel" hidden>
+          <h3>Participants <span class="text-muted" id="participant-count"></span></h3>
+          <div class="participants-list" id="participants-list"></div>
+        </div>
+      </div>
+    </main>
+
+    <div
+      id="name-modal"
+      class="name-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="name-modal-title"
+      hidden
+      style="
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+      "
+    >
+      <div
+        class="name-modal-card"
+        style="
+          background: #fff;
+          border-radius: 10px;
+          padding: 24px;
+          max-width: 420px;
+          width: calc(100% - 32px);
+          box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+        "
+      >
+        <h2 id="name-modal-title" style="margin-top: 0">What's your name?</h2>
+        <p class="text-muted">
+          This is how other participants will see your availability on this meeting.
+        </p>
+        <div class="form-group">
+          <input
+            type="text"
+            id="name-modal-input"
+            class="form-control"
+            placeholder="Your name"
+            maxlength="100"
+          />
+        </div>
+        <div class="form-actions">
+          <button type="button" id="name-modal-cancel" class="btn btn-ghost">Cancel</button>
+          <button type="button" id="name-modal-save" class="btn btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="footer" data-shared-footer></footer>
+
+    <script src="/static/layout.js"></script>
+    <script src="/static/common.js"></script>
+    <script src="/static/meeting.js" defer></script>
+  </body>
+</html>
