@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard – MeetMe</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-inner">
+        <a href="/dashboard.html" class="nav-brand">
+          <span class="brand-icon">&#x27F3;</span> MeetMe
+        </a>
+        <div class="nav-links" id="nav-auth" hidden>
+          <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
+          <span class="nav-user" id="nav-username"></span>
+          <a href="#" class="nav-link" id="logout-link">Log out</a>
+        </div>
+      </div>
+    </nav>
+
+    <div id="flash-container" class="flash-container"></div>
+
+    <main class="main-content">
+      <div class="page-header">
+        <div>
+          <h1>Dashboard</h1>
+          <p class="text-muted" id="greeting"></p>
+        </div>
+      </div>
+
+      <section class="section">
+        <div class="dashboard-section-head">
+          <h2 class="section-title">Meetings I Created</h2>
+        </div>
+        <div id="my-meetings"></div>
+      </section>
+
+      <section class="section">
+        <div class="dashboard-section-head">
+          <h2 class="section-title">Meetings I'm Invited To</h2>
+        </div>
+        <div id="invited-meetings"></div>
+      </section>
+
+      <section class="section">
+        <div class="dashboard-section-head">
+          <h2 class="section-title">Booking Links</h2>
+        </div>
+        <div id="dashboard-booking-links"></div>
+      </section>
+
+      <section class="section">
+        <div class="dashboard-section-head">
+          <h2 class="section-title">My Bookings</h2>
+        </div>
+        <div class="grid-toolbar bookings-toolbar" id="bookings-toolbar">
+          <div class="bookings-toolbar-actions">
+            <label
+              id="reminder-window-label"
+              for="reminder-window"
+              class="text-muted bookings-toolbar-label"
+              >Remind upcoming within</label
+            >
+            <select id="reminder-window" class="form-control bookings-toolbar-select">
+              <option value="2">2h</option>
+              <option value="6">6h</option>
+              <option value="24" selected>24h</option>
+              <option value="48">48h</option>
+              <option value="72">72h</option>
+            </select>
+            <button id="send-reminders-btn" class="btn btn-primary" type="button">
+              Send Reminders
+            </button>
+            <button id="run-scheduler-now-btn" class="btn btn-ghost" type="button" hidden>
+              Run Scheduler Now
+            </button>
+          </div>
+          <p id="bookings-toolbar-feedback" class="bookings-toolbar-feedback" hidden></p>
+          <ul
+            id="bookings-toolbar-reminder-list"
+            class="bookings-toolbar-reminder-list"
+            hidden
+          ></ul>
+        </div>
+        <div id="dashboard-my-bookings"></div>
+      </section>
+    </main>
+
+    <footer class="footer" data-shared-footer></footer>
+
+    <script src="/static/layout.js"></script>
+    <script src="/static/common.js"></script>
+    <script src="/static/dashboard.js" defer></script>
+  </body>
+</html>
