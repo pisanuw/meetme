@@ -15,3 +15,4 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-06-08 [code] Stage 10: meetings model — meeting-validation + meeting-store; meetings.mjs POST create (with invite + pending:<email> index) and GET :id; create-meeting page (specific-dates/days-of-week).
 2026-06-09 [code] Stage 11: dashboard — meetings.mjs GET /api/meetings returns created + invited; dashboard.html/js with My meetings / Invited sections; landing redirects signed-in users here.
 2026-06-10 [code] Stage 12: availability grid — meeting-actions.mjs POST :id/availability (validates slot range, marks responded); meeting.html/js edit mode with 15-min click-and-drag select.
+2026-06-11 [code] Stage 13: heatmap — meeting.js view mode with white-to-green coloring, legend, per-slot who's-free detail panel, by-person overlay, and timezone display toggle.
