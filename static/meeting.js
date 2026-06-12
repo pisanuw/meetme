@@ -24,12 +24,26 @@ let dragAction = null;
 let saveTimer = null;
 /** Guard against registering persistence listeners more than once. */
 let saveLifecycleBound = false;
+/** Finalize payload staged pending confirmation. */
+let pendingFinalize = null;
 /** IANA timezone string for the meeting. */
 let meetingTz = "UTC";
 /** IANA timezone string for the current viewer's local zone. */
 let viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 /** Whether to display times in the meeting timezone instead of viewer tz. */
 let showMeetingTz = false;
+
+async function mtgFinalize(payload) {
+  return apiFetch(`/api/meetings/${encodeURIComponent(M.id)}/finalize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+async function mtgUnfinalize() {
+  return apiFetch(`/api/meetings/${encodeURIComponent(M.id)}/unfinalize`, { method: "POST" });
+}
 
 function flushPendingAvailabilitySave() {
   if (!saveTimer) return;
@@ -79,6 +93,9 @@ function bindAvailabilityPersistenceLifecycle() {
     slotCounts: data.slot_counts,
     totalInvited: data.total_invited,
     isCreator: data.is_creator,
+    isFinalized: data.meeting.is_finalized,
+    finalizedDate: data.meeting.finalized_date,
+    finalizedSlot: data.meeting.finalized_slot,
     meetingType: data.meeting.meeting_type,
     participants: data.participants || [],
     meeting: data.meeting,
@@ -131,6 +148,24 @@ function bindAvailabilityPersistenceLifecycle() {
   document.getElementById("heatmap-instructions").textContent =
     `Showing combined availability for all ${data.invite_count} participant${data.invite_count !== 1 ? "s" : ""}.`;
 
+  if (M.isFinalized) {
+    document.getElementById("finalized-badge").hidden = false;
+    const banner = document.getElementById("finalized-banner");
+    banner.hidden = false;
+    document.getElementById("finalized-time").innerHTML =
+      `&#x1F4C5; ${escapeHtml(M.finalizedDate)} at ${M.finalizedSlot ? fmtTime(M.finalizedSlot, M.finalizedDate) : "TBD"} (${Number(M.meeting.duration_minutes)} min)`;
+    if (meetingTz && meetingTz !== "UTC") {
+      document.getElementById("finalized-time").innerHTML +=
+        ` <span class="meeting-finalized-tz">(${escapeHtml(meetingTz)})</span>`;
+    }
+    if (M.meeting.note) {
+      document.getElementById("finalized-note").textContent = M.meeting.note;
+    }
+    if (M.isCreator) {
+      document.getElementById("btn-unfinalize").hidden = false;
+    }
+  }
+
   const tabsContainer = document.getElementById("view-tabs");
   tabsContainer.innerHTML = "";
 
@@ -140,12 +175,13 @@ function bindAvailabilityPersistenceLifecycle() {
   btnHeatmap.textContent = "🌡 Group availability";
   tabsContainer.appendChild(btnHeatmap);
 
-  const btnMine = document.createElement("button");
-  btnMine.className = "view-tab";
-  btnMine.dataset.view = "mine";
-  btnMine.textContent = "✏ My availability";
-  tabsContainer.appendChild(btnMine);
-
+  if (!M.isFinalized) {
+    const btnMine = document.createElement("button");
+    btnMine.className = "view-tab";
+    btnMine.dataset.view = "mine";
+    btnMine.textContent = "✏ My availability";
+    tabsContainer.appendChild(btnMine);
+  }
   if (M.isCreator && M.participants.length) {
     const btnPerson = document.createElement("button");
     btnPerson.className = "view-tab";
@@ -192,6 +228,8 @@ function bindAvailabilityPersistenceLifecycle() {
 
   document.getElementById("tz-toggle-btn")?.addEventListener("click", toggleTzView);
   document.getElementById("copy-share-url-btn")?.addEventListener("click", copyShareUrl);
+  document.getElementById("btn-confirm-finalize")?.addEventListener("click", confirmFinalize);
+  document.getElementById("btn-cancel-finalize")?.addEventListener("click", cancelFinalize);
 
   if (M.isCreator) {
     const shareWrap = document.getElementById("share-controls");
@@ -201,9 +239,19 @@ function bindAvailabilityPersistenceLifecycle() {
     shareWrap.hidden = false;
   }
 
+  const btnUnfinalize = document.getElementById("btn-unfinalize");
+  if (btnUnfinalize) {
+    btnUnfinalize.addEventListener("click", async () => {
+      if (!confirm("Remove finalization and reopen for editing?")) return;
+      const { ok, data: d } = await mtgUnfinalize();
+      if (ok && d.success) window.location.reload();
+      else showFlash(d.error || "Failed to unfinalize. Please try again.", "danger");
+    });
+  }
+
   buildGrid();
 
-  if (M.mySlots.size === 0) {
+  if (!M.isFinalized && M.mySlots.size === 0) {
     const mineTab = document.querySelector('[data-view="mine"]');
     if (mineTab) setView("mine", mineTab);
   }
@@ -358,6 +406,7 @@ function buildGrid() {
 
   M.dates.forEach((d) => {
     const hdr = mkEl("div", "ag-col-header");
+    if (M.isFinalized && d === M.finalizedDate) hdr.classList.add("is-finalized");
     const inner = document.createElement("div");
     inner.textContent = fmtDate(d);
     hdr.appendChild(inner);
@@ -382,7 +431,15 @@ function buildGrid() {
     });
   });
 
-  attachGridEvents(grid);
+  if (!M.isFinalized) attachGridEvents(grid);
+  if (M.isCreator && !M.isFinalized) {
+    grid.addEventListener("click", (e) => {
+      if (currentView !== "heatmap") return;
+      const cell = e.target.closest(".ag-cell");
+      if (!cell) return;
+      showFinalizePanel(cell.dataset.date, cell.dataset.time);
+    });
+  }
 
   grid.addEventListener("mouseover", (e) => {
     if (currentView !== "heatmap") return;
@@ -465,12 +522,18 @@ function clearSlotDetail() {
 
 function paintCell(cell) {
   const key = cell.dataset.key;
+  const date = cell.dataset.date;
+  const time = cell.dataset.time;
   const count = M.slotCounts[key] || 0;
   const isMine = M.mySlots.has(key);
 
   cell.style.background = "";
-  cell.classList.remove("mine-selected", "person-highlighted");
+  cell.classList.remove("mine-selected", "finalized-cell", "person-highlighted");
   cell.removeAttribute("data-tip");
+
+  if (M.isFinalized && date === M.finalizedDate && time === M.finalizedSlot) {
+    cell.classList.add("finalized-cell");
+  }
 
   if (currentView === "mine") {
     cell.style.background = isMine ? "#bbdefb" : "#f5f5f5";
@@ -697,4 +760,50 @@ function jumpToParticipant(idx) {
   if (tab) setView("person", tab);
   const sel = document.getElementById("person-select");
   if (sel) sel.value = idx;
+}
+
+function showFinalizePanel(date, time) {
+  if (!M.isCreator || M.isFinalized) return;
+  pendingFinalize = { date, time };
+  const panel = document.getElementById("finalize-panel");
+  if (!panel) return;
+  panel.style.display = "";
+  const lbl = document.getElementById("finalize-slot-label");
+  if (lbl) lbl.textContent = `${fmtDate(date)} at ${fmtTime(time, date)}`;
+  if (meetingTz && meetingTz !== viewerTz && meetingTz !== "UTC") {
+    lbl.title = `In meeting timezone: ${meetingTz}`;
+  }
+  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function cancelFinalize() {
+  pendingFinalize = null;
+  const panel = document.getElementById("finalize-panel");
+  if (panel) panel.style.display = "none";
+}
+
+async function confirmFinalize() {
+  if (!pendingFinalize) return;
+  const duration = document.getElementById("finalize-duration").value;
+  const note = document.getElementById("finalize-note").value;
+  const { ok, data } = await mtgFinalize({
+    date_or_day: pendingFinalize.date,
+    time_slot: pendingFinalize.time,
+    duration_minutes: parseInt(duration, 10),
+    note,
+  });
+  if (ok && data.success) {
+    const sent = Number(data.sent_count || 0);
+    const failed = Number(data.failed_count || 0);
+    const msg =
+      failed > 0
+        ? `Meeting finalized. Sent ${sent} email${sent === 1 ? "" : "s"} (${failed} failed).`
+        : `Meeting finalized. Sent ${sent} email${sent === 1 ? "" : "s"}.`;
+    showFlash(msg, failed > 0 ? "warning" : "success");
+    setTimeout(() => {
+      window.location.reload();
+    }, 1400);
+  } else {
+    showFlash(data.error || "Failed to finalize. Please try again.", "danger");
+  }
 }
