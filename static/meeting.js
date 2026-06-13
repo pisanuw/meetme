@@ -228,6 +228,8 @@ function bindAvailabilityPersistenceLifecycle() {
 
   document.getElementById("tz-toggle-btn")?.addEventListener("click", toggleTzView);
   document.getElementById("copy-share-url-btn")?.addEventListener("click", copyShareUrl);
+  document.getElementById("remind-pending-btn")?.addEventListener("click", sendPendingReminders);
+  document.getElementById("leave-meeting-btn")?.addEventListener("click", leaveMeeting);
   document.getElementById("btn-confirm-finalize")?.addEventListener("click", confirmFinalize);
   document.getElementById("btn-cancel-finalize")?.addEventListener("click", cancelFinalize);
 
@@ -237,6 +239,9 @@ function bindAvailabilityPersistenceLifecycle() {
     const meetingUrl = `${window.location.origin}/meeting.html?id=${encodeURIComponent(M.id)}`;
     shareInput.value = meetingUrl;
     shareWrap.hidden = false;
+  } else {
+    // Non-creators can leave the meeting.
+    document.getElementById("leave-meeting-btn")?.removeAttribute("hidden");
   }
 
   const btnUnfinalize = document.getElementById("btn-unfinalize");
@@ -369,6 +374,67 @@ function toggleTzView() {
     ? `Switch to your TZ (${viewerTz})`
     : `Switch to meeting TZ (${meetingTz})`;
   buildGrid();
+}
+
+async function sendPendingReminders() {
+  if (!M?.isCreator) return;
+  const btn = document.getElementById("remind-pending-btn");
+  if (!btn) return;
+
+  if (!confirm("Send reminder emails to participants who have not responded yet?")) return;
+
+  btn.disabled = true;
+  const prev = btn.textContent;
+  btn.textContent = "Sending…";
+
+  const { ok, data } = await apiFetch(`/api/meetings/${M.id}/remind-pending`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+
+  if (ok && data.success) {
+    const failed = Number(data.failed_count || 0);
+    const sent = Number(data.sent_count || 0);
+    const msg =
+      failed > 0
+        ? `Sent ${sent} reminder${sent === 1 ? "" : "s"} (${failed} failed).`
+        : data.message || `Sent ${sent} reminder${sent === 1 ? "" : "s"}.`;
+    showFlash(msg, failed > 0 ? "warning" : "success");
+  } else {
+    showFlash(data?.error || "Could not send reminders. Please try again.", "danger");
+  }
+
+  btn.disabled = false;
+  btn.textContent = prev;
+}
+
+async function leaveMeeting() {
+  const btn = document.getElementById("leave-meeting-btn");
+  if (!btn) return;
+
+  if (!confirm("Leave this meeting? Your availability will be removed.")) return;
+
+  btn.disabled = true;
+  const prev = btn.textContent;
+  btn.textContent = "Leaving…";
+
+  const { ok, data } = await apiFetch(`/api/meetings/${M.id}/leave`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+
+  if (ok && data.success) {
+    showFlash("You have left the meeting.", "success");
+    setTimeout(() => {
+      window.location.href = "/dashboard.html";
+    }, 900);
+  } else {
+    btn.disabled = false;
+    btn.textContent = prev;
+    showFlash(data?.error || "Could not leave meeting. Please try again.", "danger");
+  }
 }
 
 async function copyShareUrl() {
