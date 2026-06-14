@@ -1,7 +1,7 @@
 /**
  * meeting.js — Meeting detail page controller
  *
- * External dependencies (from common.js): apiFetch, showFlash, requireAuth, escapeHtml
+ * External dependencies (from common.js): apiFetch, showFlash, requireAuth, checkAuth, escapeHtml
  *
  * ── Page state ─────────────────────────────────────────────────────────────
  * All mutable page state is declared here so it is easy to identify what
@@ -12,7 +12,7 @@
 let M = null;
 /** Authenticated user (null if anonymous). */
 let currentUser = null;
-/** "heatmap" | "person" | "mine" */
+/** "heatmap" | "person" | "edit" */
 let currentView = "heatmap";
 /** Index of the person selected in by-person view. */
 let currentPerson = 0;
@@ -32,8 +32,102 @@ let meetingTz = "UTC";
 let viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 /** Whether to display times in the meeting timezone instead of viewer tz. */
 let showMeetingTz = false;
+/**
+ * When non-null, this page is rendering an anonymous meeting via the public
+ * API. All network calls flow through /api/public endpoints carrying the
+ * URL token + participant_id instead of a session cookie.
+ */
+let anonContext = null;
+
+/* ── Anonymous-mode local storage helpers ────────────────────────────────
+ * Participant id + name are per-meeting, scoped to this browser. We keep
+ * them in localStorage so the same person editing later lands back on their
+ * existing record instead of creating a duplicate. Localstorage may be
+ * unavailable (private mode) — degrade silently. */
+
+function lsKey(kind, meetingId) {
+  return `meetme:${kind}:${meetingId}`;
+}
+function lsGet(kind, meetingId) {
+  try {
+    return localStorage.getItem(lsKey(kind, meetingId)) || "";
+  } catch {
+    return "";
+  }
+}
+function lsSet(kind, meetingId, value) {
+  try {
+    localStorage.setItem(lsKey(kind, meetingId), value);
+  } catch {
+    /* ignore */
+  }
+}
+function lsDel(kind, meetingId) {
+  try {
+    localStorage.removeItem(lsKey(kind, meetingId));
+  } catch {
+    /* ignore */
+  }
+}
+
+/* ── Meeting API dispatchers (anonymous vs authenticated) ──────────────── */
+
+async function mtgGetMeeting(meetingId) {
+  if (anonContext) {
+    return apiFetch(
+      `/api/public/meetings/${encodeURIComponent(meetingId)}?t=${encodeURIComponent(anonContext.token)}`
+    );
+  }
+  return apiFetch(`/api/meetings/${encodeURIComponent(meetingId)}`);
+}
+
+async function mtgSaveAvailability(slots, { keepalive = false } = {}) {
+  if (anonContext) {
+    // Anonymous submission requires a display name. If the participant has
+    // not supplied one yet, ask before hitting the API.
+    if (!anonContext.name) {
+      const name = await promptForName();
+      if (!name) return { ok: false, data: { error: "A display name is required." } };
+      anonContext.name = name;
+      lsSet("participant-name", anonContext.meetingId, name);
+    }
+    const body = JSON.stringify({
+      t: anonContext.token,
+      participant_id: anonContext.participantId || undefined,
+      name: anonContext.name,
+      slots,
+    });
+    const res = await apiFetch(
+      `/api/public/meetings/${encodeURIComponent(anonContext.meetingId)}/availability`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        keepalive,
+        body,
+      }
+    );
+    if (res.ok && res.data && res.data.participant_id) {
+      anonContext.participantId = res.data.participant_id;
+      lsSet("participant-id", anonContext.meetingId, res.data.participant_id);
+    }
+    return res;
+  }
+  return apiFetch(`/api/meetings/${encodeURIComponent(M.id)}/availability`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    keepalive,
+    body: JSON.stringify({ slots }),
+  });
+}
 
 async function mtgFinalize(payload) {
+  if (anonContext) {
+    return apiFetch(`/api/public/meetings/${encodeURIComponent(anonContext.meetingId)}/finalize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ t: anonContext.token, ...payload }),
+    });
+  }
   return apiFetch(`/api/meetings/${encodeURIComponent(M.id)}/finalize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -42,7 +136,60 @@ async function mtgFinalize(payload) {
 }
 
 async function mtgUnfinalize() {
+  if (anonContext) {
+    return apiFetch(
+      `/api/public/meetings/${encodeURIComponent(anonContext.meetingId)}/unfinalize`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ t: anonContext.token }),
+      }
+    );
+  }
   return apiFetch(`/api/meetings/${encodeURIComponent(M.id)}/unfinalize`, { method: "POST" });
+}
+
+/* ── Name-entry modal ───────────────────────────────────────────────────── */
+
+function promptForName() {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("name-modal");
+    const input = document.getElementById("name-modal-input");
+    const saveBtn = document.getElementById("name-modal-save");
+    const cancelBtn = document.getElementById("name-modal-cancel");
+    if (!modal || !input || !saveBtn || !cancelBtn) {
+      resolve("");
+      return;
+    }
+    input.value = anonContext?.name || "";
+    modal.hidden = false;
+
+    const cleanup = () => {
+      modal.hidden = true;
+      saveBtn.removeEventListener("click", onSave);
+      cancelBtn.removeEventListener("click", onCancel);
+      input.removeEventListener("keydown", onKey);
+    };
+    const onSave = () => {
+      const v = input.value.trim().slice(0, 100);
+      if (!v) {
+        return;
+      }
+      cleanup();
+      resolve(v);
+    };
+    const onCancel = () => {
+      cleanup();
+      resolve("");
+    };
+    const onKey = (e) => {
+      if (e.key === "Enter") onSave();
+      if (e.key === "Escape") onCancel();
+    };
+    saveBtn.addEventListener("click", onSave);
+    cancelBtn.addEventListener("click", onCancel);
+    input.addEventListener("keydown", onKey);
+  });
 }
 
 function flushPendingAvailabilitySave() {
@@ -64,23 +211,39 @@ function bindAvailabilityPersistenceLifecycle() {
 (async () => {
   const params = new URLSearchParams(window.location.search);
   const meetingId = params.get("id");
+  const meetingToken = params.get("t");
 
   if (!meetingId) {
     window.location.href = "/dashboard.html";
     return;
   }
 
-  const user = await requireAuth();
-  if (!user) return;
-  currentUser = user;
+  if (meetingToken) {
+    // Anonymous mode: don't force login. Still call checkAuth() so the nav
+    // reflects the user's state and we can show the claim banner.
+    anonContext = {
+      token: meetingToken,
+      meetingId,
+      participantId: lsGet("participant-id", meetingId),
+      name: lsGet("participant-name", meetingId),
+    };
+    const maybeUser = await checkAuth();
+    currentUser = maybeUser || null;
+    const anonNav = document.getElementById("nav-anon");
+    if (!maybeUser && anonNav) anonNav.hidden = false;
+  } else {
+    const user = await requireAuth();
+    if (!user) return;
+    currentUser = user;
+  }
 
   bindAvailabilityPersistenceLifecycle();
 
-  const { ok, status, data } = await apiFetch(`/api/meetings/${encodeURIComponent(meetingId)}`);
+  const { ok, status, data } = await mtgGetMeeting(meetingId);
   if (!ok) {
     showFlash(data.error || `Could not load meeting (HTTP ${status}).`, "danger");
     setTimeout(() => {
-      window.location.href = "/dashboard.html";
+      window.location.href = anonContext ? "/" : "/dashboard.html";
     }, 2000);
     return;
   }
@@ -99,10 +262,30 @@ function bindAvailabilityPersistenceLifecycle() {
     meetingType: data.meeting.meeting_type,
     participants: data.participants || [],
     meeting: data.meeting,
+    isAnonymous: data.is_anonymous === true,
   };
 
-  M.myParticipantIndex = -1;
-  if (currentUser && Array.isArray(M.participants)) {
+  // In anonymous mode, rehydrate "my slots" from the participant_id we have
+  // in localStorage by looking up the matching participant in the server
+  // response (the public endpoint does not know which browser is "us").
+  if (anonContext && anonContext.participantId) {
+    const me = M.participants.find((p) => p.participant_id === anonContext.participantId);
+    if (me) {
+      M.mySlots = new Set(me.slots);
+      M.myParticipantIndex = M.participants.indexOf(me);
+      if (!anonContext.name && me.name) {
+        anonContext.name = me.name;
+        lsSet("participant-name", anonContext.meetingId, me.name);
+      }
+    } else {
+      // Stale participant_id (meeting reset or deleted record); clear it.
+      anonContext.participantId = "";
+      lsDel("participant-id", anonContext.meetingId);
+    }
+  }
+
+  if (typeof M.myParticipantIndex !== "number") M.myParticipantIndex = -1;
+  if (!anonContext && currentUser && Array.isArray(M.participants)) {
     let idx = currentUser.email
       ? M.participants.findIndex(
           (p) => (p.email || "").toLowerCase() === currentUser.email.toLowerCase()
@@ -117,8 +300,53 @@ function bindAvailabilityPersistenceLifecycle() {
 
   meetingTz = data.meeting.timezone || "UTC";
 
-  const { ok: pOk, data: pData } = await apiFetch("/api/auth/profile");
-  if (pOk && pData.timezone) viewerTz = pData.timezone;
+  // Only the authenticated flow has a /api/auth/profile endpoint available.
+  if (!anonContext) {
+    const { ok: pOk, data: pData } = await apiFetch("/api/auth/profile");
+    if (pOk && pData.timezone) viewerTz = pData.timezone;
+  }
+
+  // Show the "claim this meeting" banner to logged-in users who arrived via
+  // a ?t= URL. The banner offers "Add to my account" / "Claim as owner"
+  // depending on token kind — the server makes the final call.
+  if (anonContext && currentUser) {
+    const claimBanner = document.getElementById("claim-banner");
+    const claimBtn = document.getElementById("claim-banner-btn");
+    const claimText = document.getElementById("claim-banner-text");
+    if (claimBanner && claimBtn && claimText) {
+      const isAdminLink = M.isCreator === true;
+      claimText.textContent = isAdminLink
+        ? "You're signed in. Claim ownership of this meeting to manage it from your dashboard."
+        : "You're signed in. Add this meeting to your account to see it on your dashboard.";
+      claimBtn.textContent = isAdminLink ? "Claim ownership" : "Add to my account";
+      claimBanner.hidden = false;
+
+      claimBtn.addEventListener("click", async () => {
+        claimBtn.disabled = true;
+        const { ok: cOk, data: cData } = await apiFetch("/api/meetings/claim", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            t: anonContext.token,
+            participant_id: anonContext.participantId || undefined,
+          }),
+        });
+        if (cOk && cData.success) {
+          // Drop the ?t= param and the local anonymous identity so the page
+          // re-loads in authenticated mode going forward.
+          lsDel("participant-id", anonContext.meetingId);
+          lsDel("participant-name", anonContext.meetingId);
+          showFlash("Meeting added to your account.", "success");
+          setTimeout(() => {
+            window.location.href = `/meeting.html?id=${encodeURIComponent(anonContext.meetingId)}`;
+          }, 900);
+        } else {
+          claimBtn.disabled = false;
+          showFlash(cData.error || "Could not claim meeting.", "danger");
+        }
+      });
+    }
+  }
 
   if (meetingTz && M.meetingType === "specific_dates") {
     const bar = document.getElementById("tz-bar");
@@ -172,21 +400,21 @@ function bindAvailabilityPersistenceLifecycle() {
   const btnHeatmap = document.createElement("button");
   btnHeatmap.className = "view-tab active";
   btnHeatmap.dataset.view = "heatmap";
-  btnHeatmap.textContent = "🌡 Group availability";
+  btnHeatmap.textContent = "\uD83C\uDF21 Group availability";
   tabsContainer.appendChild(btnHeatmap);
 
   if (!M.isFinalized) {
     const btnMine = document.createElement("button");
     btnMine.className = "view-tab";
     btnMine.dataset.view = "mine";
-    btnMine.textContent = "✏ My availability";
+    btnMine.textContent = "\u270F My availability";
     tabsContainer.appendChild(btnMine);
   }
   if (M.isCreator && M.participants.length) {
     const btnPerson = document.createElement("button");
     btnPerson.className = "view-tab";
     btnPerson.dataset.view = "person";
-    btnPerson.textContent = "👤 By person";
+    btnPerson.textContent = "\uD83D\uDC64 By person";
     tabsContainer.appendChild(btnPerson);
   }
 
@@ -201,7 +429,7 @@ function bindAvailabilityPersistenceLifecycle() {
     M.participants.forEach((p, i) => {
       const opt = document.createElement("option");
       opt.value = i;
-      opt.textContent = `${p.name} (${p.slot_count} slot${p.slot_count !== 1 ? "s" : ""})${!p.responded ? " – no response" : ""}`;
+      opt.textContent = `${p.name} (${p.slot_count} slot${p.slot_count !== 1 ? "s" : ""})${!p.responded ? " \u2013 no response" : ""}`;
       sel.appendChild(opt);
     });
     sel.addEventListener("change", (e) => filterPerson(e.target.value));
@@ -236,9 +464,17 @@ function bindAvailabilityPersistenceLifecycle() {
   if (M.isCreator) {
     const shareWrap = document.getElementById("share-controls");
     const shareInput = document.getElementById("share-url");
-    const meetingUrl = `${window.location.origin}/meeting.html?id=${encodeURIComponent(M.id)}`;
-    shareInput.value = meetingUrl;
-    shareWrap.hidden = false;
+    if (anonContext) {
+      // Anonymous admins received both URLs at creation time and we don't
+      // re-mint tokens on detail fetch, so there's nothing useful to show
+      // here. Also hide remind-pending — anonymous meetings have no emails.
+      shareWrap.hidden = true;
+      document.getElementById("remind-pending-btn")?.setAttribute("hidden", "hidden");
+    } else {
+      const meetingUrl = `${window.location.origin}/meeting.html?id=${encodeURIComponent(M.id)}`;
+      shareInput.value = meetingUrl;
+      shareWrap.hidden = false;
+    }
   } else {
     // Non-creators can leave the meeting.
     document.getElementById("leave-meeting-btn")?.removeAttribute("hidden");
@@ -376,6 +612,34 @@ function toggleTzView() {
   buildGrid();
 }
 
+async function leaveMeeting() {
+  const btn = document.getElementById("leave-meeting-btn");
+  if (!btn) return;
+
+  if (!confirm("Leave this meeting? Your availability will be removed.")) return;
+
+  btn.disabled = true;
+  const prev = btn.textContent;
+  btn.textContent = "Leaving…";
+
+  const { ok, data } = await apiFetch(`/api/meetings/${M.id}/leave`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+
+  if (ok && data.success) {
+    showFlash("You have left the meeting.", "success");
+    setTimeout(() => {
+      window.location.href = anonContext ? "/" : "/dashboard.html";
+    }, 900);
+  } else {
+    btn.disabled = false;
+    btn.textContent = prev;
+    showFlash(data?.error || "Could not leave meeting. Please try again.", "danger");
+  }
+}
+
 async function sendPendingReminders() {
   if (!M?.isCreator) return;
   const btn = document.getElementById("remind-pending-btn");
@@ -407,34 +671,6 @@ async function sendPendingReminders() {
 
   btn.disabled = false;
   btn.textContent = prev;
-}
-
-async function leaveMeeting() {
-  const btn = document.getElementById("leave-meeting-btn");
-  if (!btn) return;
-
-  if (!confirm("Leave this meeting? Your availability will be removed.")) return;
-
-  btn.disabled = true;
-  const prev = btn.textContent;
-  btn.textContent = "Leaving…";
-
-  const { ok, data } = await apiFetch(`/api/meetings/${M.id}/leave`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
-  });
-
-  if (ok && data.success) {
-    showFlash("You have left the meeting.", "success");
-    setTimeout(() => {
-      window.location.href = "/dashboard.html";
-    }, 900);
-  } else {
-    btn.disabled = false;
-    btn.textContent = prev;
-    showFlash(data?.error || "Could not leave meeting. Please try again.", "danger");
-  }
 }
 
 async function copyShareUrl() {
@@ -750,12 +986,7 @@ function scheduleSave() {
 
 async function saveAvailability({ keepalive = false } = {}) {
   const slots = Array.from(M.mySlots);
-  const { ok, data } = await apiFetch(`/api/meetings/${encodeURIComponent(M.id)}/availability`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    keepalive,
-    body: JSON.stringify({ slots }),
-  });
+  const { ok, data } = await mtgSaveAvailability(slots, { keepalive });
   if (ok && data.success) {
     M.slotCounts = data.slot_counts;
     if (M.myParticipantIndex >= 0) {
@@ -859,13 +1090,17 @@ async function confirmFinalize() {
     note,
   });
   if (ok && data.success) {
-    const sent = Number(data.sent_count || 0);
-    const failed = Number(data.failed_count || 0);
-    const msg =
-      failed > 0
-        ? `Meeting finalized. Sent ${sent} email${sent === 1 ? "" : "s"} (${failed} failed).`
-        : `Meeting finalized. Sent ${sent} email${sent === 1 ? "" : "s"}.`;
-    showFlash(msg, failed > 0 ? "warning" : "success");
+    if (anonContext) {
+      showFlash("Meeting finalized.", "success");
+    } else {
+      const sent = Number(data.sent_count || 0);
+      const failed = Number(data.failed_count || 0);
+      const msg =
+        failed > 0
+          ? `Meeting finalized. Sent ${sent} email${sent === 1 ? "" : "s"} (${failed} failed).`
+          : `Meeting finalized. Sent ${sent} email${sent === 1 ? "" : "s"}.`;
+      showFlash(msg, failed > 0 ? "warning" : "success");
+    }
     setTimeout(() => {
       window.location.reload();
     }, 1400);

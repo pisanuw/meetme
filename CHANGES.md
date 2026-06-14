@@ -19,3 +19,4 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-06-12 [code] Stage 14: finalize — meeting-actions.mjs finalize/unfinalize (creator-only, emails participants); meeting.js cell-click finalize panel (duration + note), Finalized badge.
 2026-06-13 [code] Stage 15: lifecycle — invite emails on creation; meeting-actions remind-pending; meetings.mjs leave + delete; meeting.js remind / leave controls and dashboard wiring.
 2026-06-13 [code] Stage 16: anonymous meetings — public-meetings.mjs anon create + token-gated detail/availability (signed PARTICIPATION + ADMIN JWTs); landing page shows share + one-time admin URLs.
+2026-06-14 [code] Stage 17: claim + retention — meetings.mjs POST /api/meetings/claim migrates anon availability into an account; 30-day inactivity expiry rule; claim banner in meeting.js.
