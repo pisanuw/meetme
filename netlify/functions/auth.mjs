@@ -27,6 +27,7 @@ import {
   LIMITS,
 } from "./utils.mjs";
 import magicLinkHandler from "./magic-link.mjs";
+import googleAuthHandler from "./auth-google.mjs";
 
 const FN = "auth";
 
@@ -46,6 +47,11 @@ async function handleAuth(req, context) {
   // Delegate the magic-link sub-routes (request / verify) to their handler.
   if (path.startsWith("magic-link/")) {
     const res = await magicLinkHandler(req, context);
+    if (res) return res;
+  }
+  // Delegate the Google OAuth sub-routes (start / callback / calendar) too.
+  if (path.startsWith("google/")) {
+    const res = await googleAuthHandler(req, context);
     if (res) return res;
   }
 
