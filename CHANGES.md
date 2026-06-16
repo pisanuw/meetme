@@ -21,3 +21,4 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-06-13 [code] Stage 16: anonymous meetings — public-meetings.mjs anon create + token-gated detail/availability (signed PARTICIPATION + ADMIN JWTs); landing page shows share + one-time admin URLs.
 2026-06-14 [code] Stage 17: claim + retention — meetings.mjs POST /api/meetings/claim migrates anon availability into an account; 30-day inactivity expiry rule; claim banner in meeting.js.
 2026-06-15 [code] Stage 18: Google sign-in — auth-google.mjs start (signed state + oauth_state cookie CSRF, next/mobile) and callback (verify, exchange, userinfo, session); auth.mjs delegates google/*.
+2026-06-16 [code] Stage 19: encryption at rest — lib/crypto encrypt/decrypt with AES-256-GCM (enc:v1:iv:tag:ct), reads legacy plaintext, throws on missing/weak TOKEN_ENCRYPTION_KEY (no JWT_SECRET fallback).
