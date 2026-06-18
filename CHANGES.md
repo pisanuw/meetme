@@ -23,3 +23,4 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-06-15 [code] Stage 18: Google sign-in — auth-google.mjs start (signed state + oauth_state cookie CSRF, next/mobile) and callback (verify, exchange, userinfo, session); auth.mjs delegates google/*.
 2026-06-16 [code] Stage 19: encryption at rest — lib/crypto encrypt/decrypt with AES-256-GCM (enc:v1:iv:tag:ct), reads legacy plaintext, throws on missing/weak TOKEN_ENCRYPTION_KEY (no JWT_SECRET fallback).
 2026-06-17 [code] Stage 20: calendar free/busy — auth-google calendar OAuth (encrypted tokens) + disconnect; calendar.mjs status + busy with ~60s-buffer token refresh; meeting.js Load-busy-times overlay.
+2026-06-18 [code] Stage 21: event types — bookings-store + bookings-validation; bookings.mjs GET/POST event-types + delete (cascade); booking-setup page (one-on-one or group with capacity/day window).
