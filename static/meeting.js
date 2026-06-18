@@ -32,6 +32,8 @@ let meetingTz = "UTC";
 let viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 /** Whether to display times in the meeting timezone instead of viewer tz. */
 let showMeetingTz = false;
+/** Set of slot keys marked busy by Google Calendar. */
+let busySlots = new Set();
 /**
  * When non-null, this page is rendering an anonymous meeting via the public
  * API. All network calls flow through /api/public endpoints carrying the
@@ -304,6 +306,9 @@ function bindAvailabilityPersistenceLifecycle() {
   if (!anonContext) {
     const { ok: pOk, data: pData } = await apiFetch("/api/auth/profile");
     if (pOk && pData.timezone) viewerTz = pData.timezone;
+    if (pOk && pData.calendar_connected && M.meetingType === "specific_dates") {
+      document.getElementById("gcal-area").hidden = false;
+    }
   }
 
   // Show the "claim this meeting" banner to logged-in users who arrived via
@@ -457,7 +462,7 @@ function bindAvailabilityPersistenceLifecycle() {
   document.getElementById("tz-toggle-btn")?.addEventListener("click", toggleTzView);
   document.getElementById("copy-share-url-btn")?.addEventListener("click", copyShareUrl);
   document.getElementById("remind-pending-btn")?.addEventListener("click", sendPendingReminders);
-  document.getElementById("leave-meeting-btn")?.addEventListener("click", leaveMeeting);
+  document.getElementById("gcal-btn")?.addEventListener("click", loadBusyTimes);
   document.getElementById("btn-confirm-finalize")?.addEventListener("click", confirmFinalize);
   document.getElementById("btn-cancel-finalize")?.addEventListener("click", cancelFinalize);
 
@@ -475,9 +480,6 @@ function bindAvailabilityPersistenceLifecycle() {
       shareInput.value = meetingUrl;
       shareWrap.hidden = false;
     }
-  } else {
-    // Non-creators can leave the meeting.
-    document.getElementById("leave-meeting-btn")?.removeAttribute("hidden");
   }
 
   const btnUnfinalize = document.getElementById("btn-unfinalize");
@@ -612,32 +614,29 @@ function toggleTzView() {
   buildGrid();
 }
 
-async function leaveMeeting() {
-  const btn = document.getElementById("leave-meeting-btn");
-  if (!btn) return;
-
-  if (!confirm("Leave this meeting? Your availability will be removed.")) return;
-
+async function loadBusyTimes() {
+  const btn = document.getElementById("gcal-btn");
   btn.disabled = true;
-  const prev = btn.textContent;
-  btn.textContent = "Leaving…";
-
-  const { ok, data } = await apiFetch(`/api/meetings/${M.id}/leave`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
-  });
-
-  if (ok && data.success) {
-    showFlash("You have left the meeting.", "success");
-    setTimeout(() => {
-      window.location.href = anonContext ? "/" : "/dashboard.html";
-    }, 900);
+  btn.textContent = "Loading…";
+  const { ok, data } = await apiFetch(`/api/calendar/busy?meeting_id=${M.id}`);
+  if (ok && data.busy_slots) {
+    busySlots = new Set(data.busy_slots);
+    repaintAll();
+    showFlash(
+      `Loaded busy times (${busySlots.size} slot${busySlots.size !== 1 ? "s" : ""} marked busy). You can still override manually.`,
+      "info"
+    );
+    btn.textContent = "Reload busy times";
   } else {
-    btn.disabled = false;
-    btn.textContent = prev;
-    showFlash(data?.error || "Could not leave meeting. Please try again.", "danger");
+    showFlash(
+      data?.error === "calendar_not_connected"
+        ? "Google Calendar is not connected. Go to Profile to connect it."
+        : data?.error || "Could not load calendar data.",
+      "danger"
+    );
+    btn.textContent = "Load busy times";
   }
+  btn.disabled = false;
 }
 
 async function sendPendingReminders() {
@@ -838,9 +837,22 @@ function paintCell(cell) {
   }
 
   if (currentView === "mine") {
-    cell.style.background = isMine ? "#bbdefb" : "#f5f5f5";
+    const isBusy = busySlots.has(key);
+    cell.style.background = isBusy
+      ? isMine
+        ? "#90caf9"
+        : "#ffcdd2"
+      : isMine
+        ? "#bbdefb"
+        : "#f5f5f5";
     if (isMine) cell.classList.add("mine-selected");
-    cell.dataset.tip = isMine ? "You are available" : "Click to mark available";
+    cell.dataset.tip = isBusy
+      ? isMine
+        ? "Busy on calendar (marked available anyway)"
+        : "Busy on your Google Calendar"
+      : isMine
+        ? "You are available"
+        : "Click to mark available";
   } else if (currentView === "heatmap") {
     cell.style.background = heatColor(count);
     if (isMine) cell.classList.add("mine-selected");
