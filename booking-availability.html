@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Availability – MeetMe</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <nav class="navbar" data-shared-nav></nav>
+
+    <div id="flash-container" class="flash-container"></div>
+
+    <main class="main-content">
+      <div class="form-page">
+        <div class="form-card">
+          <p class="text-muted"><a href="/dashboard.html">&#x2190; Dashboard</a></p>
+          <h1>Availability</h1>
+          <p class="text-muted">
+            Set the time windows for one event type at a time. Office hours, social chats, and
+            longer sessions can each have their own schedule.
+          </p>
+
+          <div id="availability-gate-message" class="text-muted" hidden></div>
+
+          <section class="form-group setup-section-spaced">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="availability-mode">Availability mode</label>
+                <select id="availability-mode" class="form-control">
+                  <option value="weekly">Weekly pattern between dates</option>
+                  <option value="specific_dates">Specific dates and times</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row" id="availability-date-row">
+              <div class="form-group">
+                <label for="availability-start-date">Start date</label>
+                <input id="availability-start-date" class="form-control" type="date" />
+              </div>
+              <div class="form-group">
+                <label for="availability-end-date">End date</label>
+                <input id="availability-end-date" class="form-control" type="date" />
+              </div>
+            </div>
+
+            <div class="form-row" id="availability-timezone-row">
+              <div class="form-group">
+                <label for="availability-timezone">Timezone</label>
+                <input id="availability-timezone" class="form-control" value="UTC" />
+              </div>
+            </div>
+
+            <p class="text-muted" id="availability-mode-help">
+              Weekly mode repeats selected weekdays within the date range.
+            </p>
+
+            <div class="instructions" id="availability-grid-instructions">
+              Click or click-and-drag to select your available times.
+            </div>
+
+            <div class="grid-scroll-wrapper">
+              <div class="av-grid" id="availability-grid" data-editing="true"></div>
+            </div>
+
+            <p class="text-muted" id="availability-selection-summary">No slots selected yet.</p>
+
+            <div class="form-actions setup-actions-tight">
+              <button type="button" class="btn btn-primary" id="save-availability-btn">
+                Save Availability
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer" data-shared-footer></footer>
+
+    <script src="/static/layout.js"></script>
+    <script src="/static/common.js"></script>
+    <script src="/static/booking-availability.js" defer></script>
+  </body>
+</html>
