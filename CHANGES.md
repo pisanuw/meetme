@@ -26,3 +26,4 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-06-18 [code] Stage 21: event types — bookings-store + bookings-validation; bookings.mjs GET/POST event-types + delete (cascade); booking-setup page (one-on-one or group with capacity/day window).
 2026-06-18 [code] Stage 22: availability windows — lib/bookings-availability + booking_availability store (weekly | specific_dates); bookings.mjs availability GET/POST; booking-availability click-and-drag grid.
 2026-06-19 [code] Stage 23: public booking — bookings-helpers (slot math) + bookings-calendar (conflict lookup); bookings.mjs page/:slug, slots, book (capacity + post-write reconciliation); book page.
+2026-06-20 [code] Stage 24: booking lifecycle — confirmation/cancel + host/mine lists + emails; bookings-reminders manual send + hourly scheduled sweep (idempotent via reminder:<id>); confirmation page.
