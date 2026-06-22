@@ -28,3 +28,4 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-06-19 [code] Stage 23: public booking — bookings-helpers (slot math) + bookings-calendar (conflict lookup); bookings.mjs page/:slug, slots, book (capacity + post-write reconciliation); book page.
 2026-06-20 [code] Stage 24: booking lifecycle — confirmation/cancel + host/mine lists + emails; bookings-reminders manual send + hourly scheduled sweep (idempotent via reminder:<id>); confirmation page.
 2026-06-21 [code] Stage 25: admin + audit — lib/events persistEvent to events store; lib/admin + admin.mjs (stats, users CRUD, admin toggle, meetings, event log, impersonate); admin.html/js tabs.
+2026-06-22 [code] Stage 26: comms + legal — email-preferences signed-link opt-out/block (no login); webhooks.mjs signed Resend bounce/complaint -> notify creator; feedback form; support/privacy/app pages.
