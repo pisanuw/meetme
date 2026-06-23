@@ -29,3 +29,4 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-06-20 [code] Stage 24: booking lifecycle — confirmation/cancel + host/mine lists + emails; bookings-reminders manual send + hourly scheduled sweep (idempotent via reminder:<id>); confirmation page.
 2026-06-21 [code] Stage 25: admin + audit — lib/events persistEvent to events store; lib/admin + admin.mjs (stats, users CRUD, admin toggle, meetings, event log, impersonate); admin.html/js tabs.
 2026-06-22 [code] Stage 26: comms + legal — email-preferences signed-link opt-out/block (no login); webhooks.mjs signed Resend bounce/complaint -> notify creator; feedback form; support/privacy/app pages.
+2026-06-23 [code] Stage 27: account deletion + hardening — auth.mjs POST account/delete removes user + all data; netlify.toml security headers + strict CSP (no inline scripts) on every response.
