@@ -8,10 +8,16 @@
   "scripts": {
     "dev": "netlify dev --internal-disable-edge-functions --no-open -p 8888",
     "dev:offline": "netlify dev --internal-disable-edge-functions --offline --no-open -p 8888",
-    "dev:stop": "pkill -f \"[n]etlify dev\" || true"
+    "dev:stop": "pkill -f \"[n]etlify dev\" || true",
+    "test": "node --test test/*.test.mjs",
+    "test:e2e:smoke": "playwright test -c playwright.smoke.config.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "^8.1.0",
     "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "http-server": "^14.1.1"
   }
 }
