@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Scan staged changes for secrets before commit.
+set -euo pipefail
+
+if command -v gitleaks &>/dev/null; then
+  gitleaks protect --staged --config .gitleaks.toml --no-banner
+else
+  echo "WARNING: gitleaks not installed; skipping secret scan." >&2
+  echo "  Install: brew install gitleaks" >&2
+fi

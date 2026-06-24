@@ -31,3 +31,4 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-06-22 [code] Stage 26: comms + legal — email-preferences signed-link opt-out/block (no login); webhooks.mjs signed Resend bounce/complaint -> notify creator; feedback form; support/privacy/app pages.
 2026-06-23 [code] Stage 27: account deletion + hardening — auth.mjs POST account/delete removes user + all data; netlify.toml security headers + strict CSP (no inline scripts) on every response.
 2026-06-23 [code] Stage 28: tests — node --test suites for routes and lib (run with DISABLE_RATE_LIMIT) + a rate-limit-enabled variant; Playwright smoke tests over a static server with mocked APIs.
+2026-06-24 [code] Stage 29: CI gates + hooks — eslint (max-warnings 0), prettier check, tsc --checkJs typecheck with baseline; ci.yml runs test/lint/typecheck/format/e2e; gitleaks + Conventional Commits hooks.
