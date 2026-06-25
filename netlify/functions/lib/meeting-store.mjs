@@ -15,6 +15,21 @@ function extractMeetingIdFromKey(key) {
 }
 
 /**
+ * List the canonical meeting-record keys (`m-<epoch>-<id>`) for a given meeting
+ * ID. Shared by the read and delete paths; callers sort if they need ordering.
+ *
+ * @param {import("@netlify/blobs").Store} meetingsDb
+ * @param {string} id
+ * @returns {Promise<string[]>}
+ */
+async function listCanonicalMeetingKeys(meetingsDb, id) {
+  const listing = await meetingsDb.list().catch(() => ({ blobs: [] }));
+  return asArray(listing?.blobs)
+    .map((b) => String(b?.key || ""))
+    .filter((key) => key.endsWith(`-${id}`) && MEETING_KEY_PATTERN.test(key));
+}
+
+/**
  * Build the canonical meeting-record key.
  *
  * Format: `m-<epoch_ms>-<meeting_id>`
@@ -59,11 +74,9 @@ export async function getMeetingRecord(meetingsDb, meetingId) {
   const id = String(meetingId || "").trim();
   if (!id) return null;
 
-  const listing = await meetingsDb.list().catch(() => ({ blobs: [] }));
-  const canonicalKeys = asArray(listing?.blobs)
-    .map((b) => String(b?.key || ""))
-    .filter((key) => key.endsWith(`-${id}`) && MEETING_KEY_PATTERN.test(key))
-    .sort((a, b) => b.localeCompare(a));
+  const canonicalKeys = (await listCanonicalMeetingKeys(meetingsDb, id)).sort((a, b) =>
+    b.localeCompare(a)
+  );
 
   for (const key of canonicalKeys) {
     const record = await meetingsDb.get(key, { type: "json" }).catch(() => null);
@@ -106,10 +119,7 @@ export async function deleteMeetingRecord(meetingsDb, meetingId) {
   if (!id) return;
 
   await meetingsDb.delete(id).catch(() => null);
-  const listing = await meetingsDb.list().catch(() => ({ blobs: [] }));
-  const keys = asArray(listing?.blobs)
-    .map((b) => String(b?.key || ""))
-    .filter((key) => key.endsWith(`-${id}`) && MEETING_KEY_PATTERN.test(key));
+  const keys = await listCanonicalMeetingKeys(meetingsDb, id);
   await Promise.all(keys.map((key) => meetingsDb.delete(key).catch(() => null)));
 }
 
