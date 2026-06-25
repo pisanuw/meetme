@@ -1,6 +1,7 @@
 {
   "name": "meetme",
   "private": true,
+  "description": "MeetMe — a scheduling app combining Doodle-style group availability meetings with Calendly-style bookable event types, built on Netlify Functions and Blobs.",
   "license": "MIT",
   "engines": {
     "node": ">=20"

@@ -248,4 +248,7 @@ nextWeekBtn.addEventListener("click", () => {
   });
 
   await loadWeekSlots();
-})();
+})().catch((err) => {
+  console.error("Page initialization failed:", err);
+  showFlash("Something went wrong loading this page. Please refresh.", "danger");
+});

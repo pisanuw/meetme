@@ -12,7 +12,7 @@
  */
 import {
   getDb,
-  getUserFromRequest,
+  updateJsonWithCas,
   jsonResponse,
   errorResponse,
   log,
@@ -23,6 +23,9 @@ import {
   asArray,
   escapeHtml,
   buildTimeSlots,
+  countSlots,
+  parseAvailabilitySlots,
+  requireUser,
   getAppUrl,
   createToken,
   generateId,
@@ -66,8 +69,8 @@ async function handleMeetingActions(req, _context) {
   logRequest(FN, req);
 
   // All routes in this function require authentication and POST method.
-  const user = getUserFromRequest(req);
-  if (!user) return errorResponse(401, "Not authenticated. Please sign in.");
+  const { user, error } = requireUser(req);
+  if (error) return error;
   if (req.method !== "POST") return errorResponse(405, `Method ${req.method} not allowed.`);
 
   const url = new URL(req.url);
@@ -105,47 +108,39 @@ async function handleMeetingActions(req, _context) {
     if (body === null) return errorResponse(400, "Request body must be valid JSON.");
     const slots = Array.isArray(body.slots) ? body.slots : [];
 
-    const allAvail = asArray(
-      await availability.get(`meeting:${meetingId}`, { type: "json" }).catch(() => [])
-    );
-    const otherAvail = allAvail.filter((a) => a.user_id !== user.id);
-
     const validDates = new Set(meeting.dates_or_days);
     const validTimes = new Set(buildTimeSlots(meeting.start_time, meeting.end_time));
 
-    const newAvail = [];
-    let skipped = 0;
-    for (const sk of slots) {
-      const idx = sk.indexOf("_");
-      if (idx === -1) {
-        skipped++;
-        continue;
-      }
-      const dod = sk.slice(0, idx);
-      const ts = sk.slice(idx + 1);
-      if (validDates.has(dod) && validTimes.has(ts)) {
-        newAvail.push({ meeting_id: meetingId, user_id: user.id, date_or_day: dod, time_slot: ts });
-      } else {
-        skipped++;
-      }
-    }
+    const { records: newAvail, skipped } = parseAvailabilitySlots(slots, {
+      meetingId,
+      userId: user.id,
+      validDates,
+      validTimes,
+    });
     if (skipped > 0) log("warn", FN, "slots skipped (invalid date/time)", { meetingId, skipped });
 
-    const updatedAvail = [...otherAvail, ...newAvail];
-    await availability.setJSON(`meeting:${meetingId}`, updatedAvail);
+    // Replace this user's rows atomically: concurrent submissions from other
+    // participants must not clobber each other (lost-update race on a shared
+    // Blobs key). The mutator is pure, so it can be replayed against the latest
+    // snapshot on CAS retry while still preserving everyone else's rows.
+    const updatedAvail = await updateJsonWithCas(
+      availability,
+      `meeting:${meetingId}`,
+      (current) => [...asArray(current).filter((a) => a.user_id !== user.id), ...newAvail],
+      { defaultValue: [] }
+    );
 
     if (invite) {
-      const updatedInvites = meetingInvites.map((i) =>
-        i.email === user.email ? { ...i, responded: true } : i
+      await updateJsonWithCas(
+        invites,
+        `meeting:${meetingId}`,
+        (current) =>
+          asArray(current).map((i) => (i.email === user.email ? { ...i, responded: true } : i)),
+        { defaultValue: [] }
       );
-      await invites.setJSON(`meeting:${meetingId}`, updatedInvites);
     }
 
-    const slotCounts = {};
-    for (const a of updatedAvail) {
-      const k = `${a.date_or_day}_${a.time_slot}`;
-      slotCounts[k] = (slotCounts[k] || 0) + 1;
-    }
+    const slotCounts = countSlots(updatedAvail);
 
     log("info", FN, "availability saved", { meetingId, newSlots: newAvail.length });
     return jsonResponse(200, { success: true, slot_counts: slotCounts });

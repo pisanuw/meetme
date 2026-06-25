@@ -38,3 +38,5 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-06-25 [code] Test gap closed: add test/jwt.test.mjs (sign/verify/expiry/tamper/wrong-secret/Bearer-vs-cookie precedence) and test/availability.test.mjs (normalizeAvailabilityConfig, buildSlotCandidates edges, localToUTC DST); wire test:coverage gate (lines78/branch50/funcs50) into CI test-default job.
 
 2026-06-25 [doc] Ran /code-improve whole-repo sweep -> CODE-IMPROVE-REPORT.md (report-only, no source changes): 1 medium + 5 low findings, ~15 simplification proposals, audits clean; 3 reviewer claims verified false and dropped.
+
+2026-06-25 [code] Implemented all 6 CODE-IMPROVE-REPORT fixes: Blobs CAS for meeting writes; 128-bit meeting IDs; frontend+backend dedup; small UX/correctness fixes. Gate green.

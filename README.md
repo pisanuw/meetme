@@ -186,8 +186,7 @@ This project supports an **opt-in** encrypted secrets file (`.env.asc`) managed
 with [SOPS](https://github.com/getsops/sops), distinct from Netlify's built-in
 environment variable storage.
 
-> **`.env.asc` is not tracked in this repository.** A previous version committed
-> one bound to a personal GPG key; it has been removed. Treat any secret that
+> **`.env.asc` is not tracked in this repository.** Treat any secret that
 > ever appeared in a committed `.env.asc`/`.env.enc` as public and rotate it at
 > its provider. Before using the SOPS workflow, generate a **dedicated,
 > rotatable** key (not a personal identity key) and keep its private half out of

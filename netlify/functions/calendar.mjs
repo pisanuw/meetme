@@ -15,7 +15,7 @@
 import {
   getDb,
   getEnv,
-  getUserFromRequest,
+  requireUser,
   jsonResponse,
   errorResponse,
   log,
@@ -107,8 +107,8 @@ async function refreshAccessToken(dbUser) {
 async function handleCalendar(req, context) {
   logRequest(FN, req);
 
-  const user = getUserFromRequest(req);
-  if (!user) return errorResponse(401, "Not authenticated. Please sign in.");
+  const { user, error } = requireUser(req);
+  if (error) return error;
   if (req.method !== "GET") return errorResponse(405, `Method ${req.method} not allowed.`);
 
   const url = new URL(req.url);

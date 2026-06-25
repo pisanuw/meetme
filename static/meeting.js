@@ -16,10 +16,6 @@ let currentUser = null;
 let currentView = "heatmap";
 /** Index of the person selected in by-person view. */
 let currentPerson = 0;
-/** Whether the user is currently drag-selecting cells. */
-let isDragging = false;
-/** "add" | "remove" — action applied while dragging. */
-let dragAction = null;
 /** Pending debounced-save timer handle. */
 let saveTimer = null;
 /** Guard against registering persistence listeners more than once. */
@@ -163,7 +159,9 @@ function promptForName() {
       resolve("");
       return;
     }
+    const hint = document.getElementById("name-modal-hint");
     input.value = anonContext?.name || "";
+    if (hint) hint.hidden = true;
     modal.hidden = false;
 
     const cleanup = () => {
@@ -171,10 +169,14 @@ function promptForName() {
       saveBtn.removeEventListener("click", onSave);
       cancelBtn.removeEventListener("click", onCancel);
       input.removeEventListener("keydown", onKey);
+      input.removeEventListener("input", onInput);
     };
     const onSave = () => {
       const v = input.value.trim().slice(0, 100);
       if (!v) {
+        // A name is required; tell the user instead of silently doing nothing.
+        if (hint) hint.hidden = false;
+        input.focus();
         return;
       }
       cleanup();
@@ -188,9 +190,13 @@ function promptForName() {
       if (e.key === "Enter") onSave();
       if (e.key === "Escape") onCancel();
     };
+    const onInput = () => {
+      if (hint && input.value.trim()) hint.hidden = true;
+    };
     saveBtn.addEventListener("click", onSave);
     cancelBtn.addEventListener("click", onCancel);
     input.addEventListener("keydown", onKey);
+    input.addEventListener("input", onInput);
   });
 }
 
@@ -872,33 +878,9 @@ function repaintAll() {
 }
 
 function attachGridEvents(grid) {
-  let lastTouchTime = 0;
-  const TOUCH_DRAG_START_DISTANCE = 12;
-  const touchState = {
-    active: false,
-    startX: 0,
-    startY: 0,
-    startCell: null,
-    isScrolling: false,
-  };
+  let dragAction = null;
 
-  function resetTouchState() {
-    touchState.active = false;
-    touchState.startX = 0;
-    touchState.startY = 0;
-    touchState.startCell = null;
-    touchState.isScrolling = false;
-  }
-
-  function startDrag(cell) {
-    if (currentView !== "mine") return;
-    if (!cell || !cell.classList.contains("ag-cell")) return;
-    isDragging = true;
-    dragAction = M.mySlots.has(cell.dataset.key) ? "remove" : "add";
-    applyDrag(cell);
-  }
-
-  function applyDrag(cell) {
+  function applyDragCell(cell) {
     if (!cell || !cell.classList.contains("ag-cell")) return;
     const key = cell.dataset.key;
     if (dragAction === "add") M.mySlots.add(key);
@@ -906,85 +888,16 @@ function attachGridEvents(grid) {
     paintCell(cell);
   }
 
-  function endDrag() {
-    if (isDragging) {
-      isDragging = false;
-      scheduleSave();
-    }
-  }
-
-  grid.addEventListener("mousedown", (e) => {
-    if (Date.now() - lastTouchTime < 500) return;
-    const cell = e.target.closest(".ag-cell");
-    if (cell) {
-      startDrag(cell);
-      e.preventDefault();
-    }
-  });
-
-  document.addEventListener("mousemove", (e) => {
-    if (!isDragging) return;
-    const cell = document.elementFromPoint(e.clientX, e.clientY)?.closest?.(".ag-cell");
-    if (cell) applyDrag(cell);
-  });
-
-  document.addEventListener("mouseup", endDrag);
-
-  grid.addEventListener("touchstart", (e) => {
-    lastTouchTime = Date.now();
-    if (e.touches.length !== 1) {
-      resetTouchState();
-      return;
-    }
-    const touch = e.touches[0];
-    const cell = document.elementFromPoint(touch.clientX, touch.clientY)?.closest?.(".ag-cell");
-    touchState.active = Boolean(cell);
-    touchState.startX = touch.clientX;
-    touchState.startY = touch.clientY;
-    touchState.startCell = cell || null;
-    touchState.isScrolling = false;
-  });
-
-  grid.addEventListener(
-    "touchmove",
-    (e) => {
-      if (!touchState.active || touchState.isScrolling || e.touches.length !== 1) return;
-      const touch = e.touches[0];
-      const deltaX = touch.clientX - touchState.startX;
-      const deltaY = touch.clientY - touchState.startY;
-      const movedFarEnough =
-        Math.abs(deltaX) > TOUCH_DRAG_START_DISTANCE ||
-        Math.abs(deltaY) > TOUCH_DRAG_START_DISTANCE;
-      if (!isDragging) {
-        if (!movedFarEnough) return;
-        if (Math.abs(deltaY) > Math.abs(deltaX)) {
-          touchState.isScrolling = true;
-          return;
-        }
-        startDrag(touchState.startCell);
-      }
-      if (isDragging) {
-        e.preventDefault();
-        const cell = document.elementFromPoint(touch.clientX, touch.clientY)?.closest?.(".ag-cell");
-        if (cell) applyDrag(cell);
-      }
+  bindDragSelect(grid, {
+    onStartDrag(cell) {
+      if (currentView !== "mine") return false;
+      if (!cell || !cell.classList.contains("ag-cell")) return false;
+      dragAction = M.mySlots.has(cell.dataset.key) ? "remove" : "add";
+      applyDragCell(cell);
+      return true;
     },
-    { passive: false }
-  );
-
-  grid.addEventListener("touchend", () => {
-    try {
-      if (touchState.active && !touchState.isScrolling && !isDragging && touchState.startCell) {
-        startDrag(touchState.startCell);
-      }
-    } finally {
-      endDrag();
-      resetTouchState();
-    }
-  });
-  grid.addEventListener("touchcancel", () => {
-    endDrag();
-    resetTouchState();
+    onApplyDrag: applyDragCell,
+    onEndDrag: scheduleSave,
   });
 }
 

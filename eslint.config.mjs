@@ -35,6 +35,8 @@ export default [
         requireAuth: "readonly",
         showFlash: "readonly",
         escapeHtml: "readonly",
+        MeetingForm: "readonly",
+        bindDragSelect: "readonly",
       },
     },
     rules: {

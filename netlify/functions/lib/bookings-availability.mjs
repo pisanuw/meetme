@@ -59,13 +59,12 @@ export function buildSlotCandidates(eventType, availabilityConfig, dateStr) {
   const config = normalizeAvailabilityConfig(availabilityConfig, eventType.timezone || "UTC");
   if (!isDateInRange(dateStr, config.start_date, config.end_date)) return [];
 
-  const eventTz = eventType.timezone || "UTC";
   let dayWindows = [];
 
   if (config.mode === "specific_dates") {
     dayWindows = config.windows.filter((w) => String(w.date || "").trim() === dateStr);
   } else {
-    const dayName = getWeekdayForDate(dateStr, eventTz);
+    const dayName = getWeekdayForDate(dateStr);
     dayWindows = config.windows.filter((w) => w.day_of_week === dayName);
   }
 

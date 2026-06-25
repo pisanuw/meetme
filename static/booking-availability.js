@@ -30,7 +30,6 @@ let hasEventTypes = false;
 let allEventTypes = [];
 let selectedSlots = new Set();
 let gridColumns = [];
-let isDragging = false;
 let dragAction = null;
 let gridStartMinutes = 0;
 let gridEndMinutes = DAY_MINUTES;
@@ -418,15 +417,7 @@ async function saveAvailability() {
   window.location.href = "/dashboard.html";
 }
 
-function startDrag(cell) {
-  if (!cell || !cell.classList.contains("ag-cell")) return;
-  if (!hasEventTypes) return;
-  isDragging = true;
-  dragAction = selectedSlots.has(cell.dataset.key) ? "remove" : "add";
-  applyDrag(cell);
-}
-
-function applyDrag(cell) {
+function applyDragCell(cell) {
   if (!cell || !cell.classList.contains("ag-cell")) return;
   const key = cell.dataset.key;
   if (dragAction === "add") selectedSlots.add(key);
@@ -435,102 +426,16 @@ function applyDrag(cell) {
   updateSelectionSummary();
 }
 
-function endDrag() {
-  if (!isDragging) return;
-  isDragging = false;
-}
-
 function bindGridDragEvents() {
-  let lastTouchTime = 0;
-  const TOUCH_DRAG_START_DISTANCE = 12;
-  const touchState = {
-    active: false,
-    startX: 0,
-    startY: 0,
-    startCell: null,
-    isScrolling: false,
-  };
-
-  function resetTouchState() {
-    touchState.active = false;
-    touchState.startX = 0;
-    touchState.startY = 0;
-    touchState.startCell = null;
-    touchState.isScrolling = false;
-  }
-
-  availabilityGrid.addEventListener("mousedown", (e) => {
-    if (Date.now() - lastTouchTime < 500) return;
-    const cell = e.target.closest(".ag-cell");
-    if (!cell) return;
-    startDrag(cell);
-    e.preventDefault();
-  });
-
-  document.addEventListener("mousemove", (e) => {
-    if (!isDragging) return;
-    const cell = document.elementFromPoint(e.clientX, e.clientY)?.closest?.(".ag-cell");
-    if (cell) applyDrag(cell);
-  });
-
-  document.addEventListener("mouseup", endDrag);
-
-  availabilityGrid.addEventListener("touchstart", (e) => {
-    lastTouchTime = Date.now();
-    if (e.touches.length !== 1) {
-      resetTouchState();
-      return;
-    }
-    const touch = e.touches[0];
-    const cell = document.elementFromPoint(touch.clientX, touch.clientY)?.closest?.(".ag-cell");
-    touchState.active = Boolean(cell);
-    touchState.startX = touch.clientX;
-    touchState.startY = touch.clientY;
-    touchState.startCell = cell || null;
-    touchState.isScrolling = false;
-  });
-
-  availabilityGrid.addEventListener(
-    "touchmove",
-    (e) => {
-      if (!touchState.active || touchState.isScrolling || e.touches.length !== 1) return;
-      const touch = e.touches[0];
-      const deltaX = touch.clientX - touchState.startX;
-      const deltaY = touch.clientY - touchState.startY;
-      const movedFarEnough =
-        Math.abs(deltaX) > TOUCH_DRAG_START_DISTANCE ||
-        Math.abs(deltaY) > TOUCH_DRAG_START_DISTANCE;
-      if (!isDragging) {
-        if (!movedFarEnough) return;
-        if (Math.abs(deltaY) > Math.abs(deltaX)) {
-          touchState.isScrolling = true;
-          return;
-        }
-        startDrag(touchState.startCell);
-      }
-      if (isDragging) {
-        e.preventDefault();
-        const cell = document.elementFromPoint(touch.clientX, touch.clientY)?.closest?.(".ag-cell");
-        if (cell) applyDrag(cell);
-      }
+  bindDragSelect(availabilityGrid, {
+    onStartDrag(cell) {
+      if (!cell || !cell.classList.contains("ag-cell")) return false;
+      if (!hasEventTypes) return false;
+      dragAction = selectedSlots.has(cell.dataset.key) ? "remove" : "add";
+      applyDragCell(cell);
+      return true;
     },
-    { passive: false }
-  );
-
-  availabilityGrid.addEventListener("touchend", () => {
-    try {
-      if (touchState.active && !touchState.isScrolling && !isDragging && touchState.startCell) {
-        startDrag(touchState.startCell);
-      }
-    } finally {
-      endDrag();
-      resetTouchState();
-    }
-  });
-
-  availabilityGrid.addEventListener("touchcancel", () => {
-    endDrag();
-    resetTouchState();
+    onApplyDrag: applyDragCell,
   });
 }
 
@@ -602,4 +507,7 @@ async function init() {
   }
 }
 
-init();
+init().catch((err) => {
+  console.error("Page initialization failed:", err);
+  showFlash("Something went wrong loading this page. Please refresh.", "danger");
+});

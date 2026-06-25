@@ -7,6 +7,7 @@
  */
 import jwt from "jsonwebtoken";
 import { getJwtSecret } from "./env.mjs";
+import { errorResponse } from "./http.mjs";
 
 /**
  * Sign a JWT with the application secret.
@@ -67,4 +68,22 @@ export function getUserFromRequest(req) {
   const match = cookie.match(/(?:^|;\s*)token=([^;]+)/);
   if (!match) return null;
   return verifyToken(match[1]);
+}
+
+/**
+ * Resolve the authenticated user for a request, or a ready-to-return 401.
+ *
+ * Collapses the `getUserFromRequest(req)` + "Not authenticated" 401 guard that
+ * every authenticated route repeats. Usage:
+ *
+ *   const { user, error } = requireUser(req);
+ *   if (error) return error;
+ *
+ * @param {Request} req
+ * @returns {{ user: object, error?: undefined } | { user?: undefined, error: Response }}
+ */
+export function requireUser(req) {
+  const user = getUserFromRequest(req);
+  if (!user) return { error: errorResponse(401, "Not authenticated. Please sign in.") };
+  return { user };
 }

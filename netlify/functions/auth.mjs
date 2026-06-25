@@ -28,6 +28,7 @@ import {
   getEnv,
   createToken,
   getUserFromRequest,
+  requireUser,
   jsonResponse,
   errorResponse,
   setCookie,
@@ -116,8 +117,8 @@ async function handleAuth(req, context) {
   }
 
   if (req.method === "GET" && path === "profile") {
-    const tokenUser = getUserFromRequest(req);
-    if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
+    const { user: tokenUser, error } = requireUser(req);
+    if (error) return error;
     const users = getDb("users");
     const user = await users.get(tokenUser.email, { type: "json" }).catch(() => null);
     if (!user) return errorResponse(404, "User record not found.");
@@ -134,8 +135,8 @@ async function handleAuth(req, context) {
   }
 
   if (req.method === "GET" && (path === "me" || path === "")) {
-    const tokenUser = getUserFromRequest(req);
-    if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
+    const { user: tokenUser, error } = requireUser(req);
+    if (error) return error;
     const users = getDb("users");
     const user =
       (await users.get(tokenUser.email, { type: "json" }).catch(() => null)) || tokenUser;
@@ -151,8 +152,8 @@ async function handleAuth(req, context) {
   }
 
   if (req.method === "GET" && path === "email-preferences") {
-    const tokenUser = getUserFromRequest(req);
-    if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
+    const { user: tokenUser, error } = requireUser(req);
+    if (error) return error;
 
     const prefs = await getEmailPreferences(tokenUser.email);
     return jsonResponse(200, {
@@ -168,8 +169,8 @@ async function handleAuth(req, context) {
   }
 
   if (path === "impersonation/stop") {
-    const tokenUser = getUserFromRequest(req);
-    if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
+    const { user: tokenUser, error } = requireUser(req);
+    if (error) return error;
     if (!tokenUser.is_impersonated || !tokenUser.impersonator_email) {
       return errorResponse(403, "This session is not impersonating another user.");
     }
@@ -205,8 +206,8 @@ async function handleAuth(req, context) {
   }
 
   if (path === "profile") {
-    const tokenUser = getUserFromRequest(req);
-    if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
+    const { user: tokenUser, error } = requireUser(req);
+    if (error) return error;
 
     const firstName = (body.first_name || "").trim();
     const lastName = (body.last_name || "").trim();
@@ -237,8 +238,8 @@ async function handleAuth(req, context) {
   }
 
   if (path === "email-preferences") {
-    const tokenUser = getUserFromRequest(req);
-    if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
+    const { user: tokenUser, error } = requireUser(req);
+    if (error) return error;
 
     const globalOptOut = body.global_opt_out === true;
     const blockedOrganizers = asArray(body.blocked_organizers)
@@ -281,8 +282,8 @@ async function handleAuth(req, context) {
   // Permanently deletes the authenticated user's account and all associated
   // data. Required by Apple App Store guideline 5.1.1 (account deletion).
   if (path === "account/delete") {
-    const tokenUser = getUserFromRequest(req);
-    if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
+    const { user: tokenUser, error } = requireUser(req);
+    if (error) return error;
 
     if (isRateLimitEnabled()) {
       const ip = getClientIp(req);

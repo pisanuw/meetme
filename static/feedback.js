@@ -1,11 +1,16 @@
-checkAuth().then((user) => {
-  if (user) {
-    if (!document.getElementById("fb-name").value)
-      document.getElementById("fb-name").value = user.name || "";
-    if (!document.getElementById("fb-email").value)
-      document.getElementById("fb-email").value = user.email || "";
-  }
-});
+checkAuth()
+  .then((user) => {
+    if (user) {
+      if (!document.getElementById("fb-name").value)
+        document.getElementById("fb-name").value = user.name || "";
+      if (!document.getElementById("fb-email").value)
+        document.getElementById("fb-email").value = user.email || "";
+    }
+  })
+  .catch((err) => {
+    // Prefill is a nicety, not load-bearing — log and move on.
+    console.error("Profile prefill failed:", err);
+  });
 
 document.getElementById("feedback-form").addEventListener("submit", async (e) => {
   e.preventDefault();

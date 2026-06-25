@@ -431,11 +431,129 @@ function escapeHtml(str) {
   return d.innerHTML;
 }
 
+/**
+ * Bind mouse + touch drag-to-select interaction to an availability grid.
+ *
+ * Owns the drag/scroll state machine shared by the meeting heatmap grid and the
+ * booking-availability grid. Callers supply only the page-specific behavior:
+ *   onStartDrag(cell) -> boolean  begin a drag and paint the first cell; return
+ *                                 false to reject it (e.g. wrong view / not ready)
+ *   onApplyDrag(cell)             extend the drag over `cell`
+ *   onEndDrag()                   finalize once, only if a drag actually began
+ *
+ * Distinguishing a vertical scroll from a horizontal drag (the
+ * TOUCH_DRAG_START_DISTANCE threshold) and the post-touch mouse-suppression
+ * window both live here so the two grids stay in lockstep.
+ *
+ * @param {HTMLElement} grid
+ * @param {{ onStartDrag: (cell: Element) => boolean, onApplyDrag: (cell: Element) => void, onEndDrag?: () => void }} handlers
+ */
+function bindDragSelect(grid, { onStartDrag, onApplyDrag, onEndDrag }) {
+  if (!grid) return;
+  let dragging = false;
+  let lastTouchTime = 0;
+  const TOUCH_DRAG_START_DISTANCE = 12;
+  const touchState = { active: false, startX: 0, startY: 0, startCell: null, isScrolling: false };
+
+  function resetTouchState() {
+    touchState.active = false;
+    touchState.startX = 0;
+    touchState.startY = 0;
+    touchState.startCell = null;
+    touchState.isScrolling = false;
+  }
+
+  function beginDrag(cell) {
+    if (onStartDrag(cell)) dragging = true;
+  }
+
+  function finishDrag() {
+    if (!dragging) return;
+    dragging = false;
+    if (onEndDrag) onEndDrag();
+  }
+
+  grid.addEventListener("mousedown", (e) => {
+    if (Date.now() - lastTouchTime < 500) return;
+    const cell = e.target.closest(".ag-cell");
+    if (!cell) return;
+    beginDrag(cell);
+    e.preventDefault();
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    const cell = document.elementFromPoint(e.clientX, e.clientY)?.closest?.(".ag-cell");
+    if (cell) onApplyDrag(cell);
+  });
+
+  document.addEventListener("mouseup", finishDrag);
+
+  grid.addEventListener("touchstart", (e) => {
+    lastTouchTime = Date.now();
+    if (e.touches.length !== 1) {
+      resetTouchState();
+      return;
+    }
+    const touch = e.touches[0];
+    const cell = document.elementFromPoint(touch.clientX, touch.clientY)?.closest?.(".ag-cell");
+    touchState.active = Boolean(cell);
+    touchState.startX = touch.clientX;
+    touchState.startY = touch.clientY;
+    touchState.startCell = cell || null;
+    touchState.isScrolling = false;
+  });
+
+  grid.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!touchState.active || touchState.isScrolling || e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - touchState.startX;
+      const deltaY = touch.clientY - touchState.startY;
+      const movedFarEnough =
+        Math.abs(deltaX) > TOUCH_DRAG_START_DISTANCE ||
+        Math.abs(deltaY) > TOUCH_DRAG_START_DISTANCE;
+      if (!dragging) {
+        if (!movedFarEnough) return;
+        if (Math.abs(deltaY) > Math.abs(deltaX)) {
+          touchState.isScrolling = true;
+          return;
+        }
+        beginDrag(touchState.startCell);
+      }
+      if (dragging) {
+        e.preventDefault();
+        const cell = document.elementFromPoint(touch.clientX, touch.clientY)?.closest?.(".ag-cell");
+        if (cell) onApplyDrag(cell);
+      }
+    },
+    { passive: false }
+  );
+
+  grid.addEventListener("touchend", () => {
+    try {
+      if (touchState.active && !touchState.isScrolling && !dragging && touchState.startCell) {
+        beginDrag(touchState.startCell);
+      }
+    } finally {
+      finishDrag();
+      resetTouchState();
+    }
+  });
+
+  grid.addEventListener("touchcancel", () => {
+    finishDrag();
+    resetTouchState();
+  });
+}
+
 window.apiFetch = apiFetch;
 window.checkAuth = checkAuth;
 window.requireAuth = requireAuth;
 window.showFlash = showFlash;
 window.escapeHtml = escapeHtml;
+window.bindDragSelect = bindDragSelect;
 
 // Logout handler
 document.addEventListener("DOMContentLoaded", () => {

@@ -18,19 +18,22 @@
  */
 import {
   getDb,
+  updateJsonWithCas,
   getEnv,
-  getUserFromRequest,
+  requireUser,
   jsonResponse,
   errorResponse,
   log,
   logRequest,
   safeJson,
   generateId,
+  generateSecureId,
   persistEvent,
   sendEmail,
   asArray,
   escapeHtml,
   buildTimeSlots,
+  countSlots,
   listMeetingIds,
   getMeetingRecord,
   saveMeetingRecord,
@@ -60,8 +63,8 @@ async function handleRequest(req, _context) {
   logRequest(FN, req);
 
   // Require a valid session cookie for every endpoint in this function.
-  const user = getUserFromRequest(req);
-  if (!user) return errorResponse(401, "Not authenticated. Please sign in.");
+  const { user, error } = requireUser(req);
+  if (error) return error;
 
   const url = new URL(req.url);
   const pathParts = url.pathname.replace("/api/meetings", "").split("/").filter(Boolean);
@@ -284,7 +287,9 @@ async function handleRequest(req, _context) {
 
     log("info", FN, "creating meeting", { title: normalizedTitle, creator: user.email });
 
-    const meetingId = generateId();
+    // High-entropy ID: the meeting ID is the shareable-link access capability
+    // (anyone who presents it joins), so it must be unguessable/non-enumerable.
+    const meetingId = generateSecureId();
     const meeting = {
       id: meetingId,
       title: normalizedTitle,
@@ -493,19 +498,33 @@ async function handleRequest(req, _context) {
         added_via_shared_link: true,
         added_at: new Date().toISOString(),
       };
-      meetingInvites = [...meetingInvites, newInvite];
-      await invites.setJSON(`meeting:${meetingId}`, meetingInvites);
-      invite = newInvite;
+      // Add this participant atomically. A concurrent shared-link visit or an
+      // availability submission writes the same invites key, so a plain
+      // read-modify-write could drop one of the writes (lost-update race).
+      meetingInvites = await updateJsonWithCas(
+        invites,
+        `meeting:${meetingId}`,
+        (current) => {
+          const list = asArray(current);
+          return list.some((i) => i.email === user.email) ? list : [...list, newInvite];
+        },
+        { defaultValue: [] }
+      );
+      invite = meetingInvites.find((i) => i.email === user.email);
 
-      log("info", FN, "participant added via shared link", {
-        meetingId,
-        email: user.email,
-        addedBy: "shared-link",
-      });
-      await persistEvent("info", FN, "participant added via shared link", {
-        meetingId,
-        email: user.email,
-      });
+      // Only log/emit the event when *this* request is the one that added the
+      // participant (a racing request may have added them first).
+      if (invite?.id === newInvite.id) {
+        log("info", FN, "participant added via shared link", {
+          meetingId,
+          email: user.email,
+          addedBy: "shared-link",
+        });
+        await persistEvent("info", FN, "participant added via shared link", {
+          meetingId,
+          email: user.email,
+        });
+      }
     }
 
     const allAvail = asArray(
@@ -517,11 +536,7 @@ async function handleRequest(req, _context) {
     const mySlots = myAvail.map((a) => `${a.date_or_day}_${a.time_slot}`);
 
     // Aggregate slot counts across all participants to power the heatmap grid.
-    const slotCounts = {};
-    for (const a of allAvail) {
-      const k = `${a.date_or_day}_${a.time_slot}`;
-      slotCounts[k] = (slotCounts[k] || 0) + 1;
-    }
+    const slotCounts = countSlots(allAvail);
 
     // Build the ordered list of 15-minute time slots between the meeting's
     // start and end times. The front-end uses this to render column headers.

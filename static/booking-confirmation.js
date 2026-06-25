@@ -84,4 +84,7 @@ function renderDetail(label, value) {
   });
 
   await loadBookingDetails();
-})();
+})().catch((err) => {
+  console.error("Page initialization failed:", err);
+  showFlash("Something went wrong loading this page. Please refresh.", "danger");
+});

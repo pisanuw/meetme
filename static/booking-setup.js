@@ -105,4 +105,7 @@ document.getElementById("event-type-form").addEventListener("submit", async (e) 
   if (editEventTypeId) {
     await loadEventTypeForEdit(editEventTypeId);
   }
-})();
+})().catch((err) => {
+  console.error("Page initialization failed:", err);
+  showFlash("Something went wrong loading this page. Please refresh.", "danger");
+});
