@@ -14,6 +14,7 @@
     "env:decrypt": "node scripts/decrypt-sops-env.mjs .env.asc .env",
     "fix:deps": "rm -rf node_modules && npm ci",
     "test": "node --test test/*.test.mjs",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=78 --test-coverage-branches=50 --test-coverage-functions=50 test/*.test.mjs",
     "test:e2e:smoke": "playwright test -c playwright.smoke.config.mjs",
     "typecheck": "node scripts/typecheck.mjs",
     "lint": "eslint . --max-warnings 0",

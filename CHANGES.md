@@ -34,3 +34,7 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-06-24 [code] Stage 29: CI gates + hooks — eslint (max-warnings 0), prettier check, tsc --checkJs typecheck with baseline; ci.yml runs test/lint/typecheck/format/e2e; gitleaks + Conventional Commits hooks.
 2026-06-25 [doc] Stage 30: release readiness — .env.example, SOPS workflow (.sops.yaml placeholder key, decrypt script + composite action), .gitleaks.toml, full README, MIT LICENSE, staging smoke script.
 2026-06-25 [note] All 30 stages complete; every feature in the implementation plan inventory is implemented.
+
+2026-06-25 [code] Test gap closed: add test/jwt.test.mjs (sign/verify/expiry/tamper/wrong-secret/Bearer-vs-cookie precedence) and test/availability.test.mjs (normalizeAvailabilityConfig, buildSlotCandidates edges, localToUTC DST); wire test:coverage gate (lines78/branch50/funcs50) into CI test-default job.
+
+2026-06-25 [doc] Ran /code-improve whole-repo sweep -> CODE-IMPROVE-REPORT.md (report-only, no source changes): 1 medium + 5 low findings, ~15 simplification proposals, audits clean; 3 reviewer claims verified false and dropped.
