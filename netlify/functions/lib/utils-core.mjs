@@ -92,6 +92,24 @@ export function generateId() {
 }
 
 /**
+ * Generate a high-entropy, unguessable, URL- and blob-key-safe identifier.
+ *
+ * Uses CSPRNG bytes rather than `Date.now()` + `Math.random()`. Use this for
+ * IDs that double as an access capability — notably meeting IDs, where anyone
+ * who can present the ID is treated as a participant, so a guessable/enumerable
+ * ID would be an access-control weakness.
+ *
+ * Returns lowercase hex (`[a-f0-9]`) so it satisfies the meeting-store key
+ * pattern `m-<epoch>-<[a-z0-9]+>` (a UUID's hyphens would not).
+ *
+ * @param {number} [byteLength=16] - Random bytes (16 = 128 bits of entropy)
+ * @returns {string} e.g. "9f86d081884c7d659a2feaa0c55ad015"
+ */
+export function generateSecureId(byteLength = 16) {
+  return crypto.randomBytes(byteLength).toString("hex");
+}
+
+/**
  * Generate an opaque, hard-to-guess anonymous participant identity.
  * Used for availability/invite records on anonymous meetings where we don't
  * have a logged-in user.id. Stored in availability.user_id as "anon:<id>" so
@@ -177,6 +195,52 @@ export function buildTimeSlots(startTime, endTime, stepMin = 15) {
     cur += stepMin;
   }
   return slots;
+}
+
+/**
+ * Aggregate availability rows into a per-slot responder count keyed by
+ * `"<date_or_day>_<time_slot>"`. Powers the heatmap grid.
+ *
+ * @param {Array<{date_or_day: string, time_slot: string}>} availList
+ * @returns {Record<string, number>}
+ */
+export function countSlots(availList) {
+  /** @type {Record<string, number>} */
+  const counts = {};
+  for (const a of asArray(availList)) {
+    const k = `${a.date_or_day}_${a.time_slot}`;
+    counts[k] = (counts[k] || 0) + 1;
+  }
+  return counts;
+}
+
+/**
+ * Parse and validate submitted `"<date_or_day>_<time_slot>"` slot keys into
+ * availability records, dropping any that fall outside the meeting's configured
+ * dates/times. Returns the valid records plus a count of skipped entries.
+ *
+ * @param {string[]} slots
+ * @param {{ meetingId: string, userId: string, validDates: Set<string>, validTimes: Set<string> }} ctx
+ * @returns {{ records: Array<object>, skipped: number }}
+ */
+export function parseAvailabilitySlots(slots, { meetingId, userId, validDates, validTimes }) {
+  const records = [];
+  let skipped = 0;
+  for (const sk of asArray(slots)) {
+    const idx = sk.indexOf("_");
+    if (idx === -1) {
+      skipped++;
+      continue;
+    }
+    const dod = sk.slice(0, idx);
+    const ts = sk.slice(idx + 1);
+    if (validDates.has(dod) && validTimes.has(ts)) {
+      records.push({ meeting_id: meetingId, user_id: userId, date_or_day: dod, time_slot: ts });
+    } else {
+      skipped++;
+    }
+  }
+  return { records, skipped };
 }
 
 export function localToUTC(dateStr, timeStr, timezone) {

@@ -51,11 +51,16 @@ export function slugify(value) {
   return base || "user";
 }
 
-export function getWeekdayForDate(dateStr, timezone) {
+export function getWeekdayForDate(dateStr) {
+  // The weekday of a bare "YYYY-MM-DD" date is a fixed property of the calendar
+  // day and does not depend on any timezone, so resolve it in UTC. (An earlier
+  // version formatted UTC-noon in a caller-supplied timezone, which returned the
+  // *next* day's weekday for far-eastern zones like UTC+13/+14, e.g.
+  // Pacific/Kiritimati, hiding that day's weekly availability.)
   const utcNoon = new Date(`${dateStr}T12:00:00Z`);
   return new Intl.DateTimeFormat("en-US", {
     weekday: "long",
-    timeZone: timezone || "UTC",
+    timeZone: "UTC",
   }).format(utcNoon);
 }
 

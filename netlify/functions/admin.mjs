@@ -6,16 +6,19 @@
  * with a 403 before any data is read.
  *
  * Routes handled (all require admin):
- *   GET  /api/admin/stats    — site-wide counts (users, meetings, events)
- *   GET  /api/admin/users    — paginated user list
- *   GET  /api/admin/meetings — paginated meeting list with participation details
- *   GET  /api/admin/events   — recent audit log entries
- *   POST /api/admin/users/:email/make-admin    — grant admin to a user (future use)
- *   POST /api/admin/meetings/:id/delete        — force-delete any meeting
+ *   GET  /api/admin/stats          — site-wide counts (users, meetings, events)
+ *   GET  /api/admin/users          — paginated user list
+ *   GET  /api/admin/users/:email   — single user detail with their meetings
+ *   POST /api/admin/users          — create a user
+ *   POST /api/admin/users/admin    — grant or revoke a user's admin flag
+ *   POST /api/admin/users/delete   — delete a user and all their data
+ *   POST /api/admin/impersonate    — start impersonating a user
+ *   GET  /api/admin/meetings       — paginated meeting list with participation details
+ *   GET  /api/admin/events         — recent audit log entries
  */
 import {
   getDb,
-  getUserFromRequest,
+  requireUser,
   jsonResponse,
   errorResponse,
   isAdmin,
@@ -80,8 +83,8 @@ export default async (req, context) => {
 async function handleAdmin(req, context) {
   logRequest(FN, req);
 
-  const tokenUser = getUserFromRequest(req);
-  if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
+  const { user: tokenUser, error } = requireUser(req);
+  if (error) return error;
   const usersDb = getDb("users");
   let dbUser;
   try {

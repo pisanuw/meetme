@@ -243,7 +243,16 @@
             class="form-control"
             placeholder="Your name"
             maxlength="100"
+            aria-describedby="name-modal-hint"
           />
+          <p
+            id="name-modal-hint"
+            role="alert"
+            hidden
+            style="color: var(--danger, #c0392b); margin: 0.4rem 0 0; font-size: 0.9em"
+          >
+            Please enter a name to continue.
+          </p>
         </div>
         <div class="form-actions">
           <button type="button" id="name-modal-cancel" class="btn btn-ghost">Cancel</button>

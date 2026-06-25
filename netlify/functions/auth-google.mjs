@@ -21,6 +21,7 @@ import {
   createToken,
   verifyToken,
   getUserFromRequest,
+  requireUser,
   jsonResponse,
   errorResponse,
   setCookie,
@@ -43,6 +44,30 @@ import {
 } from "./auth-helpers.mjs";
 
 const FN = "auth-google";
+
+/**
+ * POST an authorization code to Google's token endpoint. The request body is
+ * identical for the sign-in and calendar OAuth flows; only the redirect_uri and
+ * each caller's error handling differ, so callers pass their own redirectUri and
+ * wrap this in their own try/catch + response checks.
+ *
+ * @param {string} code - Authorization code from the OAuth callback
+ * @param {string} redirectUri - The redirect_uri registered for this flow
+ * @returns {Promise<Response>} Raw fetch Response (caller inspects .ok / body)
+ */
+function requestGoogleToken(code, redirectUri) {
+  return fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code,
+      client_id: getEnv("GOOGLE_CLIENT_ID"),
+      client_secret: getEnv("GOOGLE_CLIENT_SECRET"),
+      redirect_uri: redirectUri,
+      grant_type: "authorization_code",
+    }),
+  });
+}
 
 export default async function handleGoogleAuthRoute(req, context) {
   const path = context.params["0"] || "";
@@ -143,17 +168,7 @@ export default async function handleGoogleAuthRoute(req, context) {
     const redirectUri = getGoogleRedirectUri(req);
     let tokenRes;
     try {
-      tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          code,
-          client_id: googleClientId,
-          client_secret: googleClientSecret,
-          redirect_uri: redirectUri,
-          grant_type: "authorization_code",
-        }),
-      });
+      tokenRes = await requestGoogleToken(code, redirectUri);
     } catch (err) {
       log("error", FN, "google token exchange fetch threw", { error: err.message });
       return redirectResponse("/?error=google-auth-failed");
@@ -318,17 +333,7 @@ export default async function handleGoogleAuthRoute(req, context) {
     const redirectUri = getGoogleRedirectUri(req).replace("/callback", "/calendar-callback");
     let tokenRes;
     try {
-      tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          code,
-          client_id: googleClientId,
-          client_secret: googleClientSecret,
-          redirect_uri: redirectUri,
-          grant_type: "authorization_code",
-        }),
-      });
+      tokenRes = await requestGoogleToken(code, redirectUri);
     } catch (err) {
       log("error", FN, "calendar token exchange threw", { error: err.message });
       return redirectResponse("/profile.html?error=calendar-auth-failed");
@@ -360,8 +365,8 @@ export default async function handleGoogleAuthRoute(req, context) {
   }
 
   if (req.method === "POST" && path === "google/calendar-disconnect") {
-    const tokenUser = getUserFromRequest(req);
-    if (!tokenUser) return errorResponse(401, "Not authenticated. Please sign in.");
+    const { user: tokenUser, error } = requireUser(req);
+    if (error) return error;
 
     const users = getDb("users");
     const user = await users.get(tokenUser.email, { type: "json" }).catch(() => null);

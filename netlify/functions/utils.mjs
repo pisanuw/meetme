@@ -6,10 +6,10 @@
  *
  * Sub-modules:
  *   lib/env.mjs          — getEnv, getJwtSecret, isRateLimitEnabled
- *   lib/db.mjs           — getDb, setDbFactoryForTests, clearDbFactoryForTests
+ *   lib/db.mjs           — getDb, updateJsonWithCas, setDbFactoryForTests, clearDbFactoryForTests
  *   lib/crypto.mjs       — encryptSecret, decryptSecret
  *   lib/log.mjs          — log, logRequest
- *   lib/jwt.mjs          — createToken, verifyToken, verifyTokenVerbose, getUserFromRequest
+ *   lib/jwt.mjs          — createToken, verifyToken, verifyTokenVerbose, getUserFromRequest, requireUser
  *   lib/http.mjs         — safeJson, validateEmail, jsonResponse, errorResponse, setCookie, clearCookie, getAppUrl
  *   lib/admin.mjs        — isAdmin, isSuperAdminEmail, sanitizeUser
  *   lib/events.mjs       — persistEvent
@@ -17,7 +17,7 @@
  *   lib/email.mjs        — getEmailPreferences, saveEmailPreferences, shouldSuppressEmailDelivery, sendEmail
  *   lib/meeting-store.mjs — buildMeetingRecordKey, listMeetingIds, getMeetingRecord, saveMeetingRecord, deleteMeetingRecord, MEETING_TOKEN_KINDS, verifyMeetingToken
  *   lib/user-store.mjs   — saveUserRecord, deleteUserRecord, findUserByBookingPublicSlug
- *   lib/utils-core.mjs   — generateId, generateAnonymousParticipantId, asArray, escapeHtml, secretsEqual, buildTimeSlots, localToUTC, isAnonymousMeetingExpired, LIMITS
+ *   lib/utils-core.mjs   — generateId, generateSecureId, generateAnonymousParticipantId, asArray, escapeHtml, secretsEqual, buildTimeSlots, countSlots, parseAvailabilitySlots, localToUTC, isAnonymousMeetingExpired, LIMITS
  */
 
 export * from "./lib/env.mjs";

@@ -33,7 +33,10 @@ import {
   safeJson,
   asArray,
   buildTimeSlots,
+  countSlots,
+  parseAvailabilitySlots,
   generateId,
+  generateSecureId,
   generateAnonymousParticipantId,
   persistEvent,
   getMeetingRecord,
@@ -173,7 +176,9 @@ async function handleCreateAnonymous(req) {
     return errorResponse(400, "Invalid timezone value.");
   }
 
-  const meetingId = generateId();
+  // High-entropy ID, consistent with account meetings. Anonymous access is also
+  // gated by signed tokens, but an unguessable ID is defence in depth.
+  const meetingId = generateSecureId();
   const nowIso = new Date().toISOString();
   const meeting = {
     id: meetingId,
@@ -269,11 +274,7 @@ async function handleGetMeeting(req, url, meetingId) {
     await availability.get(`meeting:${meetingId}`, { type: "json" }).catch(() => [])
   );
 
-  const slotCounts = {};
-  for (const a of allAvail) {
-    const k = `${a.date_or_day}_${a.time_slot}`;
-    slotCounts[k] = (slotCounts[k] || 0) + 1;
-  }
+  const slotCounts = countSlots(allAvail);
 
   // Aggregated per-participant slots for the "By person" panel.
   const participants = meetingInvites.map((inv) => {
@@ -368,27 +369,12 @@ async function handleSubmitAvailability(req, meetingId) {
   );
   const otherAvail = allAvail.filter((a) => a.user_id !== participantId);
 
-  const newAvail = [];
-  let skipped = 0;
-  for (const sk of slots) {
-    const idx = sk.indexOf("_");
-    if (idx === -1) {
-      skipped++;
-      continue;
-    }
-    const dod = sk.slice(0, idx);
-    const ts = sk.slice(idx + 1);
-    if (validDates.has(dod) && validTimes.has(ts)) {
-      newAvail.push({
-        meeting_id: meetingId,
-        user_id: participantId,
-        date_or_day: dod,
-        time_slot: ts,
-      });
-    } else {
-      skipped++;
-    }
-  }
+  const { records: newAvail, skipped } = parseAvailabilitySlots(slots, {
+    meetingId,
+    userId: participantId,
+    validDates,
+    validTimes,
+  });
   if (skipped > 0) log("warn", FN, "slots skipped (invalid date/time)", { meetingId, skipped });
 
   const updatedAvail = [...otherAvail, ...newAvail];
@@ -403,11 +389,7 @@ async function handleSubmitAvailability(req, meetingId) {
   meeting.last_activity_at = new Date().toISOString();
   await saveMeetingRecord(meetings, meeting);
 
-  const slotCounts = {};
-  for (const a of updatedAvail) {
-    const k = `${a.date_or_day}_${a.time_slot}`;
-    slotCounts[k] = (slotCounts[k] || 0) + 1;
-  }
+  const slotCounts = countSlots(updatedAvail);
 
   return jsonResponse(200, {
     success: true,
