@@ -27,33 +27,13 @@ import {
   parseAvailabilitySlots,
   requireUser,
   getAppUrl,
-  createToken,
-  generateId,
+  buildEmailPreferenceLinks,
   getMeetingRecord,
   saveMeetingRecord,
 } from "./utils.mjs";
 import { validateFinalizeBody } from "./lib/meeting-validation.mjs";
 
 const FN = "meeting-actions";
-
-function buildEmailPreferenceLinks(appUrl, recipientEmail, organizerEmail, meetingId) {
-  const token = createToken(
-    {
-      id: "email-preferences",
-      purpose: "email_preferences",
-      email: recipientEmail,
-      organizer_email: organizerEmail,
-      meeting_id: meetingId,
-      jti: generateId(),
-    },
-    "365d"
-  );
-
-  return {
-    globalOptOutUrl: `${appUrl}/api/email-preferences/confirm?token=${encodeURIComponent(token)}&action=global_opt_out`,
-    blockOrganizerUrl: `${appUrl}/api/email-preferences/confirm?token=${encodeURIComponent(token)}&action=block_organizer`,
-  };
-}
 
 // Top-level entry point — catch-all for unhandled exceptions.
 export default async (req, context) => {

@@ -38,7 +38,7 @@ import {
   getMeetingRecord,
   saveMeetingRecord,
   deleteMeetingRecord,
-  createToken,
+  buildEmailPreferenceLinks,
   verifyMeetingToken,
   MEETING_TOKEN_KINDS,
 } from "./utils.mjs";
@@ -367,19 +367,12 @@ async function handleRequest(req, _context) {
     );
     const invite_results = [];
     for (const inv of inviteesOnly) {
-      const preferencesToken = createToken(
-        {
-          id: "email-preferences",
-          purpose: "email_preferences",
-          email: inv.email,
-          organizer_email: user.email,
-          meeting_id: meetingId,
-          jti: generateId(),
-        },
-        "365d"
+      const { globalOptOutUrl, blockOrganizerUrl } = buildEmailPreferenceLinks(
+        appUrl,
+        inv.email,
+        user.email,
+        meetingId
       );
-      const globalOptOutUrl = `${appUrl}/api/email-preferences/confirm?token=${encodeURIComponent(preferencesToken)}&action=global_opt_out`;
-      const blockOrganizerUrl = `${appUrl}/api/email-preferences/confirm?token=${encodeURIComponent(preferencesToken)}&action=block_organizer`;
 
       const inviteSubject = `You've been invited to share availability: ${meeting.title}`;
       // Build the email body. escapeHtml() prevents XSS if any user-supplied

@@ -8,7 +8,38 @@
  */
 import { getDb } from "./db.mjs";
 import { getEnv } from "./env.mjs";
-import { escapeHtml, normalizeEmail } from "./utils-core.mjs";
+import { createToken } from "./jwt.mjs";
+import { escapeHtml, normalizeEmail, generateId } from "./utils-core.mjs";
+
+/**
+ * Build the signed, login-free email-preference opt-out links embedded in the
+ * footer of meeting emails. The token encodes recipient + organizer + meeting so
+ * the email-preferences endpoint can act without a session. Valid for 365 days.
+ *
+ * @param {string} appUrl
+ * @param {string} recipientEmail
+ * @param {string} organizerEmail
+ * @param {string} meetingId
+ * @returns {{ globalOptOutUrl: string, blockOrganizerUrl: string }}
+ */
+export function buildEmailPreferenceLinks(appUrl, recipientEmail, organizerEmail, meetingId) {
+  const token = createToken(
+    {
+      id: "email-preferences",
+      purpose: "email_preferences",
+      email: recipientEmail,
+      organizer_email: organizerEmail,
+      meeting_id: meetingId,
+      jti: generateId(),
+    },
+    "365d"
+  );
+
+  return {
+    globalOptOutUrl: `${appUrl}/api/email-preferences/confirm?token=${encodeURIComponent(token)}&action=global_opt_out`,
+    blockOrganizerUrl: `${appUrl}/api/email-preferences/confirm?token=${encodeURIComponent(token)}&action=block_organizer`,
+  };
+}
 
 function emailPreferenceKey(email) {
   return `email:${normalizeEmail(email)}`;
