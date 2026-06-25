@@ -59,6 +59,27 @@ export { sendUpcomingRemindersForHost };
 
 const FN = "bookings";
 
+/**
+ * Load all booking records referenced by an index key (`host:<id>` or
+ * `attendee:<id>`), dropping any dangling IDs, sorted by start time ascending.
+ *
+ * @param {import("@netlify/blobs").Store} bookingsDb
+ * @param {string} indexKey
+ * @returns {Promise<object[]>}
+ */
+async function loadBookingsByIndex(bookingsDb, indexKey) {
+  const ids = asArray(await bookingsDb.get(indexKey, { type: "json" }).catch(() => []));
+  const bookings = [];
+  for (const id of ids) {
+    const booking = await bookingsDb.get(`booking:${id}`, { type: "json" }).catch(() => null);
+    if (booking) bookings.push(booking);
+  }
+  bookings.sort((a, b) =>
+    String(a.starts_at_utc || "").localeCompare(String(b.starts_at_utc || ""))
+  );
+  return bookings;
+}
+
 export default async (req, context) => {
   try {
     return await handleBookings(req, context);
@@ -471,34 +492,14 @@ async function handleBookings(req, _context) {
   // GET /api/bookings/host
   if (req.method === "GET" && pathname === "/api/bookings/host") {
     if (!authUser) return errorResponse(401, "Not authenticated. Please sign in.");
-    const ids = asArray(
-      await bookingsDb.get(`host:${authUser.id}`, { type: "json" }).catch(() => [])
-    );
-    const bookings = [];
-    for (const id of ids) {
-      const booking = await bookingsDb.get(`booking:${id}`, { type: "json" }).catch(() => null);
-      if (booking) bookings.push(booking);
-    }
-    bookings.sort((a, b) =>
-      String(a.starts_at_utc || "").localeCompare(String(b.starts_at_utc || ""))
-    );
+    const bookings = await loadBookingsByIndex(bookingsDb, `host:${authUser.id}`);
     return jsonResponse(200, { bookings });
   }
 
   // GET /api/bookings/mine
   if (req.method === "GET" && pathname === "/api/bookings/mine") {
     if (!authUser) return errorResponse(401, "Not authenticated. Please sign in.");
-    const ids = asArray(
-      await bookingsDb.get(`attendee:${authUser.id}`, { type: "json" }).catch(() => [])
-    );
-    const bookings = [];
-    for (const id of ids) {
-      const booking = await bookingsDb.get(`booking:${id}`, { type: "json" }).catch(() => null);
-      if (booking) bookings.push(booking);
-    }
-    bookings.sort((a, b) =>
-      String(a.starts_at_utc || "").localeCompare(String(b.starts_at_utc || ""))
-    );
+    const bookings = await loadBookingsByIndex(bookingsDb, `attendee:${authUser.id}`);
     return jsonResponse(200, { bookings });
   }
 
