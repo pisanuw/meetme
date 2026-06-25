@@ -2,12 +2,7 @@
  * lib/user-store.mjs — User record CRUD with booking-public-slug management
  */
 import { validateEmail } from "./http.mjs";
-
-function normalizeEmail(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase();
-}
+import { normalizeEmail } from "./utils-core.mjs";
 
 function normalizeSlug(value) {
   const base = String(value || "")

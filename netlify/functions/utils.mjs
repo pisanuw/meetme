@@ -17,7 +17,7 @@
  *   lib/email.mjs        — getEmailPreferences, saveEmailPreferences, shouldSuppressEmailDelivery, sendEmail
  *   lib/meeting-store.mjs — buildMeetingRecordKey, listMeetingIds, getMeetingRecord, saveMeetingRecord, deleteMeetingRecord, MEETING_TOKEN_KINDS, verifyMeetingToken
  *   lib/user-store.mjs   — saveUserRecord, deleteUserRecord, findUserByBookingPublicSlug
- *   lib/utils-core.mjs   — generateId, generateSecureId, generateAnonymousParticipantId, asArray, escapeHtml, secretsEqual, buildTimeSlots, countSlots, parseAvailabilitySlots, localToUTC, isAnonymousMeetingExpired, LIMITS
+ *   lib/utils-core.mjs   — generateId, generateSecureId, generateAnonymousParticipantId, asArray, normalizeEmail, escapeHtml, secretsEqual, buildTimeSlots, countSlots, parseAvailabilitySlots, localToUTC, isAnonymousMeetingExpired, LIMITS
  */
 
 export * from "./lib/env.mjs";

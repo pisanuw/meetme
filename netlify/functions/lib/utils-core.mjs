@@ -141,6 +141,19 @@ export function asArray(value) {
 }
 
 /**
+ * Normalize an email for use as a stable storage key / comparison: trim
+ * surrounding whitespace and lowercase. Used wherever email is a lookup key.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+export function normalizeEmail(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+/**
  * Escape a string for safe inclusion in an HTML document.
  * Replaces `&`, `<`, `>`, and `"` with their named HTML entities.
  * Use this on any user-supplied content placed inside HTML markup to prevent

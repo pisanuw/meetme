@@ -8,13 +8,7 @@
  */
 import { getDb } from "./db.mjs";
 import { getEnv } from "./env.mjs";
-import { escapeHtml } from "./utils-core.mjs";
-
-function normalizeEmail(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase();
-}
+import { escapeHtml, normalizeEmail } from "./utils-core.mjs";
 
 function emailPreferenceKey(email) {
   return `email:${normalizeEmail(email)}`;
