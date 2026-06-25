@@ -41,11 +41,7 @@
     const storedTz = data.timezone || "";
     const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
     const tzToSet = storedTz || browserTz;
-    if (tzToSet) {
-      const already = [...tzSel.options].some((o) => o.value === tzToSet);
-      if (!already) tzSel.prepend(new Option(tzToSet, tzToSet));
-      tzSel.value = tzToSet;
-    }
+    applyTimezoneToSelect(tzSel, tzToSet);
 
     renderCalendarStatus(data.calendar_connected);
   }

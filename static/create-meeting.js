@@ -16,11 +16,7 @@
   const { ok, data } = await apiFetch("/api/auth/profile");
   const profileTz = ok && data.timezone ? data.timezone : "";
   const tzToSet = profileTz || browserTz;
-  if (tzToSet) {
-    const already = [...tzSel.options].some((o) => o.value === tzToSet);
-    if (!already) tzSel.prepend(new Option(tzToSet, tzToSet));
-    tzSel.value = tzToSet;
-  }
+  applyTimezoneToSelect(tzSel, tzToSet);
 })();
 
 // Time dropdowns, day-of-week chips, dates-vs-days toggle, mini calendar.

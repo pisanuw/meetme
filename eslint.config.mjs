@@ -38,6 +38,7 @@ export default [
         MeetingForm: "readonly",
         bindDragSelect: "readonly",
         fmtDate: "readonly",
+        applyTimezoneToSelect: "readonly",
       },
     },
     rules: {

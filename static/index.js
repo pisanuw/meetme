@@ -22,11 +22,7 @@
   // pick is sensible without forcing the user to scroll.
   const tzSel = document.getElementById("timezone");
   const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-  if (tzSel && browserTz) {
-    const already = [...tzSel.options].some((o) => o.value === browserTz);
-    if (!already) tzSel.prepend(new Option(browserTz, browserTz));
-    tzSel.value = browserTz;
-  }
+  applyTimezoneToSelect(tzSel, browserTz);
 })();
 
 // Time dropdowns, day-of-week chips, dates-vs-days toggle, mini calendar.

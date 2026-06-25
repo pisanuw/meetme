@@ -567,6 +567,20 @@ function fmtDate(value) {
   });
 }
 
+/**
+ * Select a timezone in a <select>, inserting it as the first option if the list
+ * doesn't already contain it. No-ops when the select or timezone is missing.
+ *
+ * @param {HTMLSelectElement|null} sel
+ * @param {string} tz - IANA timezone id (e.g. "America/Los_Angeles")
+ */
+function applyTimezoneToSelect(sel, tz) {
+  if (!sel || !tz) return;
+  const already = [...sel.options].some((o) => o.value === tz);
+  if (!already) sel.prepend(new Option(tz, tz));
+  sel.value = tz;
+}
+
 window.apiFetch = apiFetch;
 window.checkAuth = checkAuth;
 window.requireAuth = requireAuth;
@@ -574,6 +588,7 @@ window.showFlash = showFlash;
 window.escapeHtml = escapeHtml;
 window.bindDragSelect = bindDragSelect;
 window.fmtDate = fmtDate;
+window.applyTimezoneToSelect = applyTimezoneToSelect;
 
 // Logout handler
 document.addEventListener("DOMContentLoaded", () => {
