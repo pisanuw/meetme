@@ -1,0 +1,33 @@
+# SOPS policy for MeetMe env files.
+#
+# SECURITY (2026-06-10): The previous local GPG keypair and the .env.enc it
+# encrypted were committed to this repo and have been removed. ALL secrets that
+# were in .env.enc must be treated as PUBLIC and rotated at their providers.
+#
+# SECURITY (2026-06-24): The `.env.asc` that shipped in the tree was encrypted
+# to a PERSONAL Gmail GPG key and is now untracked (see PR "Needs manual"). Do
+# NOT re-encrypt MeetMe secrets to a personal key. Before using SOPS again:
+#   1. Generate a NEW, dedicated, rotatable keypair (not a personal identity).
+#   2. Keep the PRIVATE key OUT of git (store it as the CI `SOPS_GPG_PRIVATE_KEY`
+#      secret and in a team key store only).
+#   3. Replace the placeholder fingerprint below with the new PUBLIC fingerprint.
+#   4. Re-encrypt: `sops --encrypt .env > .env.asc`.
+#
+# The `path_regex` rules below now match the `.asc` extension actually used by
+# this repo (the previous `\.enc$`-only rules never matched `.env.asc`, so this
+# policy governed nothing). The fingerprint is still a PLACEHOLDER until a
+# dedicated key exists; SOPS will refuse to encrypt until it is replaced, which
+# is the intended fail-closed behavior.
+
+creation_rules:
+  - path_regex: ^\.env(\.[A-Za-z0-9_-]+)?\.(enc|asc)$
+    format: dotenv
+    key_groups:
+      - pgp:
+          - "REPLACE_WITH_NEW_DEDICATED_PUBLIC_KEY_FINGERPRINT"
+
+  - path_regex: ^.+/\.env(\.[A-Za-z0-9_-]+)?\.(enc|asc)$
+    format: dotenv
+    key_groups:
+      - pgp:
+          - "REPLACE_WITH_NEW_DEDICATED_PUBLIC_KEY_FINGERPRINT"

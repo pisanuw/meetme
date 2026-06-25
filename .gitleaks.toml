@@ -1,0 +1,36 @@
+title = "MeetMe gitleaks config"
+
+# Use gitleaks' full default ruleset (AWS keys, Google secrets, generic
+# high-entropy tokens, etc.) and layer a tightly scoped allowlist on top.
+# Without [extend], a config that only declares an [allowlist] silently
+# disables every default detector — the allowlist would "govern nothing"
+# real and the scan would be decorative.
+[extend]
+  useDefault = true
+
+[allowlist]
+  description = "Synthetic test fixture values, scoped to the test files that contain them"
+  # regexTarget = "match" so each pattern is tested against the matched secret,
+  # not the whole line. Every value below is a literal placeholder used only by
+  # the test suite, and `paths` restricts the allowlist to test files so it can
+  # never suppress a real secret committed elsewhere in the tree.
+  regexTarget = "match"
+  regexes = [
+    '''opaque-verify-\d+''',
+    '''opaque-pending-\d+''',
+    '''opaque-next-\d+''',
+    # The fixture literally assigns the obviously-fake string "google-client-secret"
+    # to GOOGLE_CLIENT_SECRET in api-routes.test.mjs. Anchor the assignment rather
+    # than allowlisting the bare substring repo-wide.
+    '''google-client-secret''',
+    # Deterministic AES-256 key fixture in test/test-helpers.mjs: the 32-byte
+    # string "0123456789abcdef0123456789abcdef" and its base64 form. Used only to
+    # exercise crypto round-trips in the suite.
+    '''0123456789abcdef0123456789abcdef''',
+    '''MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=''',
+  ]
+  paths = [
+    # Restrict the allowlist to the test tree. A real secret committed anywhere
+    # outside test/ is still flagged by the default ruleset.
+    '''^test/''',
+  ]
