@@ -1,10 +1,3 @@
-function sanitizeNextPath(raw) {
-  const value = String(raw || "").trim();
-  if (!value.startsWith("/")) return "";
-  if (value.startsWith("//")) return "";
-  return value;
-}
-
 const params = new URLSearchParams(window.location.search);
 const next = sanitizeNextPath(params.get("next"));
 

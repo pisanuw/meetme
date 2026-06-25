@@ -42,11 +42,24 @@ async function apiFetch(url, options = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
+/**
+ * Validate a user-supplied redirect ("next") path. Only same-origin absolute
+ * paths are allowed: anything not starting with a single "/" is rejected to
+ * `fallback`, preventing open-redirect via "//evil.com" or absolute URLs.
+ *
+ * @param {string} raw
+ * @param {string} [fallback=""]
+ * @returns {string}
+ */
+function sanitizeNextPath(raw, fallback = "") {
+  const value = String(raw || "").trim();
+  if (!value.startsWith("/") || value.startsWith("//")) return fallback;
+  return value;
+}
+
 function getCurrentPathWithQuery() {
   const path = `${window.location.pathname || "/"}${window.location.search || ""}${window.location.hash || ""}`;
-  if (!path.startsWith("/")) return "/";
-  if (path.startsWith("//")) return "/";
-  return path;
+  return sanitizeNextPath(path, "/");
 }
 
 function ensureNavDropdown(container, { menuId, listId, label, beforeNode }) {
@@ -589,6 +602,7 @@ window.escapeHtml = escapeHtml;
 window.bindDragSelect = bindDragSelect;
 window.fmtDate = fmtDate;
 window.applyTimezoneToSelect = applyTimezoneToSelect;
+window.sanitizeNextPath = sanitizeNextPath;
 
 // Logout handler
 document.addEventListener("DOMContentLoaded", () => {

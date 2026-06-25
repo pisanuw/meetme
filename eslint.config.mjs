@@ -39,6 +39,7 @@ export default [
         bindDragSelect: "readonly",
         fmtDate: "readonly",
         applyTimezoneToSelect: "readonly",
+        sanitizeNextPath: "readonly",
       },
     },
     rules: {
