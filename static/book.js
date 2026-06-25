@@ -28,15 +28,6 @@ function addDays(isoDate, n) {
   return d.toISOString().slice(0, 10);
 }
 
-function fmtDate(isoDate) {
-  const [y, mo, d] = isoDate.split("-").map(Number);
-  return new Date(y, mo - 1, d).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-}
-
 function fmtShortDate(isoDate) {
   const [y, mo, d] = isoDate.split("-").map(Number);
   return new Date(y, mo - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });

@@ -560,13 +560,6 @@ function slotKey(date, time) {
   return `${date}_${time}`;
 }
 
-function fmtDate(d) {
-  if (!d.includes("-")) return d;
-  const [y, mo, day] = d.split("-").map(Number);
-  const dt = new Date(y, mo - 1, day);
-  return dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-}
-
 function fmtTime(t, date) {
   const displayTz = showMeetingTz ? meetingTz : viewerTz;
   if (date && date.includes("-") && meetingTz && displayTz !== meetingTz) {

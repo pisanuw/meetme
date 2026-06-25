@@ -77,12 +77,6 @@ function fmtTime(time) {
   return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
-function fmtDate(isoDate) {
-  const [y, mo, d] = isoDate.split("-").map(Number);
-  const dt = new Date(y, mo - 1, d);
-  return dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-}
-
 function currentAvailabilityMode() {
   return availabilityModeSelect.value === "specific_dates" ? "specific_dates" : "weekly";
 }

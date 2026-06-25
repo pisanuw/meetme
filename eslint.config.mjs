@@ -37,6 +37,7 @@ export default [
         escapeHtml: "readonly",
         MeetingForm: "readonly",
         bindDragSelect: "readonly",
+        fmtDate: "readonly",
       },
     },
     rules: {

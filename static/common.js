@@ -548,12 +548,32 @@ function bindDragSelect(grid, { onStartDrag, onApplyDrag, onEndDrag }) {
   });
 }
 
+/**
+ * Format a calendar value for display as a short weekday/month/day label.
+ * An ISO date ("YYYY-MM-DD") is rendered as e.g. "Mon, Jan 5"; a value with no
+ * "-" (e.g. a weekday name like "Monday") is returned unchanged, so the same
+ * helper works for both specific-date and day-of-week meetings.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+function fmtDate(value) {
+  if (!value.includes("-")) return value;
+  const [y, mo, day] = value.split("-").map(Number);
+  return new Date(y, mo - 1, day).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 window.apiFetch = apiFetch;
 window.checkAuth = checkAuth;
 window.requireAuth = requireAuth;
 window.showFlash = showFlash;
 window.escapeHtml = escapeHtml;
 window.bindDragSelect = bindDragSelect;
+window.fmtDate = fmtDate;
 
 // Logout handler
 document.addEventListener("DOMContentLoaded", () => {
