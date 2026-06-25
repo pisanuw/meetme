@@ -70,7 +70,7 @@ jobs:
           for file in static/*.js; do node -c "$file"; done
 
   test-default:
-    name: Test (default mode)
+    name: Test (default mode + coverage)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -90,8 +90,11 @@ jobs:
         with:
           sops-gpg-private-key: ${{ secrets.SOPS_GPG_PRIVATE_KEY }}
 
-      - name: Run tests
-        run: npm test
+      # Coverage thresholds are an aggregate regression backstop; the per-file
+      # table printed here is the real signal -- a new untested core module
+      # (e.g. lib/jwt.mjs) shows up at 0% in the log instead of slipping past review.
+      - name: Run tests with coverage
+        run: npm run test:coverage
 
   test-rate-limit-on:
     name: Test (rate limit enabled)
