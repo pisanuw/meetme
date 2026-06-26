@@ -7,19 +7,7 @@
     <link rel="stylesheet" href="/static/style.css" />
   </head>
   <body>
-    <nav class="navbar">
-      <div class="nav-inner">
-        <a href="/dashboard.html" class="nav-brand">
-          <span class="brand-icon">&#x27F3;</span> MeetMe
-        </a>
-        <div class="nav-links" id="nav-auth" hidden>
-          <a href="/create-meeting.html" class="btn btn-sm btn-outline-white">+ New Meeting</a>
-          <span class="nav-user" id="nav-username"></span>
-          <a href="/profile.html" class="nav-link" id="profile-link">Edit Profile</a>
-          <a href="#" class="nav-link" id="logout-link">Log out</a>
-        </div>
-      </div>
-    </nav>
+    <nav class="navbar" data-shared-nav></nav>
 
     <div id="flash-container" class="flash-container"></div>
 
