@@ -1,3 +1,14 @@
+import {
+  toMinutes,
+  fromMinutes,
+  fmtTime12h,
+  slotKey,
+  splitSlotKey,
+  normalizeAvailabilityResponse,
+  applyWindowsToSlots,
+  collectWindowsFromSlots,
+} from "/static/ui-utils.mjs";
+
 const weekdayOptions = [
   "Monday",
   "Tuesday",
@@ -46,20 +57,6 @@ function buildTimeOptions() {
 
 const QUICK_TIME_OPTIONS = buildTimeOptions();
 
-function toMinutes(timeStr) {
-  const [h, m] = String(timeStr || "00:00")
-    .split(":")
-    .map(Number);
-  return h * 60 + m;
-}
-
-function fromMinutes(mins) {
-  const safe = Math.max(0, Math.min(DAY_MINUTES - TIME_STEP_MINUTES, mins));
-  const hh = String(Math.floor(safe / 60)).padStart(2, "0");
-  const mm = String(safe % 60).padStart(2, "0");
-  return `${hh}:${mm}`;
-}
-
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -70,28 +67,8 @@ function plusDaysIso(days) {
   return base.toISOString().slice(0, 10);
 }
 
-function fmtTime(time) {
-  const [h, m] = time.split(":").map(Number);
-  const ampm = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 || 12;
-  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
-}
-
 function currentAvailabilityMode() {
   return availabilityModeSelect.value === "specific_dates" ? "specific_dates" : "weekly";
-}
-
-function slotKey(columnKey, time) {
-  return `${columnKey}|${time}`;
-}
-
-function splitSlotKey(key) {
-  const i = key.lastIndexOf("|");
-  if (i === -1) return { columnKey: "", time: "" };
-  return {
-    columnKey: key.slice(0, i),
-    time: key.slice(i + 1),
-  };
 }
 
 function buildDateColumns(startDate, endDate) {
@@ -196,7 +173,7 @@ function buildGrid() {
 
     const lbl = document.createElement("div");
     lbl.className = `ag-time-label${isHour ? " hour-boundary" : ""}`;
-    lbl.textContent = isHour ? fmtTime(time) : "";
+    lbl.textContent = isHour ? fmtTime12h(time) : "";
     availabilityGrid.appendChild(lbl);
 
     gridColumns.forEach((col) => {
@@ -209,85 +186,6 @@ function buildGrid() {
       availabilityGrid.appendChild(cell);
     });
   });
-}
-
-function normalizeAvailabilityResponse(data = {}) {
-  return {
-    mode: data.mode === "specific_dates" ? "specific_dates" : "weekly",
-    start_date: data.start_date || "",
-    end_date: data.end_date || "",
-    windows: Array.isArray(data.windows) ? data.windows : [],
-  };
-}
-
-function applyWindowsToSelectedSlots(windows, mode) {
-  selectedSlots.clear();
-
-  const columnSet = new Set(gridColumns.map((c) => c.key));
-  windows.forEach((windowItem) => {
-    const columnKey = mode === "specific_dates" ? windowItem.date : windowItem.day_of_week;
-    if (!columnKey || !columnSet.has(columnKey)) return;
-
-    const start = Math.max(0, Math.min(DAY_MINUTES, toMinutes(windowItem.start_time || "00:00")));
-    const end = Math.max(0, Math.min(DAY_MINUTES, toMinutes(windowItem.end_time || "00:00")));
-    if (end <= start) return;
-
-    for (let mins = start; mins < end; mins += TIME_STEP_MINUTES) {
-      selectedSlots.add(slotKey(columnKey, fromMinutes(mins)));
-    }
-  });
-}
-
-function collectWindowsFromSelectedSlots(mode) {
-  const byColumn = new Map();
-  selectedSlots.forEach((key) => {
-    const { columnKey, time } = splitSlotKey(key);
-    if (!columnKey || !time) return;
-    if (!byColumn.has(columnKey)) byColumn.set(columnKey, []);
-    byColumn.get(columnKey).push(toMinutes(time));
-  });
-
-  const timezone =
-    (availabilityTimezoneInput.value || userProfileTimezone || "UTC").trim() || "UTC";
-  const windows = [];
-
-  byColumn.forEach((minuteList, columnKey) => {
-    minuteList.sort((a, b) => a - b);
-    if (!minuteList.length) return;
-
-    let runStart = minuteList[0];
-    let runEnd = runStart + TIME_STEP_MINUTES;
-
-    for (let i = 1; i < minuteList.length; i += 1) {
-      const current = minuteList[i];
-      if (current === runEnd) {
-        runEnd += TIME_STEP_MINUTES;
-      } else {
-        const windowPayload = {
-          start_time: fromMinutes(runStart),
-          end_time: fromMinutes(runEnd),
-          timezone,
-        };
-        if (mode === "specific_dates") windowPayload.date = columnKey;
-        else windowPayload.day_of_week = columnKey;
-        windows.push(windowPayload);
-
-        runStart = current;
-        runEnd = current + TIME_STEP_MINUTES;
-      }
-    }
-
-    const lastWindow = {
-      start_time: fromMinutes(runStart),
-      end_time: fromMinutes(runEnd),
-      timezone,
-    };
-    if (mode === "specific_dates") lastWindow.date = columnKey;
-    else lastWindow.day_of_week = columnKey;
-    windows.push(lastWindow);
-  });
-
-  return windows;
 }
 
 function pruneSlotsOutsideColumns() {
@@ -356,7 +254,12 @@ async function loadAndRenderExistingAvailability(eventTypeId) {
 
   updateAvailabilityModeHelp();
   buildGrid();
-  applyWindowsToSelectedSlots(availability.windows, availability.mode);
+  selectedSlots = applyWindowsToSlots(
+    availability.windows,
+    availability.mode,
+    gridColumns.map((c) => c.key),
+    TIME_STEP_MINUTES
+  );
   repaintAllCells();
   updateSelectionSummary();
 }
@@ -379,14 +282,13 @@ async function saveAvailability() {
   }
 
   const mode = currentAvailabilityMode();
-  const windows = collectWindowsFromSelectedSlots(mode);
+  const timezone =
+    (availabilityTimezoneInput.value || userProfileTimezone || "UTC").trim() || "UTC";
+  const windows = collectWindowsFromSlots(selectedSlots, mode, timezone, TIME_STEP_MINUTES);
   if (!windows.length) {
     showFlash("Select at least one available time slot.", "danger");
     return;
   }
-
-  const timezone =
-    (availabilityTimezoneInput.value || userProfileTimezone || "UTC").trim() || "UTC";
 
   const { ok, data } = await apiFetch(
     `/api/bookings/availability?event_type_id=${encodeURIComponent(requestedEventTypeId)}`,

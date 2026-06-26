@@ -7,6 +7,7 @@
  * All mutable page state is declared here so it is easy to identify what
  * constitutes "page state" and avoid hidden coupling between functions.
  */
+import { heatColor as _heatColor, convertSlotTime, fmtTime12h } from "/static/ui-utils.mjs";
 
 /** Loaded meeting data and local availability set. */
 let M = null;
@@ -546,14 +547,7 @@ function createParticipantRow(p, i) {
 }
 
 function heatColor(count) {
-  if (!count || count === 0) return "#f5f5f5";
-  const ratio = Math.min(count / Math.max(M.totalInvited, 1), 1);
-  if (ratio <= 0) return "#f5f5f5";
-  if (ratio <= 0.2) return "#e8f5e9";
-  if (ratio <= 0.4) return "#c8e6c9";
-  if (ratio <= 0.65) return "#81c784";
-  if (ratio <= 0.85) return "#4caf50";
-  return "#2e7d32";
+  return _heatColor(count, Math.max(M.totalInvited, 1));
 }
 
 function slotKey(date, time) {
@@ -566,40 +560,7 @@ function fmtTime(t, date) {
     const converted = convertSlotTime(date, t, meetingTz, displayTz);
     if (converted) t = converted;
   }
-  const [h, m] = t.split(":").map(Number);
-  const ampm = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 || 12;
-  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
-}
-
-function convertSlotTime(date, time, fromTz, toTz) {
-  try {
-    if (!date.includes("-") || fromTz === toTz) return null;
-    const [y, mo, d] = date.split("-").map(Number);
-    const [h, m] = time.split(":").map(Number);
-    const utcRef = Date.UTC(y, mo - 1, d, h, m);
-    const refDate = new Date(utcRef);
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: fromTz,
-      year: "numeric",
-      month: "numeric",
-      day: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-      hour12: false,
-    }).formatToParts(refDate);
-    const get = (partType) => parseInt(parts.find((p) => p.type === partType)?.value || "0");
-    const offsetMins = get("hour") * 60 + get("minute") - (h * 60 + m);
-    const trueUtc = utcRef - offsetMins * 60000;
-    return new Intl.DateTimeFormat("en-US", {
-      timeZone: toTz,
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).format(new Date(trueUtc));
-  } catch {
-    return null;
-  }
+  return fmtTime12h(t);
 }
 
 function toggleTzView() {

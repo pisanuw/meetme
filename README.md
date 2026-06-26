@@ -5,7 +5,7 @@ Built with Netlify Functions (Node.js ES modules) and Netlify Blobs for storage 
 traditional server or database required.
 
 [![Netlify Status](https://api.netlify.com/api/v1/badges/ea21e245-ad0e-4e32-a1b0-1fd0360abe5b/deploy-status)](https://app.netlify.com/projects/meetme-2/deploys)
-![202 unit tests](https://img.shields.io/badge/unit_tests-202_passing-brightgreen)
+![264 unit tests](https://img.shields.io/badge/unit_tests-264_passing-brightgreen)
 ![0 type errors](https://img.shields.io/badge/typecheck-0_errors-brightgreen)
 
 **Testing:** 202 backend unit tests (JWT, crypto, rate-limiting, validation, availability, all HTTP route handlers) run with Node's built-in `node:test`. Playwright E2E smoke tests cover booking flows and availability grids. See the [Testing section](#testing) for the full breakdown.
@@ -102,6 +102,7 @@ Coverage breakdown by layer:
 | `test/meeting-validation.test.mjs` | `lib/meeting-validation.mjs` — all validation paths for create-meeting and finalize |
 | `test/bookings-validation.test.mjs` | `lib/bookings-validation.mjs` — event-type and availability window validation |
 | `test/bookings-helpers.test.mjs` | `lib/bookings-helpers.mjs` — time/date helpers, slugify, weekday calculation |
+| `test/frontend-utils.test.mjs` | `public/static/ui-utils.mjs` — slot key encoding, time arithmetic, availability window round-trip, heatmap colour thresholds, Intl timezone conversion |
 | `test/availability.test.mjs` | `lib/bookings-availability.mjs` — slot building and DST edges |
 | `test/api-routes.test.mjs` | HTTP handler integration tests (auth, meeting CRUD, permissions) |
 | `test/bookings.test.mjs` | Booking HTTP handler — event types, availability, public booking flow |
