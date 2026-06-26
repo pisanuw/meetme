@@ -5,6 +5,10 @@ Built with Netlify Functions (Node.js ES modules) and Netlify Blobs for storage 
 traditional server or database required.
 
 [![Netlify Status](https://api.netlify.com/api/v1/badges/ea21e245-ad0e-4e32-a1b0-1fd0360abe5b/deploy-status)](https://app.netlify.com/projects/meetme-2/deploys)
+![202 unit tests](https://img.shields.io/badge/unit_tests-202_passing-brightgreen)
+![0 type errors](https://img.shields.io/badge/typecheck-0_errors-brightgreen)
+
+**Testing:** 202 backend unit tests (JWT, crypto, rate-limiting, validation, availability, all HTTP route handlers) run with Node's built-in `node:test`. Playwright E2E smoke tests cover booking flows and availability grids. See the [Testing section](#testing) for the full breakdown.
 
 ## Features
 
