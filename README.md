@@ -125,33 +125,34 @@ npm run test:e2e:smoke
 
 ```
 meetme/
-├── netlify.toml              # Build config and Netlify Function settings
+├── netlify.toml              # Build config: publish = "public", functions = "netlify/functions"
 ├── package.json              # Node dependencies
 ├── .env.example              # Template for local environment variables
 │                             # (.env.asc, if your team uses SOPS, is NOT tracked here)
 │
-├── index.html                # Sign-in page (magic link / Google OAuth)
-├── register.html             # Alternative entry point (redirects to index)
-├── dashboard.html            # User dashboard: meetings, booking links, my bookings
-├── create-meeting.html       # New meeting form
-├── meeting.html              # Availability grid, heatmap, finalize
-├── email-sent.html           # Shown after requesting a magic link
-├── profile.html              # Edit name, timezone, connect Google Calendar
-├── admin.html                # Admin-only: stats, users, meetings, event log
-├── feedback.html             # User feedback form
-├── book.html                 # Public booking page (week-view slot picker)
-├── booking-setup.html        # Host: create/edit bookable event types
-├── booking-availability.html # Host: set available time grid per event type
-├── booking-confirmation.html # Shown to guest after booking is confirmed
+├── public/                   # Static site root (Netlify publish directory)
+│   ├── index.html            # Sign-in page (magic link / Google OAuth)
+│   ├── register.html         # Alternative entry point (redirects to index)
+│   ├── dashboard.html        # User dashboard: meetings, booking links, my bookings
+│   ├── create-meeting.html   # New meeting form
+│   ├── meeting.html          # Availability grid, heatmap, finalize
+│   ├── email-sent.html       # Shown after requesting a magic link
+│   ├── profile.html          # Edit name, timezone, connect Google Calendar
+│   ├── admin.html            # Admin-only: stats, users, meetings, event log
+│   ├── feedback.html         # User feedback form
+│   ├── book.html             # Public booking page (week-view slot picker)
+│   ├── booking-setup.html    # Host: create/edit bookable event types
+│   ├── booking-availability.html # Host: set available time grid per event type
+│   ├── booking-confirmation.html # Shown to guest after booking is confirmed
+│   ├── app.html / privacy.html / support.html / 404.html
+│   └── static/               # Per-page browser JS plus shared helpers and styles
+│       ├── common.js         # Shared helpers (apiFetch, requireAuth, showFlash)
+│       ├── layout.js         # Shared header / nav / footer rendering
+│       ├── style.css         # All styles (no external CSS dependencies)
+│       └── <page>.js         # One module per HTML page (dashboard.js, meeting.js, book.js, ...)
 │
 ├── scripts/
 │   └── decrypt-sops-env.mjs  # Node helper: decrypt .env.asc → .env (used by npm run env:decrypt and CI)
-│
-├── static/                   # Per-page browser JS plus shared helpers and styles
-│   ├── common.js             # Shared helpers (apiFetch, requireAuth, showFlash)
-│   ├── layout.js             # Shared header / nav / footer rendering
-│   ├── style.css             # All styles (no external CSS dependencies)
-│   └── <page>.js             # One module per HTML page (dashboard.js, meeting.js, book.js, ...)
 │
 └── netlify/
     └── functions/            # Netlify Functions (HTTP route handlers)
