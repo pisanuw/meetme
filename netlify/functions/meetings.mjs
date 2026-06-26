@@ -275,7 +275,7 @@ async function handleRequest(req, _context) {
       normalizedTimezone,
       start_time,
       end_time,
-    } = validation.data;
+    } = /** @type {any} */ (validation).data;
 
     const creatorEmail = (user.email || "").toLowerCase();
 
@@ -283,7 +283,7 @@ async function handleRequest(req, _context) {
     if (inviteValidation.error) {
       return errorResponse(inviteValidation.error.status, inviteValidation.error.message);
     }
-    const validatedEmails = inviteValidation.emails;
+    const validatedEmails = /** @type {any} */ (inviteValidation).emails;
 
     log("info", FN, "creating meeting", { title: normalizedTitle, creator: user.email });
 

@@ -76,6 +76,47 @@ Open **http://localhost:8888** in your browser.
 
 ---
 
+## Testing
+
+The test suite has two layers.
+
+### Unit tests (`test/*.test.mjs`) — 202 tests
+
+Node's built-in `node:test` runner, no extra framework needed.
+
+```bash
+DISABLE_RATE_LIMIT=1 npm test           # run all unit tests
+DISABLE_RATE_LIMIT=1 npm run test:coverage  # with line/branch/function coverage gates
+```
+
+Coverage breakdown by layer:
+
+| File | What's tested |
+|---|---|
+| `test/jwt.test.mjs` | `lib/jwt.mjs` — sign, verify, expiry, tamper, wrong secret, Bearer vs cookie precedence |
+| `test/utils.test.mjs` | `lib/crypto.mjs`, `lib/rate-limit.mjs`, `lib/utils-core.mjs` — encrypt/decrypt round-trip, fail-closed behaviour, rate-limit CAS |
+| `test/meeting-validation.test.mjs` | `lib/meeting-validation.mjs` — all validation paths for create-meeting and finalize |
+| `test/bookings-validation.test.mjs` | `lib/bookings-validation.mjs` — event-type and availability window validation |
+| `test/bookings-helpers.test.mjs` | `lib/bookings-helpers.mjs` — time/date helpers, slugify, weekday calculation |
+| `test/availability.test.mjs` | `lib/bookings-availability.mjs` — slot building and DST edges |
+| `test/api-routes.test.mjs` | HTTP handler integration tests (auth, meeting CRUD, permissions) |
+| `test/bookings.test.mjs` | Booking HTTP handler — event types, availability, public booking flow |
+| `test/meetings.test.mjs` | Meetings handler — create, list, finalize, leave, delete |
+| `test/public-meetings.test.mjs` | Anonymous meeting creation and token-gated access |
+| `test/bookings-reminders.test.mjs` | Scheduled reminder sweep |
+
+The `crypto.mjs`, `jwt.mjs`, and `rate-limit.mjs` lib modules are exercised both directly (in `jwt.test.mjs` and `utils.test.mjs`) and indirectly through every HTTP-handler test that signs tokens or hits rate-limited endpoints.
+
+### E2E smoke tests (`test/e2e/`)
+
+Playwright tests that run against a local static server with mocked APIs. Covers booking flows, routing redirects, and availability touch interaction.
+
+```bash
+npm run test:e2e:smoke
+```
+
+---
+
 ## Project Structure
 
 ```
@@ -499,6 +540,10 @@ All data is stored in **Netlify Blobs**, a strongly-consistent, globally-replica
 | Zero-ops, zero-config, free tier | No SQL queries — lists and filters happen in memory |
 | Strongly-consistent reads | No multi-key transactions |
 | Serverless-native | Vendor-specific SDK (`@netlify/blobs`) |
+
+**Acknowledged limitation:** No multi-key transactions means there is no atomic cross-entity operation (e.g., "add a booking and decrement capacity in one commit"). Each write is individually consistent but two related writes can fail independently. For this app's scale this is an acceptable trade-off managed by application-level retries and idempotent write patterns.
+
+**Concurrency — how simultaneous writes are handled:** All participants' availability is stored under a single key per meeting (`meeting:<id>`). Every write goes through `updateJsonWithCas()` in `lib/db.mjs`, which uses a compare-and-swap loop (read value + etag → mutate → conditional `setJSON` with `onlyIfMatch`). If two users submit availability at the same instant, one wins the CAS and the other retries against the updated snapshot. The mutator is a pure function (`filter out my rows, append new rows`) so it produces correct output on every retry — no row from either user is lost. The same pattern guards meeting creation and booking capacity.
 
 Every storage call routes through `netlify/functions/lib/db.mjs` (`getDb()` / `updateJsonWithCas()`). No function imports `@netlify/blobs` directly. This means the storage backend is swappable in one file: the integration tests already exercise a fully in-memory substitute injected via `setDbFactoryForTests()`.
 

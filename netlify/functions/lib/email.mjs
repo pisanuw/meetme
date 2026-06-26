@@ -123,7 +123,7 @@ export async function shouldSuppressEmailDelivery({
   recipientEmail,
   category = "general",
   organizerEmail = "",
-} = {}) {
+}) {
   const recipient = normalizeEmail(recipientEmail);
   if (!recipient) return { suppress: false, reason: null };
 
@@ -155,9 +155,9 @@ export async function shouldSuppressEmailDelivery({
  * @param {string}          [opts.replyTo] - Reply-To address
  * @param {Array<{name:string,value:string}>} [opts.tags] - Resend tags for analytics
  * @param {{ category?: "general"|"meeting", organizerEmail?: string }} [opts.suppression]
- * @returns {Promise<{ ok: boolean, emailId?: string, error?: string }>}
+ * @returns {Promise<{ ok: boolean, emailId?: string, error?: string, suppressed_recipients?: Array<{email: string, reason: string|null}> }>}
  */
-export async function sendEmail({ to, subject, html, text, replyTo, tags, suppression } = {}) {
+export async function sendEmail({ to, subject, html, text, replyTo, tags, suppression }) {
   const apiKey = getEnv("RESEND_API_KEY");
   const fromEmail = getEnv("AUTH_FROM_EMAIL");
   if (!apiKey || !fromEmail) {

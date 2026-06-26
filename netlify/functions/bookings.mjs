@@ -141,7 +141,7 @@ async function handleBookings(req, _context) {
       timezone,
       groupCapacity,
       enabled,
-    } = validation.data;
+    } = /** @type {any} */ (validation).data;
 
     let id = eventTypeId;
     if (!id) {
@@ -273,8 +273,9 @@ async function handleBookings(req, _context) {
     const validation = validateAvailabilityBody(body, eventType);
     if (validation.error) return errorResponse(validation.error.status, validation.error.message);
 
-    await availabilityDb.setJSON(getAvailabilityKey(authUser.id, eventTypeId), validation.data);
-    return jsonResponse(200, { success: true, ...validation.data });
+    const validData = /** @type {any} */ (validation).data;
+    await availabilityDb.setJSON(getAvailabilityKey(authUser.id, eventTypeId), validData);
+    return jsonResponse(200, { success: true, ...validData });
   }
 
   // GET /api/bookings/page/:ownerSlug

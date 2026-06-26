@@ -63,7 +63,7 @@ const ALLOWED_DAY_NAMES = new Set([
 
 export default async (req, context) => {
   try {
-    return await handleRequest(req, context);
+    return await handleRequest(req);
   } catch (err) {
     log("error", FN, "unhandled exception", { message: err.message, stack: err.stack });
     return errorResponse(500, "Internal server error.");

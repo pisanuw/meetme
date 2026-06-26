@@ -145,7 +145,7 @@ async function handleMeetingActions(req, _context) {
     if (finalizeValidation.error) {
       return errorResponse(finalizeValidation.error.status, finalizeValidation.error.message);
     }
-    const { durationMinutes } = finalizeValidation;
+    const { durationMinutes } = /** @type {any} */ (finalizeValidation);
 
     meeting.finalized_date = body.date_or_day;
     meeting.finalized_slot = body.time_slot;

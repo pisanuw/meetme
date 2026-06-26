@@ -7,7 +7,7 @@ import { getEnv } from "./env.mjs";
  * Return `true` if the user's email is listed in the ADMIN_EMAILS environment
  * variable (comma-separated). Comparison is case-insensitive.
  *
- * @param {{ email: string }|null} user
+ * @param {{ email: string, is_admin?: boolean }|null} user
  * @returns {boolean}
  */
 export function isAdmin(user) {
