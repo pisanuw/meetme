@@ -1,37 +1,90 @@
 /**
- * lib/db.mjs — Netlify Blobs database access with test injection support
+ * lib/db.mjs — Storage abstraction layer
+ *
+ * All persistent state in the application goes through this module.  The
+ * production backend is Netlify Blobs, but every function uses only the
+ * `StorageStore` interface below — never the Blobs SDK directly.  Swapping
+ * to a different backend (SQL, KV, …) means writing a factory that returns
+ * an object satisfying `StorageStore` and calling `setDbFactory()` once at
+ * startup.  No application code changes.
+ *
+ * See `lib/db-adapters/turso.mjs` for a drop-in SQL (Turso / libSQL) adapter.
  */
-import { getStore } from "@netlify/blobs";
-
-// Test-only DB factory override. Allows route integration tests to run fully
-// in-memory without relying on external Netlify Blobs infrastructure.
-let dbFactoryForTests = null;
 
 /**
- * Get a strongly-consistent Netlify Blobs store by name.
- * Known stores: meetings, invites, availability, users, events,
- *               rate_limits, login_tokens, email_records.
+ * @typedef {object} StorageStore
+ * A minimal, backend-agnostic store interface.  All methods are async.
  *
- * @param {string} name - Blob store name
- * @returns {import("@netlify/blobs").Store}
+ * The interface intentionally matches the Netlify Blobs `Store` surface so
+ * that the Blobs implementation satisfies it with zero wrapping.  Alternative
+ * adapters must implement the same five methods.
+ *
+ * @property {(key: string, opts: { type: "json" }) => Promise<any>} get
+ *   Read a JSON value by key.  Returns `null` when absent.
+ * @property {(key: string, opts: { type: "json" }) => Promise<{ data: any, etag: string }|null>} getWithMetadata
+ *   Read a JSON value together with its opaque `etag` for compare-and-swap writes.
+ *   Returns `null` when absent.
+ * @property {(key: string, value: any, opts?: { onlyIfMatch?: string, onlyIfNew?: boolean }) => Promise<{ modified: boolean }|void>} setJSON
+ *   Write a JSON value.  When `opts.onlyIfMatch` is set, the write is
+ *   conditional on the stored etag matching (compare-and-swap).  When
+ *   `opts.onlyIfNew` is set, the write succeeds only if the key is absent.
+ *   Returns `{ modified: true }` on success, `{ modified: false }` when the
+ *   condition was not met (lost the race).
+ * @property {(key: string) => Promise<void>} delete
+ *   Remove a key.  No-op when absent.
+ * @property {(opts?: { prefix?: string }) => Promise<{ blobs: Array<{ key: string }> }>} list
+ *   List all keys, optionally filtered by a key prefix.
+ */
+
+import { getStore } from "@netlify/blobs";
+
+// Active factory — returns a StorageStore for a named bucket.
+// Starts as null; getDb() falls back to Netlify Blobs when null.
+let activeDbFactory = null;
+
+/**
+ * Get a store for a named bucket.
+ *
+ * Returns a {@link StorageStore} backed by whichever adapter is active.
+ * Known bucket names: meetings, invites, availability, users, events,
+ * rate_limits, login_tokens, email_records, bookings, event_types,
+ * booking_availability, email_preferences.
+ *
+ * @param {string} name - Bucket name
  */
 export function getDb(name) {
-  if (dbFactoryForTests) return dbFactoryForTests(name);
+  if (activeDbFactory) return activeDbFactory(name);
   return getStore({ name, consistency: "strong" });
 }
 
 /**
- * Install an in-memory DB factory for tests.
+ * Replace the storage backend for all subsequent `getDb()` calls.
  *
- * @param {(name: string) => { get: Function, setJSON: Function, delete: Function, list: Function }} factory
+ * Call this once at process startup (before any request is handled) to
+ * plug in an alternative adapter.  See `lib/db-adapters/turso.mjs` for a
+ * ready-to-use SQL implementation.
+ *
+ * @param {((name: string) => StorageStore) | null} factory
+ *   A function that accepts a bucket name and returns a StorageStore, or
+ *   `null` to restore the default Netlify Blobs backend.
  */
-export function setDbFactoryForTests(factory) {
-  dbFactoryForTests = factory;
+export function setDbFactory(factory) {
+  activeDbFactory = factory;
 }
 
-/** Reset the test DB factory override. */
+/**
+ * Install an in-memory DB factory for tests.
+ * Alias for `setDbFactory` kept for backward compatibility with the test suite.
+ *
+ * @param {(name: string) => StorageStore} factory
+ */
+export function setDbFactoryForTests(factory) {
+  setDbFactory(factory);
+}
+
+/** Reset to the default Netlify Blobs backend. */
 export function clearDbFactoryForTests() {
-  dbFactoryForTests = null;
+  setDbFactory(null);
 }
 
 // How many times to retry the compare-and-swap when a concurrent writer updates

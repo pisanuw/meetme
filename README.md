@@ -550,11 +550,40 @@ All data is stored in **Netlify Blobs**, a strongly-consistent, globally-replica
 
 **Concurrency — how simultaneous writes are handled:** All participants' availability is stored under a single key per meeting (`meeting:<id>`). Every write goes through `updateJsonWithCas()` in `lib/db.mjs`, which uses a compare-and-swap loop (read value + etag → mutate → conditional `setJSON` with `onlyIfMatch`). If two users submit availability at the same instant, one wins the CAS and the other retries against the updated snapshot. The mutator is a pure function (`filter out my rows, append new rows`) so it produces correct output on every retry — no row from either user is lost. The same pattern guards meeting creation and booking capacity.
 
-Every storage call routes through `netlify/functions/lib/db.mjs` (`getDb()` / `updateJsonWithCas()`). No function imports `@netlify/blobs` directly. This means the storage backend is swappable in one file: the integration tests already exercise a fully in-memory substitute injected via `setDbFactoryForTests()`.
+#### Storage abstraction layer
 
-A migration to Turso (libSQL) or Supabase (Postgres) would replace `getDb()` with a thin SQL adapter and `updateJsonWithCas()` with `BEGIN … COMMIT`. The application-layer code would not change.
+No function imports `@netlify/blobs` directly. Every store access goes through `getDb(name)` in `lib/db.mjs`, which returns a `StorageStore` object:
 
-Current scale expectations are low (personal/team scheduling tool), so the key-value model is appropriate. If the app were to scale to thousands of concurrent users or needed complex cross-entity queries, SQL would be the right next step.
+```
+StorageStore {
+  get(key, { type: "json" })           → Promise<any | null>
+  getWithMetadata(key, { type: "json" })→ Promise<{ data, etag } | null>
+  setJSON(key, value, opts?)           → Promise<{ modified: boolean }>
+  delete(key)                          → Promise<void>
+  list(opts?)                          → Promise<{ blobs: [{ key }] }>
+}
+```
+
+Swapping the backend is a one-line change at startup:
+
+```js
+import { createClient } from "@libsql/client";
+import { createTursoFactory } from "./lib/db-adapters/turso.mjs";
+import { setDbFactory } from "./lib/db.mjs";
+
+setDbFactory(createTursoFactory(createClient({
+  url:       process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+})));
+```
+
+`lib/db-adapters/turso.mjs` is a complete, ready-to-use SQL adapter (Turso / libSQL / embedded SQLite) with the schema and wiring instructions included. No application code changes — the five-method interface is the only contract.
+
+**Data migration path (Blobs → Turso):**
+1. Run the schema: `CREATE TABLE kv (store TEXT, key TEXT, value TEXT, etag TEXT, PRIMARY KEY(store, key))`
+2. List all Blobs keys per store, read each JSON value, `INSERT INTO kv` — no transformation needed since all values are already JSON and keys are plain strings
+3. Set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN`, call `setDbFactory(createTursoFactory(client))` at startup
+4. Remove `NETLIFY_BLOBS_*` env vars
 
 ### Frontend
 
