@@ -488,6 +488,36 @@ npm run predeploy:full
 
 ---
 
+## Architecture and Design Decisions
+
+### Storage layer
+
+All data is stored in **Netlify Blobs**, a strongly-consistent, globally-replicated key-value store. This was a deliberate MVP choice with real trade-offs:
+
+| What you get | What you give up |
+|---|---|
+| Zero-ops, zero-config, free tier | No SQL queries — lists and filters happen in memory |
+| Strongly-consistent reads | No multi-key transactions |
+| Serverless-native | Vendor-specific SDK (`@netlify/blobs`) |
+
+Every storage call routes through `netlify/functions/lib/db.mjs` (`getDb()` / `updateJsonWithCas()`). No function imports `@netlify/blobs` directly. This means the storage backend is swappable in one file: the integration tests already exercise a fully in-memory substitute injected via `setDbFactoryForTests()`.
+
+A migration to Turso (libSQL) or Supabase (Postgres) would replace `getDb()` with a thin SQL adapter and `updateJsonWithCas()` with `BEGIN … COMMIT`. The application-layer code would not change.
+
+Current scale expectations are low (personal/team scheduling tool), so the key-value model is appropriate. If the app were to scale to thousands of concurrent users or needed complex cross-entity queries, SQL would be the right next step.
+
+### Frontend
+
+The frontend is **vanilla HTML + ES module JavaScript** with no build step. Every page is a standalone `.html` file with a corresponding `static/<page>.js` module. Shared behaviour lives in `static/common.js` and `static/layout.js`.
+
+Trade-offs:
+- **Pro:** Zero-friction deployment (`netlify deploy` publishes static files directly), no bundler complexity, instant local preview
+- **Con:** No tree-shaking, no template inheritance (nav/footer HTML is repeated across pages), onboarding requires reading multiple files to understand the full picture
+
+The trade-off is documented here rather than hidden. If the page count grows substantially or a team joins, the migration path is a static site generator (Astro or Eleventy) — both support the same no-framework JS model with added templating.
+
+---
+
 ## Security Notes
 
 - Sessions are stored as signed JWTs in an `HttpOnly` cookie (not accessible from JavaScript)
