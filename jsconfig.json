@@ -8,8 +8,8 @@
   // findings that are not bugs. We run with checkJs on and a small documented
   // baseline (scripts/typecheck.mjs) so the type-error count can only shrink.
   //
-  // The browser bundles under static/*.js are excluded here; CI syntax-checks
-  // them separately with `node -c`.
+  // The browser bundles under public/static/ are excluded here; CI
+  // syntax-checks them separately with `node -c`.
   "compilerOptions": {
     "checkJs": true,
     "allowJs": true,
@@ -23,5 +23,5 @@
     "types": ["node"]
   },
   "include": ["netlify/**/*.mjs", "scripts/**/*.mjs", "types/**/*.d.ts"],
-  "exclude": ["node_modules", "**/.netlify/**", "static", "test"]
+  "exclude": ["node_modules", "**/.netlify/**", "public", "test"]
 }
