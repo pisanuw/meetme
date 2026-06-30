@@ -125,12 +125,7 @@ test("validateEventTypeBody rejects group_capacity above 100", () => {
 
 test("validateEventTypeBody rejects creating more than 25 event types", () => {
   const existingIds = Array.from({ length: 25 }, (_, i) => `et_${i}`);
-  const result = validateEventTypeBody(
-    BASE_EVENT_TYPE_BODY,
-    AUTH_USER,
-    CURRENT_USER,
-    existingIds
-  );
+  const result = validateEventTypeBody(BASE_EVENT_TYPE_BODY, AUTH_USER, CURRENT_USER, existingIds);
   assert.ok(result.error);
   assert.match(result.error.message, /25/);
 });

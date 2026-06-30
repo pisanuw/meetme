@@ -72,9 +72,7 @@ export async function checkRateLimit({ bucket, key, limit, windowMs, failOpen = 
       // Conditional write: only commit if the record is unchanged since our
       // read (onlyIfMatch), or still absent (onlyIfNew). Otherwise retry.
       const writeOpts = etag ? { onlyIfMatch: etag } : { onlyIfNew: true };
-      // @ts-ignore — Netlify Blobs setJSON types don't declare conditional-put options (onlyIfMatch/onlyIfNew)
       const result = await db.setJSON(recordKey, next, writeOpts);
-      // @ts-ignore — setJSON returns void in types but { modified: boolean } at runtime for conditional puts
       if (result?.modified) {
         return {
           ok: true,

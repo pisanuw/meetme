@@ -29,10 +29,10 @@ directories.
 All paths relative to working directory. Both files are created by
 `/init` if absent.
 
-| File | Purpose | On session start |
-|---|---|---|
-| `BRIEFING.md` | Scope, decisions, non-goals | Read fully if present |
-| `CHANGES.md` | Append-only project journal | Read last 30 lines if present |
+| File          | Purpose                     | On session start              |
+| ------------- | --------------------------- | ----------------------------- |
+| `BRIEFING.md` | Scope, decisions, non-goals | Read fully if present         |
+| `CHANGES.md`  | Append-only project journal | Read last 30 lines if present |
 
 ## CHANGES.md format
 

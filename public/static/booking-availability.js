@@ -1,6 +1,5 @@
 import {
   toMinutes,
-  fromMinutes,
   fmtTime12h,
   slotKey,
   splitSlotKey,

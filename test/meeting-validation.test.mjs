@@ -103,7 +103,11 @@ test("validateCreateMeetingBody rejects malformed end_time", () => {
 });
 
 test("validateCreateMeetingBody rejects end_time not after start_time", () => {
-  const result = validateCreateMeetingBody({ ...VALID_BODY, start_time: "17:00", end_time: "09:00" });
+  const result = validateCreateMeetingBody({
+    ...VALID_BODY,
+    start_time: "17:00",
+    end_time: "09:00",
+  });
   assert.ok(result.error);
   assert.match(result.error.message, /after start_time/i);
 });
@@ -133,7 +137,11 @@ test("validateCreateMeetingBody deduplicates dates_or_days", () => {
 // ---------------------------------------------------------------------------
 
 test("validateFinalizeBody accepts valid finalize data", () => {
-  const result = validateFinalizeBody({ date_or_day: "2026-07-01", time_slot: "09:00", duration_minutes: 60 });
+  const result = validateFinalizeBody({
+    date_or_day: "2026-07-01",
+    time_slot: "09:00",
+    duration_minutes: 60,
+  });
   assert.equal(result.error, null);
   assert.equal(result.durationMinutes, 60);
 });
@@ -158,13 +166,21 @@ test("validateFinalizeBody rejects missing time_slot", () => {
 });
 
 test("validateFinalizeBody rejects duration_minutes below minimum", () => {
-  const result = validateFinalizeBody({ date_or_day: "2026-07-01", time_slot: "09:00", duration_minutes: 5 });
+  const result = validateFinalizeBody({
+    date_or_day: "2026-07-01",
+    time_slot: "09:00",
+    duration_minutes: 5,
+  });
   assert.ok(result.error);
   assert.match(result.error.message, /duration_minutes/i);
 });
 
 test("validateFinalizeBody rejects duration_minutes above maximum", () => {
-  const result = validateFinalizeBody({ date_or_day: "2026-07-01", time_slot: "09:00", duration_minutes: 99999 });
+  const result = validateFinalizeBody({
+    date_or_day: "2026-07-01",
+    time_slot: "09:00",
+    duration_minutes: 99999,
+  });
   assert.ok(result.error);
   assert.match(result.error.message, /duration_minutes/i);
 });
@@ -192,7 +208,10 @@ test("validateInviteEmails excludes the creator email", () => {
 });
 
 test("validateInviteEmails deduplicates addresses", () => {
-  const result = validateInviteEmails("a@example.com,a@example.com,b@example.com", "creator@example.com");
+  const result = validateInviteEmails(
+    "a@example.com,a@example.com,b@example.com",
+    "creator@example.com"
+  );
   assert.equal(result.error, null);
   assert.equal(result.emails.length, 2);
 });

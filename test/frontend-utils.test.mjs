@@ -251,10 +251,8 @@ describe("applyWindowsToSlots / collectWindowsFromSlots round-trip", () => {
 // ── heatColor ────────────────────────────────────────────────────────────────
 
 describe("heatColor", () => {
-  it("returns grey for 0 votes", () =>
-    assert.equal(heatColor(0, 10), "#f5f5f5"));
-  it("returns grey for null votes", () =>
-    assert.equal(heatColor(null, 10), "#f5f5f5"));
+  it("returns grey for 0 votes", () => assert.equal(heatColor(0, 10), "#f5f5f5"));
+  it("returns grey for null votes", () => assert.equal(heatColor(null, 10), "#f5f5f5"));
   it("returns lightest green for 1/10 votes (ratio 0.1)", () =>
     assert.equal(heatColor(1, 10), "#e8f5e9"));
   it("returns light green for 3/10 votes (ratio 0.3)", () =>
@@ -263,8 +261,7 @@ describe("heatColor", () => {
     assert.equal(heatColor(6, 10), "#81c784"));
   it("returns strong green for 8/10 votes (ratio 0.8)", () =>
     assert.equal(heatColor(8, 10), "#4caf50"));
-  it("returns darkest green for unanimous vote", () =>
-    assert.equal(heatColor(10, 10), "#2e7d32"));
+  it("returns darkest green for unanimous vote", () => assert.equal(heatColor(10, 10), "#2e7d32"));
   it("caps ratio at 1 for over-invited scenarios", () =>
     assert.equal(heatColor(15, 10), "#2e7d32"));
   it("handles totalParticipants=0 without divide-by-zero", () =>
@@ -275,7 +272,10 @@ describe("heatColor", () => {
 
 describe("convertSlotTime", () => {
   it("returns null for same timezone", () =>
-    assert.equal(convertSlotTime("2025-06-01", "09:00", "America/New_York", "America/New_York"), null));
+    assert.equal(
+      convertSlotTime("2025-06-01", "09:00", "America/New_York", "America/New_York"),
+      null
+    ));
 
   it("returns null for a non-date string", () =>
     assert.equal(convertSlotTime("Monday", "09:00", "UTC", "America/New_York"), null));
@@ -300,7 +300,12 @@ describe("convertSlotTime", () => {
 
   it("converts between two non-UTC timezones", () => {
     // 2025-06-01 09:00 Pacific (UTC-7) → 12:00 Eastern (UTC-4)
-    const result = convertSlotTime("2025-06-01", "09:00", "America/Los_Angeles", "America/New_York");
+    const result = convertSlotTime(
+      "2025-06-01",
+      "09:00",
+      "America/Los_Angeles",
+      "America/New_York"
+    );
     assert.equal(result, "12:00");
   });
 

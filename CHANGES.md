@@ -40,3 +40,6 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-06-25 [doc] Ran /code-improve whole-repo sweep -> CODE-IMPROVE-REPORT.md (report-only, no source changes): 1 medium + 5 low findings, ~15 simplification proposals, audits clean; 3 reviewer claims verified false and dropped.
 
 2026-06-25 [code] Implemented all 6 CODE-IMPROVE-REPORT fixes: Blobs CAS for meeting writes; 128-bit meeting IDs; frontend+backend dedup; small UX/correctness fixes. Gate green.
+
+2026-06-29 [code] Fix prod auth "rate-limited&retry=1": @netlify/blobs pinned ^8.1.0 (no conditional-write API) but rate-limit + updateJsonWithCas code targets v9+ onlyIfMatch/onlyIfNew/{modified}; bumped to ^10.7.9. Tests passed because mock store implemented the v9 contract.
+2026-06-29 [code] CI green: prettier --write 5 files (copilot-instructions, README, 3 test files); fixed 2 pre-existing lint warnings (public-meetings unused context -> _context; booking-availability unused fromMinutes import).

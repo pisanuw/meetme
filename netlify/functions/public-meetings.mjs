@@ -61,7 +61,7 @@ const ALLOWED_DAY_NAMES = new Set([
   "Sunday",
 ]);
 
-export default async (req, context) => {
+export default async (req, _context) => {
   try {
     return await handleRequest(req);
   } catch (err) {

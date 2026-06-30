@@ -95,20 +95,20 @@ DISABLE_RATE_LIMIT=1 npm run test:coverage  # with line/branch/function coverage
 
 Coverage breakdown by layer:
 
-| File | What's tested |
-|---|---|
-| `test/jwt.test.mjs` | `lib/jwt.mjs` — sign, verify, expiry, tamper, wrong secret, Bearer vs cookie precedence |
-| `test/utils.test.mjs` | `lib/crypto.mjs`, `lib/rate-limit.mjs`, `lib/utils-core.mjs` — encrypt/decrypt round-trip, fail-closed behaviour, rate-limit CAS |
-| `test/meeting-validation.test.mjs` | `lib/meeting-validation.mjs` — all validation paths for create-meeting and finalize |
-| `test/bookings-validation.test.mjs` | `lib/bookings-validation.mjs` — event-type and availability window validation |
-| `test/bookings-helpers.test.mjs` | `lib/bookings-helpers.mjs` — time/date helpers, slugify, weekday calculation |
-| `test/frontend-utils.test.mjs` | `public/static/ui-utils.mjs` — slot key encoding, time arithmetic, availability window round-trip, heatmap colour thresholds, Intl timezone conversion |
-| `test/availability.test.mjs` | `lib/bookings-availability.mjs` — slot building and DST edges |
-| `test/api-routes.test.mjs` | HTTP handler integration tests (auth, meeting CRUD, permissions) |
-| `test/bookings.test.mjs` | Booking HTTP handler — event types, availability, public booking flow |
-| `test/meetings.test.mjs` | Meetings handler — create, list, finalize, leave, delete |
-| `test/public-meetings.test.mjs` | Anonymous meeting creation and token-gated access |
-| `test/bookings-reminders.test.mjs` | Scheduled reminder sweep |
+| File                                | What's tested                                                                                                                                          |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `test/jwt.test.mjs`                 | `lib/jwt.mjs` — sign, verify, expiry, tamper, wrong secret, Bearer vs cookie precedence                                                                |
+| `test/utils.test.mjs`               | `lib/crypto.mjs`, `lib/rate-limit.mjs`, `lib/utils-core.mjs` — encrypt/decrypt round-trip, fail-closed behaviour, rate-limit CAS                       |
+| `test/meeting-validation.test.mjs`  | `lib/meeting-validation.mjs` — all validation paths for create-meeting and finalize                                                                    |
+| `test/bookings-validation.test.mjs` | `lib/bookings-validation.mjs` — event-type and availability window validation                                                                          |
+| `test/bookings-helpers.test.mjs`    | `lib/bookings-helpers.mjs` — time/date helpers, slugify, weekday calculation                                                                           |
+| `test/frontend-utils.test.mjs`      | `public/static/ui-utils.mjs` — slot key encoding, time arithmetic, availability window round-trip, heatmap colour thresholds, Intl timezone conversion |
+| `test/availability.test.mjs`        | `lib/bookings-availability.mjs` — slot building and DST edges                                                                                          |
+| `test/api-routes.test.mjs`          | HTTP handler integration tests (auth, meeting CRUD, permissions)                                                                                       |
+| `test/bookings.test.mjs`            | Booking HTTP handler — event types, availability, public booking flow                                                                                  |
+| `test/meetings.test.mjs`            | Meetings handler — create, list, finalize, leave, delete                                                                                               |
+| `test/public-meetings.test.mjs`     | Anonymous meeting creation and token-gated access                                                                                                      |
+| `test/bookings-reminders.test.mjs`  | Scheduled reminder sweep                                                                                                                               |
 
 The `crypto.mjs`, `jwt.mjs`, and `rate-limit.mjs` lib modules are exercised both directly (in `jwt.test.mjs` and `utils.test.mjs`) and indirectly through every HTTP-handler test that signs tokens or hits rate-limited endpoints.
 
@@ -541,11 +541,11 @@ npm run predeploy:full
 
 All data is stored in **Netlify Blobs**, a strongly-consistent, globally-replicated key-value store. This was a deliberate MVP choice with real trade-offs:
 
-| What you get | What you give up |
-|---|---|
+| What you get                     | What you give up                                    |
+| -------------------------------- | --------------------------------------------------- |
 | Zero-ops, zero-config, free tier | No SQL queries — lists and filters happen in memory |
-| Strongly-consistent reads | No multi-key transactions |
-| Serverless-native | Vendor-specific SDK (`@netlify/blobs`) |
+| Strongly-consistent reads        | No multi-key transactions                           |
+| Serverless-native                | Vendor-specific SDK (`@netlify/blobs`)              |
 
 **Acknowledged limitation:** No multi-key transactions means there is no atomic cross-entity operation (e.g., "add a booking and decrement capacity in one commit"). Each write is individually consistent but two related writes can fail independently. For this app's scale this is an acceptable trade-off managed by application-level retries and idempotent write patterns.
 
@@ -572,15 +572,20 @@ import { createClient } from "@libsql/client";
 import { createTursoFactory } from "./lib/db-adapters/turso.mjs";
 import { setDbFactory } from "./lib/db.mjs";
 
-setDbFactory(createTursoFactory(createClient({
-  url:       process.env.TURSO_DATABASE_URL,
-  authToken: process.env.TURSO_AUTH_TOKEN,
-})));
+setDbFactory(
+  createTursoFactory(
+    createClient({
+      url: process.env.TURSO_DATABASE_URL,
+      authToken: process.env.TURSO_AUTH_TOKEN,
+    })
+  )
+);
 ```
 
 `lib/db-adapters/turso.mjs` is a complete, ready-to-use SQL adapter (Turso / libSQL / embedded SQLite) with the schema and wiring instructions included. No application code changes — the five-method interface is the only contract.
 
 **Data migration path (Blobs → Turso):**
+
 1. Run the schema: `CREATE TABLE kv (store TEXT, key TEXT, value TEXT, etag TEXT, PRIMARY KEY(store, key))`
 2. List all Blobs keys per store, read each JSON value, `INSERT INTO kv` — no transformation needed since all values are already JSON and keys are plain strings
 3. Set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN`, call `setDbFactory(createTursoFactory(client))` at startup
@@ -591,6 +596,7 @@ setDbFactory(createTursoFactory(createClient({
 The frontend is **vanilla HTML + ES module JavaScript** with no build step. Every page is a standalone `.html` file with a corresponding `static/<page>.js` module. Shared behaviour lives in `static/common.js` and `static/layout.js`.
 
 Trade-offs:
+
 - **Pro:** Zero-friction deployment (`netlify deploy` publishes static files directly), no bundler complexity, instant local preview
 - **Con:** No tree-shaking, no template inheritance (nav/footer HTML is repeated across pages), onboarding requires reading multiple files to understand the full picture
 
