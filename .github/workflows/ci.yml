@@ -67,7 +67,8 @@ jobs:
       - name: Run lint & frontend JS syntax check
         run: |
           npm run lint
-          for file in static/*.js; do node -c "$file"; done
+          shopt -s nullglob
+          for file in public/static/*.js public/static/*.mjs; do node -c "$file"; done
 
   test-default:
     name: Test (default mode + coverage)

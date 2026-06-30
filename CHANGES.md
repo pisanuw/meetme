@@ -45,3 +45,5 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-06-29 [code] CI green: prettier --write 5 files (copilot-instructions, README, 3 test files); fixed 2 pre-existing lint warnings (public-meetings unused context -> \_context; booking-availability unused fromMinutes import).
 
 2026-06-29 [code] CI npm audit gate: @netlify/blobs >=10.2.0 pulls @netlify/otel -> vulnerable @opentelemetry/core (GHSA-8988-4f7v-96qf). Pinned exact 10.1.0 (highest <10.2.0; still has v9+ conditional-write API, no otel). npm audit --omit=dev clean.
+
+2026-06-29 [code] Fix CI lint job: frontend syntax-check looped over stale `static/*.js` (moved to public/static/ in e622101); empty glob passed literal to `node -c` -> MODULE*NOT_FOUND. Repointed to public/static/*.js + \_.mjs and added `shopt -s nullglob` so an empty glob can't break CI again.
