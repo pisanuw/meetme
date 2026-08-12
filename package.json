@@ -18,6 +18,7 @@
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=78 --test-coverage-branches=50 --test-coverage-functions=50 test/*.test.mjs",
     "test:e2e:smoke": "playwright test -c playwright.smoke.config.mjs",
     "typecheck": "node scripts/typecheck.mjs",
+    "audit:ci": "node scripts/audit-gate.mjs",
     "lint": "eslint . --max-warnings 0",
     "smoke:staging": "node scripts/staging-smoke.mjs",
     "predeploy-check": "npm test && npm run typecheck && npm run lint",

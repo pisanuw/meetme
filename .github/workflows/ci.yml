@@ -40,7 +40,7 @@ jobs:
           sops-gpg-private-key: ${{ secrets.SOPS_GPG_PRIVATE_KEY }}
 
       - name: Run production dependency audit
-        run: npm audit --omit=dev
+        run: npm run audit:ci
 
   lint:
     name: Lint, Typecheck, Format & Syntax Check
