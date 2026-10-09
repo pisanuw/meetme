@@ -182,19 +182,20 @@ meetme/
 Set these environment variables in Netlify (Site configuration → Environment variables)
 and in your local `.env` file for development:
 
-| Variable                         | Default                | Purpose                                                                                    |
-| -------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------ |
-| `JWT_SECRET`                     | _(required)_           | Secret used to sign session JWTs — use a long random string                                |
-| `TOKEN_ENCRYPTION_KEY`           | _(required)_           | Key for AES-256-GCM encryption of stored OAuth tokens — use a different long random string |
-| `APP_URL`                        | inferred from request  | Public base URL, e.g. `https://your-site.netlify.app`                                      |
-| `RESEND_API_KEY`                 | _(required for email)_ | API key from [resend.com](https://resend.com)                                              |
-| `AUTH_FROM_EMAIL`                | _(required for email)_ | Verified sender address, e.g. `MeetMe <noreply@yourdomain.com>`                            |
-| `RESEND_WEBHOOK_SECRET`          | _(optional)_           | Shared secret for the Resend bounce/complaint webhook                                      |
-| `BOOKING_REMINDERS_RUN_SECRET`   | _(recommended)_        | Shared secret required for manual calls to `/api/bookings/reminders/run`                   |
-| `ALLOW_BOOKING_REMINDER_RUN_NOW` | `false`                | Enables admin-triggered `/api/bookings/reminders/run-now` endpoint when set to `true`      |
-| `ADMIN_EMAILS`                   | _(optional)_           | Comma-separated admin addresses, e.g. `alice@example.com,bob@example.com`                  |
-| `GOOGLE_CLIENT_ID`               | _(optional)_           | OAuth 2.0 client ID (required for Google sign-in and Calendar)                             |
-| `GOOGLE_CLIENT_SECRET`           | _(optional)_           | OAuth 2.0 client secret                                                                    |
+| Variable                         | Default                  | Purpose                                                                                    |
+| -------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------ |
+| `JWT_SECRET`                     | _(required)_             | Secret used to sign session JWTs — use a long random string                                |
+| `TOKEN_ENCRYPTION_KEY`           | _(required)_             | Key for AES-256-GCM encryption of stored OAuth tokens — use a different long random string |
+| `APP_URL`                        | inferred from request    | Public base URL, e.g. `https://your-site.netlify.app`                                      |
+| `RESEND_API_KEY`                 | _(required for email)_   | API key from [resend.com](https://resend.com)                                              |
+| `AUTH_FROM_EMAIL`                | _(required for email)_   | Verified sender address, e.g. `MeetMe <noreply@yourdomain.com>`                            |
+| `RESEND_WEBHOOK_SIGNING_SECRET`  | _(required for webhook)_ | Resend's `whsec_…` webhook signing secret — copy it from the webhook's page in Resend      |
+| `RESEND_WEBHOOK_SECRET`          | _(optional)_             | Shared-secret fallback for manual webhook replays; Resend itself cannot send it            |
+| `BOOKING_REMINDERS_RUN_SECRET`   | _(recommended)_          | Shared secret required for manual calls to `/api/bookings/reminders/run`                   |
+| `ALLOW_BOOKING_REMINDER_RUN_NOW` | `false`                  | Enables admin-triggered `/api/bookings/reminders/run-now` endpoint when set to `true`      |
+| `ADMIN_EMAILS`                   | _(optional)_             | Comma-separated admin addresses, e.g. `alice@example.com,bob@example.com`                  |
+| `GOOGLE_CLIENT_ID`               | _(optional)_             | OAuth 2.0 client ID (required for Google sign-in and Calendar)                             |
+| `GOOGLE_CLIENT_SECRET`           | _(optional)_             | OAuth 2.0 client secret                                                                    |
 
 Generate strong secrets with:
 
@@ -213,9 +214,13 @@ Use `.env.example` as the template for local development values.
 3. In Resend, verify your sending domain and set `AUTH_FROM_EMAIL` to that verified sender.
 4. _(Optional)_ In Resend → Webhooks, add endpoint:
 
-- URL: `https://<your-netlify-domain>/api/webhooks/resend`
-- Header: `x-webhook-secret: <RESEND_WEBHOOK_SECRET>`
+- URL: `https://<your-netlify-domain>/api/webhooks/resend` — with no query string; a
+  `?secret=` parameter is ignored by design, because secrets in URLs leak into access logs
 - Subscribe to: `email.bounced`, `email.complained`
+- Copy the webhook's signing secret (`whsec_…`) into `RESEND_WEBHOOK_SIGNING_SECRET` in Netlify.
+  Resend authenticates deliveries by signing them and offers no way to attach a custom header,
+  so without this variable every delivery is rejected with 403 and Resend will disable the
+  endpoint after repeated failures.
 
 5. Configure booking reminder scheduler secret:
 
@@ -325,7 +330,8 @@ These are strongly recommended hardening steps before opening the app to real us
 
 2. **Verify bounce/complaint webhook behavior end-to-end**
 
-- In Resend → Webhooks, ensure your endpoint is configured with `RESEND_WEBHOOK_SECRET`
+- In Resend → Webhooks, ensure the endpoint is **enabled** and that its signing secret is set
+  as `RESEND_WEBHOOK_SIGNING_SECRET` in Netlify
 - Confirm subscriptions include `email.bounced` and `email.complained`
 - Trigger a test event and verify creator notification + event log entry in `/admin.html`
 

@@ -6,15 +6,21 @@
  *       Receives delivery events from Resend (bounce, complaint) and notifies
  *       the meeting creator when one of their invitation emails was undeliverable.
  *
- * Security: requests are authenticated via a shared secret that must match
- * RESEND_WEBHOOK_SECRET. The secret is read ONLY from a request header
+ * Security: real Resend deliveries are authenticated by verifying the Svix
+ * signature headers against RESEND_WEBHOOK_SIGNING_SECRET (the `whsec_…` value
+ * from the Resend webhook page). Resend offers no way to attach a custom
+ * header, so signature verification is the only mechanism that works for its
+ * deliveries.
+ *
+ * As a fallback — for manual replays and local testing — a shared secret
+ * matching RESEND_WEBHOOK_SECRET is accepted in a request header
  * (`x-webhook-secret`, `x-resend-webhook-secret`, or `Authorization: Bearer`).
  * Query-string `?secret=` is intentionally NOT accepted — secrets in URLs leak
  * into access logs, CDN logs, and browser history.
  *
  * Event flow:
- *   Resend → POST /api/webhooks/resend  (secret in x-webhook-secret header)
- *     → verify secret
+ *   Resend → POST /api/webhooks/resend  (signed with svix-* headers)
+ *     → verify signature
  *     → look up email_records blob by Resend email ID
  *     → send notification email to meeting creator
  *     → persist event for admin audit log
@@ -22,7 +28,6 @@
 import {
   getDb,
   getEnv,
-  safeJson,
   log,
   logRequest,
   persistEvent,
@@ -31,6 +36,7 @@ import {
   errorResponse,
   escapeHtml,
   secretsEqual,
+  verifyWebhookSignature,
 } from "./utils.mjs";
 
 const FN = "webhooks";
@@ -52,29 +58,62 @@ async function handleWebhook(req, context) {
 
   // ── POST /api/webhooks/resend ─────────────────────────────────────────────
   if (req.method === "POST" && path === "resend") {
-    // Step 1: Verify the shared secret before processing any payload.
-    // Prefer header-based secret transport to avoid leaking via URLs/logs.
+    // Step 1: Authenticate the delivery before processing any payload.
+    // Resend signs its deliveries (Svix headers) and cannot send a custom
+    // header, so the signature is the primary check. The shared-secret header
+    // remains as a fallback for manual replays and local testing.
     // Query-parameter delivery is intentionally not supported — secrets in URLs
     // appear in access logs, CDN logs, and browser history.
+    const signingSecret = getEnv("RESEND_WEBHOOK_SIGNING_SECRET", "");
     const expectedSecret = getEnv("RESEND_WEBHOOK_SECRET", "");
-    const providedSecret =
-      req.headers.get("x-webhook-secret") ||
-      req.headers.get("x-resend-webhook-secret") ||
-      req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
-      "";
 
-    if (!expectedSecret) {
-      log("warn", FN, "RESEND_WEBHOOK_SECRET is not set — webhook rejected");
+    if (!signingSecret && !expectedSecret) {
+      log(
+        "warn",
+        FN,
+        "neither RESEND_WEBHOOK_SIGNING_SECRET nor RESEND_WEBHOOK_SECRET is set — webhook rejected"
+      );
       return errorResponse(500, "Webhook secret not configured on server.");
     }
-    if (!secretsEqual(providedSecret, expectedSecret)) {
-      log("warn", FN, "resend webhook secret mismatch");
+
+    // The signature covers the exact bytes Resend sent, so the body must be
+    // read as text and parsed only after verification.
+    const rawBody = await req.text().catch(() => "");
+
+    let authenticated = false;
+    if (signingSecret) {
+      const verdict = verifyWebhookSignature({
+        rawBody,
+        headers: req.headers,
+        signingSecret,
+      });
+      if (verdict.ok) {
+        authenticated = true;
+      } else {
+        log("warn", FN, "resend webhook signature rejected", { reason: verdict.reason });
+      }
+    }
+    if (!authenticated && expectedSecret) {
+      const providedSecret =
+        req.headers.get("x-webhook-secret") ||
+        req.headers.get("x-resend-webhook-secret") ||
+        req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
+        "";
+      authenticated = secretsEqual(providedSecret, expectedSecret);
+      if (!authenticated) log("warn", FN, "resend webhook secret mismatch");
+    }
+    if (!authenticated) {
       return errorResponse(403, "Invalid webhook secret.");
     }
 
     // Step 2: Parse the event body sent by Resend.
-    const body = await safeJson(req);
-    if (!body) {
+    let body = null;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      body = null;
+    }
+    if (!body || typeof body !== "object") {
       log("warn", FN, "resend webhook body is not valid JSON");
       return errorResponse(400, "Invalid JSON body.");
     }

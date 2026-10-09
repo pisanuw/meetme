@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 
 import {
   buildTimeSlots,
@@ -16,6 +17,7 @@ import {
   checkRateLimit,
   setDbFactoryForTests,
   clearDbFactoryForTests,
+  verifyWebhookSignature,
 } from "../netlify/functions/utils.mjs";
 import {
   installInMemoryDb,
@@ -166,4 +168,117 @@ test("checkRateLimit fails closed when the backing store errors", async () => {
   } finally {
     clearDbFactoryForTests();
   }
+});
+
+// ── verifyWebhookSignature (Svix / Standard Webhooks) ───────────────────────
+// Signing secrets are base64 after the `whsec_` prefix; these helpers build a
+// delivery exactly the way Resend does so the verifier is tested end to end.
+const SIGNING_SECRET = `whsec_${Buffer.from("test-signing-key-0123456789").toString("base64")}`;
+
+function signDelivery({ id = "msg_1", timestamp, rawBody, secret = SIGNING_SECRET }) {
+  const key = Buffer.from(secret.slice("whsec_".length), "base64");
+  const signature = crypto
+    .createHmac("sha256", key)
+    .update(`${id}.${timestamp}.${rawBody}`, "utf8")
+    .digest("base64");
+  return new Headers({
+    "svix-id": id,
+    "svix-timestamp": String(timestamp),
+    "svix-signature": `v1,${signature}`,
+  });
+}
+
+test("verifyWebhookSignature accepts a correctly signed delivery", () => {
+  const nowSec = 1_700_000_000;
+  const rawBody = JSON.stringify({ type: "email.bounced", data: { email_id: "mail-1" } });
+  const headers = signDelivery({ timestamp: nowSec, rawBody });
+
+  const verdict = verifyWebhookSignature({
+    rawBody,
+    headers,
+    signingSecret: SIGNING_SECRET,
+    nowSec,
+  });
+  assert.equal(verdict.ok, true);
+});
+
+test("verifyWebhookSignature accepts webhook-* header aliases", () => {
+  const nowSec = 1_700_000_000;
+  const rawBody = JSON.stringify({ type: "email.complained" });
+  const svix = signDelivery({ timestamp: nowSec, rawBody });
+  const headers = new Headers({
+    "webhook-id": svix.get("svix-id"),
+    "webhook-timestamp": svix.get("svix-timestamp"),
+    "webhook-signature": svix.get("svix-signature"),
+  });
+
+  const verdict = verifyWebhookSignature({
+    rawBody,
+    headers,
+    signingSecret: SIGNING_SECRET,
+    nowSec,
+  });
+  assert.equal(verdict.ok, true);
+});
+
+test("verifyWebhookSignature accepts one of several versioned signatures", () => {
+  const nowSec = 1_700_000_000;
+  const rawBody = JSON.stringify({ type: "email.bounced" });
+  const headers = signDelivery({ timestamp: nowSec, rawBody });
+  // Rotation: the old signature is listed first and must not shadow the valid one.
+  headers.set(
+    "svix-signature",
+    `v1,${Buffer.from("stale").toString("base64")} ${headers.get("svix-signature")}`
+  );
+
+  const verdict = verifyWebhookSignature({
+    rawBody,
+    headers,
+    signingSecret: SIGNING_SECRET,
+    nowSec,
+  });
+  assert.equal(verdict.ok, true);
+});
+
+test("verifyWebhookSignature rejects a tampered body", () => {
+  const nowSec = 1_700_000_000;
+  const rawBody = JSON.stringify({ type: "email.bounced", data: { email_id: "mail-1" } });
+  const headers = signDelivery({ timestamp: nowSec, rawBody });
+
+  const verdict = verifyWebhookSignature({
+    rawBody: rawBody.replace("mail-1", "mail-2"),
+    headers,
+    signingSecret: SIGNING_SECRET,
+    nowSec,
+  });
+  assert.equal(verdict.ok, false);
+  assert.equal(verdict.reason, "signature-mismatch");
+});
+
+test("verifyWebhookSignature rejects a replay outside the tolerance window", () => {
+  const nowSec = 1_700_000_000;
+  const rawBody = JSON.stringify({ type: "email.bounced" });
+  const headers = signDelivery({ timestamp: nowSec - 3600, rawBody });
+
+  const verdict = verifyWebhookSignature({
+    rawBody,
+    headers,
+    signingSecret: SIGNING_SECRET,
+    nowSec,
+  });
+  assert.equal(verdict.ok, false);
+  assert.equal(verdict.reason, "timestamp-outside-tolerance");
+});
+
+test("verifyWebhookSignature fails closed on missing headers or secret", () => {
+  const rawBody = JSON.stringify({ type: "email.bounced" });
+  assert.equal(
+    verifyWebhookSignature({ rawBody, headers: new Headers(), signingSecret: SIGNING_SECRET })
+      .reason,
+    "missing-signature-headers"
+  );
+  assert.equal(
+    verifyWebhookSignature({ rawBody, headers: new Headers(), signingSecret: "" }).reason,
+    "no-signing-secret"
+  );
 });

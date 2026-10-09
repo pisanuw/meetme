@@ -8,6 +8,7 @@
  *   lib/env.mjs          — getEnv, getJwtSecret, isRateLimitEnabled
  *   lib/db.mjs           — getDb, updateJsonWithCas, setDbFactoryForTests, clearDbFactoryForTests
  *   lib/crypto.mjs       — encryptSecret, decryptSecret
+ *   lib/webhook-sig.mjs  — verifyWebhookSignature
  *   lib/log.mjs          — log, logRequest
  *   lib/jwt.mjs          — createToken, verifyToken, verifyTokenVerbose, getUserFromRequest, requireUser
  *   lib/http.mjs         — safeJson, validateEmail, jsonResponse, errorResponse, setCookie, clearCookie, getAppUrl
@@ -23,6 +24,7 @@
 export * from "./lib/env.mjs";
 export * from "./lib/db.mjs";
 export * from "./lib/crypto.mjs";
+export * from "./lib/webhook-sig.mjs";
 export * from "./lib/log.mjs";
 export * from "./lib/jwt.mjs";
 export * from "./lib/http.mjs";

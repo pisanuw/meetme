@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 
 import authHandler from "../netlify/functions/auth.mjs";
 import meetingsHandler from "../netlify/functions/meetings.mjs";
@@ -1047,6 +1048,80 @@ test("webhooks resend handles actionable event", async () => {
   const body = await responseJson(res);
   assert.equal(res.status, 200);
   assert.equal(body.ok, true);
+});
+
+test("webhooks resend accepts a Resend-signed delivery with no shared secret", async () => {
+  // The real-world path: Resend cannot send a custom header, so a signed
+  // delivery must authenticate on the signature alone.
+  delete process.env.RESEND_WEBHOOK_SECRET;
+  const signingSecret = `whsec_${Buffer.from("route-signing-key-0123456789").toString("base64")}`;
+  process.env.RESEND_WEBHOOK_SIGNING_SECRET = signingSecret;
+
+  await store("email_records").setJSON("mail-signed", {
+    meeting_id: "m-2",
+    meeting_title: "Standup",
+    creator_email: "creator@example.com",
+    creator_name: "Creator",
+    invitee_email: "bounce2@example.com",
+  });
+
+  const rawBody = JSON.stringify({
+    type: "email.bounced",
+    data: { email_id: "mail-signed", bounce: { type: "hard", message: "User unknown" } },
+  });
+  const id = "msg_route_1";
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const signature = crypto
+    .createHmac("sha256", Buffer.from(signingSecret.slice("whsec_".length), "base64"))
+    .update(`${id}.${timestamp}.${rawBody}`, "utf8")
+    .digest("base64");
+
+  const req = new Request("http://localhost:8888/api/webhooks/resend", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "svix-id": id,
+      "svix-timestamp": timestamp,
+      "svix-signature": `v1,${signature}`,
+    },
+    body: rawBody,
+  });
+  const res = await webhooksHandler(req, { params: { 0: "resend" } });
+  const body = await responseJson(res);
+  assert.equal(res.status, 200);
+  assert.equal(body.ok, true);
+
+  delete process.env.RESEND_WEBHOOK_SIGNING_SECRET;
+});
+
+test("webhooks resend rejects an unsigned delivery when only signing is configured", async () => {
+  delete process.env.RESEND_WEBHOOK_SECRET;
+  process.env.RESEND_WEBHOOK_SIGNING_SECRET = `whsec_${Buffer.from(
+    "route-signing-key-0123456789"
+  ).toString("base64")}`;
+
+  const req = makeJsonRequest("http://localhost:8888/api/webhooks/resend", {
+    method: "POST",
+    body: { type: "email.bounced", data: { email_id: "mail-signed" } },
+  });
+  const res = await webhooksHandler(req, { params: { 0: "resend" } });
+  assert.equal(res.status, 403);
+
+  delete process.env.RESEND_WEBHOOK_SIGNING_SECRET;
+});
+
+test("webhooks resend ignores a secret passed in the query string", async () => {
+  // Secrets in URLs leak into access logs; the query parameter must never
+  // authenticate a delivery, which is why the registered ?secret= URL failed.
+  delete process.env.RESEND_WEBHOOK_SIGNING_SECRET;
+  process.env.RESEND_WEBHOOK_SECRET = "expected-secret";
+
+  const req = makeJsonRequest("http://localhost:8888/api/webhooks/resend?secret=expected-secret", {
+    method: "POST",
+    body: { type: "email.bounced", data: { email_id: "mail-1" } },
+  });
+  const res = await webhooksHandler(req, { params: { 0: "resend" } });
+  assert.equal(res.status, 403);
 });
 
 test("auth feedback requires configured admin emails", async () => {
