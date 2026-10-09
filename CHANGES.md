@@ -49,3 +49,7 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-06-29 [code] Fix CI lint job: frontend syntax-check looped over stale `static/*.js` (moved to public/static/ in e622101); empty glob passed literal to `node -c` -> MODULE*NOT_FOUND. Repointed to public/static/*.js + \_.mjs and added `shopt -s nullglob` so an empty glob can't break CI again.
 
 2026-08-10 [code] CI audit gate: new high-sev image-size DoS advisories (blobs 10.1.0 -> @netlify/dev-utils -> image-size, no patch, dev-server-only). npm's --force downgrade to blobs 9.1.5 breaks updateJsonWithCas (CAS API is 10.0.0+ only). Added scripts/audit-gate.mjs allowlisting the 2 GHSAs, fail-closed on all else; ci.yml runs npm run audit:ci.
+
+2026-10-09 [code] Resend disabled the bounce webhook: handler read the secret only from a header, but Resend can't send one — it signs deliveries. Added lib/webhook-sig.mjs (Svix HMAC, replay window, rotation) and verify against RESEND_WEBHOOK_SIGNING_SECRET. Rotated the leaked RESEND_WEBHOOK_SECRET.
+
+2026-10-09 [note] meetme-2's published deploy was locked to 71cd029 (2026-06-30), so every build since then went ready but never live. Released the lock and published 333f276; main auto-publishes again.
