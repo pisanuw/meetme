@@ -53,3 +53,7 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-10-09 [code] Resend disabled the bounce webhook: handler read the secret only from a header, but Resend can't send one — it signs deliveries. Added lib/webhook-sig.mjs (Svix HMAC, replay window, rotation) and verify against RESEND_WEBHOOK_SIGNING_SECRET. Rotated the leaked RESEND_WEBHOOK_SECRET.
 
 2026-10-09 [note] meetme-2's published deploy was locked to 71cd029 (2026-06-30), so every build since then went ready but never live. Released the lock and published 333f276; main auto-publishes again.
+
+2026-10-15 [code] Bounce webhook re-disabled: prod RESEND_WEBHOOK_SIGNING_SECRET held another project's whsec_, so deliveries 403'd. Set the right one, redeployed, re-enabled 7de853a0.
+
+2026-10-15 [note] The 2026-10-09 fix shipped in code but never worked in prod — wrong secret. Also deleted the stale ?secret= webhook 5349d821.
