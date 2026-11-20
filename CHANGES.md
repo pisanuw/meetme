@@ -57,3 +57,5 @@ Format: `YYYY-MM-DD [type] description` (max 200 chars). Types: decision, plan, 
 2026-10-15 [code] Bounce webhook re-disabled: prod RESEND_WEBHOOK_SIGNING_SECRET held another project's whsec_, so deliveries 403'd. Set the right one, redeployed, re-enabled 7de853a0.
 
 2026-10-15 [note] The 2026-10-09 fix shipped in code but never worked in prod — wrong secret. Also deleted the stale ?secret= webhook 5349d821.
+
+2026-11-20 [code] The privacy and support pages give support@hintwise.org; privacy@meetme.pisan.me could not receive mail (no MX) and support@pisan.me is on the old domain.
